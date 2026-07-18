@@ -31,7 +31,7 @@ func NewGladiaProvider(apiKey string) (*GladiaProvider, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("stt: GLADIA_API_KEY vazia")
 	}
-	return &GladiaProvider{apiKey: apiKey, client: &http.Client{}}, nil
+	return &GladiaProvider{apiKey: apiKey, client: &http.Client{Timeout: 60 * time.Second}}, nil
 }
 
 func (p *GladiaProvider) Name() string { return "gladia" }
@@ -54,7 +54,10 @@ func (p *GladiaProvider) Transcribe(ctx context.Context, audioPath string) (*Res
 
 	result, err := mapGladiaResponse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("stt: parsear resposta gladia: %w", err)
+		// Preserva o JSON bruto mesmo em falha de parse: a chamada à API já foi
+		// feita (custa dinheiro e ~30min de transcrição), então o chamador deve
+		// conseguir salvar result.RawResponse em disco mesmo com err != nil.
+		return &Result{RawResponse: raw}, fmt.Errorf("stt: parsear resposta gladia: %w", err)
 	}
 	return result, nil
 }

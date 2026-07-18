@@ -47,16 +47,22 @@ func main() {
 	result, err := provider.Transcribe(ctx, audioPath)
 	if err != nil {
 		logger.Error("transcrição gladia falhou", "erro", err)
+		if result != nil && len(result.RawResponse) > 0 {
+			if saveErr := saveRawResponse(outDir, result); saveErr != nil {
+				logger.Error("salvar JSON bruto após falha", "erro", saveErr)
+			} else {
+				logger.Info("JSON bruto salvo apesar da falha de transcrição", "path", filepath.Join(outDir, "gladia.json"))
+			}
+		}
 		os.Exit(1)
 	}
 	logger.Info("transcrição concluída", "duração", time.Since(start), "utterances", len(result.Utterances))
 
-	rawPath := filepath.Join(outDir, "gladia.json")
-	if err := os.WriteFile(rawPath, result.RawResponse, 0o644); err != nil {
+	if err := saveRawResponse(outDir, result); err != nil {
 		logger.Error("salvar JSON bruto", "erro", err)
 		os.Exit(1)
 	}
-	logger.Info("JSON bruto salvo", "path", rawPath)
+	logger.Info("JSON bruto salvo", "path", filepath.Join(outDir, "gladia.json"))
 
 	txtPath := filepath.Join(outDir, "gladia.txt")
 	if err := writeReadableTranscript(txtPath, result); err != nil {
@@ -64,6 +70,12 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("transcrição legível salva", "path", txtPath)
+}
+
+// saveRawResponse grava o JSON bruto do provedor em outDir/gladia.json.
+func saveRawResponse(outDir string, result *stt.Result) error {
+	rawPath := filepath.Join(outDir, "gladia.json")
+	return os.WriteFile(rawPath, result.RawResponse, 0o644)
 }
 
 func writeReadableTranscript(path string, result *stt.Result) error {
