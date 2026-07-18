@@ -31,7 +31,11 @@ func NewGladiaProvider(apiKey string) (*GladiaProvider, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("stt: GLADIA_API_KEY vazia")
 	}
-	return &GladiaProvider{apiKey: apiKey, client: &http.Client{Timeout: 60 * time.Second}}, nil
+	// Timeout generoso: o upload envia o WAV inteiro da aula (dezenas de MB),
+	// cuja duração real depende da banda de upload do usuário, não só do
+	// processamento do servidor. O poll (chamadas pequenas e repetidas) usa
+	// seu próprio timeout curto por chamada — ver poll().
+	return &GladiaProvider{apiKey: apiKey, client: &http.Client{Timeout: 10 * time.Minute}}, nil
 }
 
 func (p *GladiaProvider) Name() string { return "gladia" }
@@ -146,13 +150,20 @@ func (p *GladiaProvider) poll(ctx context.Context, jobID string) ([]byte, error)
 			return nil, fmt.Errorf("timeout de 10 minutos aguardando job %s", jobID)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		// Timeout curto por chamada (bem menor que o orçamento de 10 minutos e
+		// menor que o timeout generoso do cliente para o upload), para que uma
+		// única requisição de poll travada não impeça o loop de checar o
+		// deadline geral na próxima iteração.
+		reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 		if err != nil {
+			cancel()
 			return nil, err
 		}
 		req.Header.Set("x-gladia-key", p.apiKey)
 
 		respBody, err := p.do(req)
+		cancel()
 		if err != nil {
 			return nil, err
 		}
