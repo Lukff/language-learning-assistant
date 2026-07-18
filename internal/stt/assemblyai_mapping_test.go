@@ -1,0 +1,70 @@
+package stt
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestMapAssemblyAIResponse(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "assemblyai_response.json"))
+	if err != nil {
+		t.Fatalf("erro lendo fixture: %v", err)
+	}
+
+	result, err := mapAssemblyAIResponse(raw)
+	if err != nil {
+		t.Fatalf("mapAssemblyAIResponse retornou erro: %v", err)
+	}
+
+	if len(result.Utterances) != 2 {
+		t.Fatalf("esperava 2 utterances, obteve %d", len(result.Utterances))
+	}
+
+	first := result.Utterances[0]
+	if first.Speaker != "speaker_A" {
+		t.Errorf("Speaker = %q, esperava %q", first.Speaker, "speaker_A")
+	}
+	if first.Text != "Hi, how was your week?" {
+		t.Errorf("Text = %q, inesperado", first.Text)
+	}
+	if first.Start != 420*time.Millisecond {
+		t.Errorf("Start = %v, esperava %v", first.Start, 420*time.Millisecond)
+	}
+	if len(first.Words) != 5 {
+		t.Fatalf("esperava 5 words, obteve %d", len(first.Words))
+	}
+	if first.Words[0].Text != "Hi," {
+		t.Errorf("Words[0].Text = %q, inesperado", first.Words[0].Text)
+	}
+
+	second := result.Utterances[1]
+	if second.Speaker != "speaker_B" {
+		t.Errorf("Speaker = %q, esperava %q", second.Speaker, "speaker_B")
+	}
+	if len(second.Words) != 13 {
+		t.Fatalf("esperava 13 words, obteve %d", len(second.Words))
+	}
+	if second.Words[8].Text != "saudade" {
+		t.Errorf("Words[8].Text = %q, esperava %q", second.Words[8].Text, "saudade")
+	}
+
+	if string(result.RawResponse) != string(raw) {
+		t.Error("RawResponse deveria preservar o JSON bruto exatamente como recebido")
+	}
+}
+
+func TestMapAssemblyAIResponse_InvalidJSON(t *testing.T) {
+	_, err := mapAssemblyAIResponse([]byte("not json"))
+	if err == nil {
+		t.Fatal("esperava erro para JSON inválido, obteve nil")
+	}
+}
+
+func TestMapAssemblyAIResponse_UnexpectedStatus(t *testing.T) {
+	_, err := mapAssemblyAIResponse([]byte(`{"status":"processing","utterances":[]}`))
+	if err == nil {
+		t.Fatal("esperava erro para status diferente de completed, obteve nil")
+	}
+}
