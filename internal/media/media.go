@@ -15,6 +15,7 @@ func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 	}
 
 	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-y",
 		"-i", videoPath,
 		"-vn",
 		"-ac", "1",
