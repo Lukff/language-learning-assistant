@@ -20,7 +20,7 @@ custo é empate técnico (~US$ 0,08–0,17/aula); os diferenciais estão em qual
 | AssemblyAI (Universal-2) | US$ 0,0025/min | ~US$ 0,08 | Maduro; free tier generoso (US$ 50) |
 | Deepgram (Nova-3) | US$ 0,0043/min + US$ 0,0015/min diarização | ~US$ 0,17 | Maduro; US$ 200 em créditos grátis |
 | ElevenLabs Scribe | US$ 0,004/min (diarização incluída) | ~US$ 0,12 | Lançado em 2026; forte em multilíngue/troca de idioma no meio da conversa |
-| Gladia | Free tier: 480 min/mês (240 batch) | US$ 0 no volume atual | Autoproclamada líder em code-switching (fonte: blog próprio — validar no teste) |
+| Gladia | Free tier: 10h/mês (600 min) | US$ 0 no volume atual | Autoproclamada líder em code-switching (fonte: blog próprio — validar no teste) |
 
 Descartado: OpenAI gpt-4o-transcribe (limite de 25 MB/arquivo é fricção para áudio de 30 min;
 diarização menos estabelecida).
