@@ -25,6 +25,9 @@ var providerFactories = map[string]func() (stt.Provider, error){
 	"deepgram": func() (stt.Provider, error) {
 		return stt.NewDeepgramProvider(os.Getenv("DEEPGRAM_API_KEY"))
 	},
+	"elevenlabs": func() (stt.Provider, error) {
+		return stt.NewElevenLabsProvider(os.Getenv("ELEVENLABS_API_KEY"))
+	},
 }
 
 func main() {
