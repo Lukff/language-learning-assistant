@@ -91,18 +91,24 @@ func (p *openAICompatibleProvider) buildRequest(ctx context.Context, transcript 
 	}
 
 	reqBody := chatCompletionRequest{
-		Model:          p.model,
-		Messages:       messages,
-		ResponseFormat: &responseFormat{Type: "json_object"},
+		Model:    p.model,
+		Messages: messages,
 	}
 
 	if p.supportsPrefill {
+		// DeepSeek rejeita a combinação response_format=json_object + prefix
+		// (erro 400 "response_format json_object should not be used with
+		// prefix", confirmado numa chamada real) — o prefill por si só já
+		// força o conteúdo a começar como JSON, então response_format fica
+		// de fora quando há prefill.
 		reqBody.Messages = append(reqBody.Messages, chatMessage{
 			Role:    "assistant",
 			Content: "```json\n",
 			Prefix:  true,
 		})
 		reqBody.Stop = []string{"```"}
+	} else {
+		reqBody.ResponseFormat = &responseFormat{Type: "json_object"}
 	}
 
 	body, err := json.Marshal(reqBody)
