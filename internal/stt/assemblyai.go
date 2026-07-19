@@ -16,9 +16,10 @@ const assemblyAIBaseURL = "https://api.assemblyai.com"
 
 // AssemblyAIProvider implementa stt.Provider usando a API do AssemblyAI.
 //
-// Modelo usado: "universal-3-pro" — suporta code-switching nativo em
-// EN/PT/ES/FR/DE/IT, cobrindo exatamente o caso do projeto (aluno fala
-// inglês com trechos em português/espanhol).
+// Modelo usado: "universal-3-5-pro" — sucessor do "universal-3-pro"
+// (descontinuado pela AssemblyAI), mantém code-switching nativo entre os
+// idiomas suportados (incluindo EN/PT/ES), cobrindo exatamente o caso do
+// projeto (aluno fala inglês com trechos em português/espanhol).
 type AssemblyAIProvider struct {
 	apiKey string
 	client *http.Client
@@ -93,7 +94,7 @@ func (p *AssemblyAIProvider) upload(ctx context.Context, audioPath string) (stri
 func (p *AssemblyAIProvider) createJob(ctx context.Context, audioURL string) (string, error) {
 	payload, err := json.Marshal(map[string]any{
 		"audio_url":          audioURL,
-		"speech_models":      []string{"universal-3-pro"},
+		"speech_models":      []string{"universal-3-5-pro"},
 		"speaker_labels":     true,
 		"language_detection": true,
 	})
