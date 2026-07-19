@@ -43,3 +43,20 @@
   recorrente).
 - **Ergonomia da API:**
 - **Outras observações:**
+
+## Deepgram
+
+### Aula 01
+
+- **Qualidade geral:** média/ruim.
+- **Diarização:** principal problema do provedor — errou a identificação do locutor na maior
+  parte da transcrição, além de misturar falas de interlocutores diferentes.
+- **Inglês com sotaque do aluno:**
+- **Code-switching PT/ES:** ponto mais positivo do provedor — boa detecção de palavras faladas em
+  um idioma diferente do inglês.
+- **Timestamps por palavra:**
+- **Pontuação/formatação:** "ok", mas não capta bem entonações diferentes, como frases
+  interrogativas.
+- **Custo real:**
+- **Ergonomia da API:**
+- **Outras observações:**
