@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -39,13 +40,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	providersFlag := flag.String("providers", "", "lista separada por vírgula dos provedores a rodar (ex.: gladia,assemblyai)")
+	providersFlag := flag.String("providers", "", "lista separada por vírgula dos provedores de STT a rodar (ex.: gladia,assemblyai)")
+	analysisProvidersFlag := flag.String("analysis-providers", "", "lista separada por vírgula dos provedores de análise LLM a rodar (ex.: deepseek)")
 	flag.Parse()
 
-	if *providersFlag == "" {
-		logger.Error("flag -providers é obrigatória", "exemplo", "-providers=gladia,assemblyai")
+	if *providersFlag == "" && *analysisProvidersFlag == "" {
+		logger.Error("informe -providers (STT) ou -analysis-providers (análise LLM)")
 		os.Exit(1)
 	}
+	if *providersFlag != "" && *analysisProvidersFlag != "" {
+		logger.Error("rode -providers e -analysis-providers em invocações separadas")
+		os.Exit(1)
+	}
+
+	if *analysisProvidersFlag != "" {
+		names := strings.Split(*analysisProvidersFlag, ",")
+		for _, name := range names {
+			if _, ok := analysisProviderFactories[name]; !ok {
+				logger.Error("provedor de análise desconhecido", "nome", name)
+				os.Exit(1)
+			}
+		}
+		if !runAnalysis(ctx, logger, names) {
+			os.Exit(1)
+		}
+		return
+	}
+
 	names := strings.Split(*providersFlag, ",")
 	for _, name := range names {
 		if _, ok := providerFactories[name]; !ok {
@@ -123,6 +144,11 @@ func runProvider(ctx context.Context, logger *slog.Logger, factory func() (stt.P
 	}
 	logger.Info("JSON bruto salvo", "provedor", provider.Name(), "path", filepath.Join(providerOutDir, "raw.json"))
 
+	if err := saveUtterances(providerOutDir, result); err != nil {
+		logger.Error("salvar utterances", "provedor", provider.Name(), "erro", err)
+		return false
+	}
+
 	txtPath := filepath.Join(providerOutDir, "transcript.txt")
 	if err := writeReadableTranscript(txtPath, result); err != nil {
 		logger.Error("salvar transcrição legível", "provedor", provider.Name(), "erro", err)
@@ -167,6 +193,18 @@ func loadDotEnv(path string) error {
 func saveRawResponse(outDir string, result *stt.Result) error {
 	rawPath := filepath.Join(outDir, "raw.json")
 	return os.WriteFile(rawPath, result.RawResponse, 0o644)
+}
+
+// saveUtterances grava result.Utterances como JSON em outDir/utterances.json
+// — permite que a análise LLM (História 3) reaproveite a transcrição
+// diarizada sem re-rodar o STT nem depender das funções de mapeamento
+// não-exportadas de cada provedor de STT.
+func saveUtterances(outDir string, result *stt.Result) error {
+	data, err := json.Marshal(result.Utterances)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(outDir, "utterances.json"), data, 0o644)
 }
 
 func writeReadableTranscript(path string, result *stt.Result) error {
