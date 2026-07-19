@@ -60,3 +60,21 @@
 - **Custo real:**
 - **Ergonomia da API:**
 - **Outras observações:**
+
+## ElevenLabs Scribe
+
+### Aula 01
+
+- **Qualidade geral:** muito boa.
+- **Diarização:** separação dos interlocutores praticamente perfeita.
+- **Inglês com sotaque do aluno:**
+- **Code-switching PT/ES:** às vezes confunde português e espanhol na troca de idioma durante a
+  conversa.
+- **Timestamps por palavra:**
+- **Pontuação/formatação:** em alguns momentos não capta bem a entonação de perguntas (problema
+  pequeno).
+- **Custo real:** custo em créditos, não em US$/hora direto — a transcrição desse vídeo consumiu
+  1,95k créditos, equivalente a US$ 0,195. Tem 10k créditos gratuitos por mês.
+- **Ergonomia da API:**
+- **Outras observações:** captura muitos detalhes adicionais da fala, como pausas e risos. De
+  forma geral, os problemas encontrados foram pequenos frente à qualidade da transcrição entregue.
