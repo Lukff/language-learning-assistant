@@ -22,6 +22,9 @@ var providerFactories = map[string]func() (stt.Provider, error){
 	"assemblyai": func() (stt.Provider, error) {
 		return stt.NewAssemblyAIProvider(os.Getenv("ASSEMBLYAI_API_KEY"))
 	},
+	"deepgram": func() (stt.Provider, error) {
+		return stt.NewDeepgramProvider(os.Getenv("DEEPGRAM_API_KEY"))
+	},
 }
 
 func main() {
