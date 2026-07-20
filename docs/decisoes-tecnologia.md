@@ -54,14 +54,55 @@
 ## Speech-to-text (transcrição)
 
 - **Requisitos:** diarização nativa (aluno × tutor) e timestamps por palavra.
-- **Candidatos preferenciais:** Deepgram ou AssemblyAI (ambos atendem os requisitos nativamente). **Decisão em aberto.**
-- **Descartado como opção direta:** Whisper puro (sem diarização — exigiria combinar com pyannote, complexidade desnecessária).
-- **Custo de referência:** ~US$ 0,01–0,04 por minuto de áudio.
+- **Decisão:** ElevenLabs Scribe (`scribe_v2`), com diarização (`diarize=true`, `num_speakers=2`)
+  e detecção multilíngue nativa (nenhum `language_code` explícito enviado, para cobrir
+  code-switching PT/ES). Motivo: melhor diarização entre os 4 candidatos testados (Gladia,
+  AssemblyAI, Deepgram, ElevenLabs) — critério fatal para o produto, já que as correções dependem
+  de saber quem falou.
+- **Alternativa documentada (não descartada):** AssemblyAI (Universal-2) — segunda melhor
+  diarização, pontuação mais precisa. Mantida como candidata a provedor alternativo/selecionável
+  no app final; a interface `stt.Provider` já é desenhada para múltiplas implementações, então
+  adicionar seleção de provedor de STT na tela de Configurações (mesmo padrão já previsto para o
+  LLM) é extensão barata quando/se for priorizada.
+- **Descartados:** Deepgram (diarização ruim — principal problema observado) e Gladia (confunde
+  locutores em trechos de sobreposição de fala). Whisper puro também descartado (sem diarização
+  nativa — exigiria combinar com pyannote, complexidade desnecessária).
+- **Limitação da decisão:** tomada com base em 1 aula (aula 01) da amostra — decisão consciente de
+  não seguir com a comparação completa de 3–5 aulas originalmente planejada em
+  `fase-0-validacao.md` (História 2), já que a diferença de diarização entre os candidatos já
+  estava clara. Se surgir problema de qualidade em produção, revisitar com mais evidência.
+- **Custo real medido** (aula de ~29–30 min): ElevenLabs ~US$ 0,195 (~1,95k créditos; 10k
+  créditos grátis/mês). AssemblyAI ~US$ 0,112 (modelo + diarização; US$ 50 em créditos free
+  únicos, não recorrentes).
 
 ## Análise via LLM
 
-- **Provedores candidatos:** API da Anthropic (Claude) ou OpenAI (GPT). A tela de Configurações prevê seleção de provedor e modelo, então a implementação deve abstrair o provedor. **Decisão em aberto.**
-- **Custo de referência:** centavos de dólar por aula de ~30 min.
+- **Decisão:** DeepSeek (`deepseek-v4-flash`, tier mais barato), via endpoint OpenAI-compatible
+  (`/beta`, Chat Prefix Completion para forçar saída em JSON). Motivo: qualidade suficiente para a
+  aplicação já no primeiro candidato testado (correções, vocabulário — incluindo candidatos de
+  code-switching PT/ES — e expressões do tutor todos úteis na aula 01), a um custo desprezível.
+- **`deepseek-v4-pro` mantido como backup documentado** (testado pontualmente na aula 01, não é o
+  provedor default): achou 6 correções contra 0 do Flash na mesma aula, mas com imprecisão notável
+  (uma das 6 é falso positivo do próprio prompt — mais sinal de refinamento de prompt necessário
+  que de limitação do modelo), a ~3,6x o custo do Flash. Não convenceu o suficiente pra trocar o
+  default agora; candidato pra uma futura opção de "análise mais aprofundada" — ver
+  `docs/notas-analise-llm.md`.
+- **Candidatos mantidos on hold** (não eliminados, apenas não testados): Qwen, GLM, Anthropic
+  (Claude), OpenAI (GPT), Gemini. A interface `analysis.Provider` já abstrai o provedor — trocar ou
+  adicionar um é estender `openai_compatible.go` (ou um client próprio, se a API não for
+  compatível) sem mudança estrutural no resto do pacote. A tela de Configurações do app final
+  continua prevendo seleção de provedor/modelo.
+- **Exploração futura (não é decisão, é intenção registrada):** avaliar modelos "flash" ainda mais
+  simples/baratos para tarefas complementares de análise (não a análise principal); e uma possível
+  opção de análise mais aprofundada usando `deepseek-v4-pro` (ou similar) como modelo alternativo
+  selecionável, após refinar o prompt.
+- **Custo real medido** (aula de ~29–30 min, aula 01, 1 execução): 8.575 tokens de prompt + 725 de
+  completion = 9.300 tokens totais → ~US$ 0,0014 (menos de 1 centavo de dólar), nos preços de
+  `deepseek-v4-flash` (~US$ 0,14/M input, ~US$ 0,28/M output — `api-docs.deepseek.com/quick_start/pricing/`, julho/2026).
+- **Limitação da decisão:** tomada com base em 1 execução em 1 aula (aula 01), sem rodar a
+  comparação opcional com Anthropic/OpenAI prevista em `fase-0-validacao.md` (História 3) — mesma
+  postura já adotada na decisão de STT: evidência suficiente para fechar por ora, revisitar se
+  surgir problema de qualidade em produção.
 
 ## Registro de mudanças
 
@@ -70,3 +111,5 @@
 | 18/07/2026 | Versão inicial, consolidando as escolhas do alinhamento do projeto. |
 | 18/07/2026 | Troca de Tauri/Rust por **Wails v3 + Go** (experiência do dev; mitigações de antivírus documentadas; princípio da camada fina). Definida a **Stack Go**: modernc.org/sqlite + VACUUM INTO, goose, fila em tabela + worker único, net/http, go-keyring, sha256, slog. |
 | 18/07/2026 | Troca de React por **Svelte 5** no frontend (o dev revisa com mais autoridade em Svelte 5; gargalo com agentes de IA é revisão, não produção). Protótipo React mantido como referência de UX a portar. |
+| 19/07/2026 | Decisão de STT fechada: **ElevenLabs Scribe** como provedor principal (melhor diarização dos 4 candidatos testados na aula 01); **AssemblyAI** mantida como alternativa documentada para possível seleção de provedor no app final. Decisão tomada com evidência de 1 aula, não da comparação completa da amostra. |
+| 19/07/2026 | Decisão de análise LLM fechada: **DeepSeek** (`deepseek-v4-flash`) escolhido como provedor principal — qualidade suficiente já no primeiro candidato testado, custo desprezível (~US$ 0,0014/aula). Qwen/GLM/Anthropic/OpenAI/Gemini ficam **on hold**, não descartados. Decisão tomada com 1 execução em 1 aula. |
