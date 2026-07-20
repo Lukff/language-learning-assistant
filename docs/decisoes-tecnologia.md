@@ -2,7 +2,7 @@
 
 > Documento de contexto do projeto. Fonte da verdade das escolhas de tecnologia.
 > Pode ser atualizado a qualquer momento sem alterar as instruções do projeto.
-> Última atualização: 18/07/2026
+> Última atualização: 19/07/2026
 
 ## Aplicação desktop
 
@@ -113,3 +113,4 @@
 | 18/07/2026 | Troca de React por **Svelte 5** no frontend (o dev revisa com mais autoridade em Svelte 5; gargalo com agentes de IA é revisão, não produção). Protótipo React mantido como referência de UX a portar. |
 | 19/07/2026 | Decisão de STT fechada: **ElevenLabs Scribe** como provedor principal (melhor diarização dos 4 candidatos testados na aula 01); **AssemblyAI** mantida como alternativa documentada para possível seleção de provedor no app final. Decisão tomada com evidência de 1 aula, não da comparação completa da amostra. |
 | 19/07/2026 | Decisão de análise LLM fechada: **DeepSeek** (`deepseek-v4-flash`) escolhido como provedor principal — qualidade suficiente já no primeiro candidato testado, custo desprezível (~US$ 0,0014/aula). Qwen/GLM/Anthropic/OpenAI/Gemini ficam **on hold**, não descartados. Decisão tomada com 1 execução em 1 aula. |
+| 19/07/2026 | `deepseek-v4-pro` testado pontualmente e registrado como **backup documentado** (não é o default): mais correções que o Flash, mas impreciso e ~3,6x mais caro; candidato a uma futura opção de análise mais aprofundada. |

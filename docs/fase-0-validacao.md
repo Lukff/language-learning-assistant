@@ -48,12 +48,12 @@ e a transcreva em **todos os provedores candidatos** (Deepgram, AssemblyAI, Elev
 Gladia), **para** obter resultados comparáveis sobre as mesmas aulas reais.
 
 ### Critérios de aceite
-- [ ] Package `media`: dado um `.mp4` do Cambly, extrai áudio via ffmpeg (`os/exec`) num formato aceito pelos dois serviços; falha com mensagem clara se o ffmpeg não estiver no PATH.
-- [ ] Package `stt`: interface única com uma implementação por candidato (Deepgram, AssemblyAI, ElevenLabs Scribe, Gladia), usando `net/http` da stdlib; chaves de API lidas de variável de ambiente (nunca hardcoded/commitadas). Se algum provedor se mostrar inviável já na integração (ex.: falta de timestamps por palavra no plano usado), eliminá-lo aí mesmo e registrar o motivo — não carregar peso morto para a História 2.
-- [ ] Cada serviço é chamado **com diarização e timestamps por palavra habilitados** e **na configuração multilíngue/code-switching adequada** do provedor (documentar no código qual configuração foi usada e por quê).
-- [ ] A resposta bruta de cada serviço é salva em disco (JSON) por aula/provedor — insumo da História 2 e teste de regressão gratuito para o futuro.
-- [ ] Uma saída legível (texto simples) é gerada por aula/provedor: falas com locutor identificado e timestamps.
-- [ ] Rodou de ponta a ponta nas 3–5 aulas da amostra, em todos os candidatos não eliminados.
+- [x] Package `media`: dado um `.mp4` do Cambly, extrai áudio via ffmpeg (`os/exec`) num formato aceito pelos dois serviços; falha com mensagem clara se o ffmpeg não estiver no PATH.
+- [x] Package `stt`: interface única com uma implementação por candidato (Deepgram, AssemblyAI, ElevenLabs Scribe, Gladia), usando `net/http` da stdlib; chaves de API lidas de variável de ambiente (nunca hardcoded/commitadas). Nenhum candidato foi eliminado já na integração — todos os 4 chegaram até a comparação da História 2.
+- [x] Cada serviço é chamado **com diarização e timestamps por palavra habilitados** e **na configuração multilíngue/code-switching adequada** do provedor (documentar no código qual configuração foi usada e por quê).
+- [x] A resposta bruta de cada serviço é salva em disco (JSON) por aula/provedor — insumo da História 2 e teste de regressão gratuito para o futuro.
+- [x] Uma saída legível (texto simples) é gerada por aula/provedor: falas com locutor identificado e timestamps.
+- [ ] Rodou de ponta a ponta nas 3–5 aulas da amostra, em todos os candidatos não eliminados — **limitação registrada:** só a aula 01 foi rodada até agora (mesma limitação assumida conscientemente na decisão de STT/LLM).
 
 ### Dependências
 Amostra selecionada; contas e chaves de API criadas nos provedores candidatos (aproveitar free tiers/créditos — o spike inteiro pode sair de graça).
@@ -121,3 +121,4 @@ História 2 concluída (usa o serviço vencedor).
 |------|-----------------|-------------|
 | 19/07/2026 | Decisão de STT fechada (História 2): **ElevenLabs Scribe** escolhido como provedor principal; **AssemblyAI** mantida como alternativa documentada para possível seleção de provedor no app final. | Decisão tomada com evidência de 1 aula (aula 01); comparação completa nas aulas restantes da amostra não foi feita. |
 | 19/07/2026 | Decisão de análise LLM fechada (História 3): **DeepSeek** (`deepseek-v4-flash`) escolhido como provedor principal — qualidade avaliada como "mais do que suficiente" pelo dev na aula 01, custo desprezível. Qwen/GLM/Anthropic/OpenAI/Gemini ficam on hold. | Decisão tomada com 1 execução em 1 aula; comparação opcional com Anthropic/OpenAI não feita (dispensada conscientemente). Exploração futura registrada: modelos "flash" mais simples para tarefas complementares de análise. |
+| 19/07/2026 | Teste pontual com `deepseek-v4-pro` na aula 01 (não é o provedor default): mais correções que o Flash (6 vs. 0), mas com imprecisão (falso positivo do próprio prompt) e ~3,6x o custo. | Não convenceu o suficiente pra trocar o default; mantido como backup documentado para uma futura opção de análise mais aprofundada, após refinar o prompt. Ver `docs/notas-analise-llm.md` e `docs/decisoes-tecnologia.md`. |
