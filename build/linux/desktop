@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Assistente de Idiomas
+Comment=Arquivo e análise de aulas de inglês do Cambly
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/assistente-idiomas %u
+Terminal=false
+Type=Application
+Icon=assistente-idiomas
+Categories=Utility;
+StartupWMClass=assistente-idiomas
+
+ 
