@@ -12,14 +12,12 @@
 - **Qualidade geral:** boa.
 - **Diarização:** confunde os locutores em trechos de sobreposição de fala (quando um interlocutor
   começa a falar antes do outro terminar a frase).
-- **Inglês com sotaque do aluno:**
 - **Code-switching PT/ES:** detecção funciona bem no geral, mas a transcrição se perde em alguns
   momentos específicos da troca de idioma.
 - **Timestamps por palavra:** bons.
 - **Pontuação/formatação:** pontuação nem sempre condizente com a fala; algumas pausas são
   registradas como pontuação de um jeito que não corresponde ao que foi dito.
 - **Custo real:** free tier de 10h/mês de transcrição.
-- **Ergonomia da API:**
 - **Outras observações:** perda de algumas palavras de transição entre frases (fora dos trechos
   de sobreposição de fala) e de bastante "filler words" (palavras de preenchimento, tipo
   hesitações) de forma geral.
@@ -30,7 +28,6 @@
 
 - **Qualidade geral:**
 - **Diarização:** separa muito bem os locutores, inclusive em trechos de sobreposição de fala.
-- **Inglês com sotaque do aluno:**
 - **Code-switching PT/ES:** consegue fazer a troca de idioma em alguns pontos, mas se confunde
   bastante quando são usadas palavras isoladas (fora de uma frase inteira no outro idioma).
 - **Timestamps por palavra:** precisos.
@@ -41,7 +38,6 @@
   também a opção de incluir termos previamente conhecidos para melhorar a detecção, com custo
   adicional de US$ 0,05/h. Tem US$ 50 de créditos free, únicos (não é um free tier mensal
   recorrente).
-- **Ergonomia da API:**
 - **Outras observações:**
 
 ## Deepgram
@@ -51,14 +47,12 @@
 - **Qualidade geral:** média/ruim.
 - **Diarização:** principal problema do provedor — errou a identificação do locutor na maior
   parte da transcrição, além de misturar falas de interlocutores diferentes.
-- **Inglês com sotaque do aluno:**
 - **Code-switching PT/ES:** ponto mais positivo do provedor — boa detecção de palavras faladas em
   um idioma diferente do inglês.
 - **Timestamps por palavra:**
 - **Pontuação/formatação:** "ok", mas não capta bem entonações diferentes, como frases
   interrogativas.
 - **Custo real:**
-- **Ergonomia da API:**
 - **Outras observações:**
 
 ## ElevenLabs Scribe
@@ -67,7 +61,6 @@
 
 - **Qualidade geral:** muito boa.
 - **Diarização:** separação dos interlocutores praticamente perfeita.
-- **Inglês com sotaque do aluno:**
 - **Code-switching PT/ES:** às vezes confunde português e espanhol na troca de idioma durante a
   conversa.
 - **Timestamps por palavra:**
@@ -75,6 +68,5 @@
   pequeno).
 - **Custo real:** custo em créditos, não em US$/hora direto — a transcrição desse vídeo consumiu
   1,95k créditos, equivalente a US$ 0,195. Tem 10k créditos gratuitos por mês.
-- **Ergonomia da API:**
 - **Outras observações:** captura muitos detalhes adicionais da fala, como pausas e risos. De
   forma geral, os problemas encontrados foram pequenos frente à qualidade da transcrição entregue.
