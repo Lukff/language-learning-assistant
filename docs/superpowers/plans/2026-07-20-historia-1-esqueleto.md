@@ -29,15 +29,24 @@ in either source.
 - No SyncPill / sync UI in the header this story — header stays empty.
 - Fonts are self-hosted (npm packages bundled by Vite) — never a runtime `@import` from
   `fonts.googleapis.com`.
-- Commit messages: one line, semantic (`feat: ...`, `chore: ...`), per `CLAUDE.md`.
 - Every task's Go changes must leave `go vet ./...` clean.
+- Implementers **stage** (`git add`) their changes at the end of each task but do **not** commit —
+  the user controls commit timing (established project convention; see
+  `.superpowers/sdd/progress.md` history). If commit messages are ever needed, they follow the
+  one-line semantic format (`feat: ...`, `chore: ...`) from `CLAUDE.md`.
 
 ---
 
 ### Task 1: Scaffold the Wails v3 project into the repo
 
 **Files:**
-- Create: `main.go` (repo root)
+- Create: `main.go` (repo root — **template's demo content, unmodified**: registers
+  `GreetService` and the `time` event, exactly as `wails3 init` generates it. This is
+  intentional, not an oversight: the template's demo `App.svelte` (left in place this task)
+  imports a `GreetService` binding, which only exists if the Go service that generates it is
+  registered. Task 5 replaces this file with the real thin shell, in the same task where it
+  replaces `App.svelte` — the two changes are coupled and must land together.)
+- Create: `greetservice.go` (repo root — template's demo content, unmodified. Deleted in Task 5.)
 - Create: `frontend/` (entire tree, from the wails3 `svelte` template, unmodified in this task)
 - Create: `build/` (entire tree, from the wails3 `svelte` template, unmodified in this task)
 - Create: `Taskfile.yml` (repo root, from the wails3 `svelte` template, unmodified in this task)
@@ -46,9 +55,13 @@ in either source.
 
 **Interfaces:**
 - Consumes: nothing (first task).
-- Produces: a buildable Wails v3 app skeleton at the repo root (`main.go`, `frontend/`, `build/`,
-  `Taskfile.yml`) that Task 2 onward will style and wire up. The demo `frontend/src/App.svelte`
-  from the template is left in place after this task — Task 5 replaces it.
+- Produces: a buildable Wails v3 app skeleton at the repo root (`main.go`, `greetservice.go`,
+  `frontend/`, `build/`, `Taskfile.yml`) that Task 2 onward will style and wire up. The demo
+  `frontend/src/App.svelte` **and** the demo `main.go`/`greetservice.go` from the template are
+  left in place, unmodified, after this task — they build and run as the stock Wails demo.
+  Task 5 replaces `App.svelte`, replaces `main.go` with the thin shell, and deletes
+  `greetservice.go`, all together (removing the `GreetService` binding and its only consumer in
+  the same step keeps the build green at every task boundary).
 
 - [ ] **Step 1: Generate the template into a scratch directory (outside the repo)**
 
@@ -58,14 +71,24 @@ Run (from anywhere; the path must be under `/mnt/c/...` so both the WSL shell an
 ```bash
 SCAFFOLD_DIR="/mnt/c/Users/lukff/AppData/Local/Temp/wails-scaffold"
 rm -rf "$SCAFFOLD_DIR" && mkdir -p "$SCAFFOLD_DIR"
-cd "$SCAFFOLD_DIR" && cmd.exe /c "wails3 init -n assistente-idiomas -d . -t svelte -mod assistente-idiomas -productname \"Assistente de Idiomas\" -productdescription \"Arquivo e analise de aulas de ingles do Cambly\" -productidentifier \"dev.lukff.assistente-idiomas\" -productcompany \"Lucas Fernandes\" -q"
+cd "$SCAFFOLD_DIR" && cmd.exe /c "wails3 init -n assistente-idiomas -d . -t svelte -mod assistente-idiomas -q"
 ```
+
+Do **not** add `-productname`/`-productdescription`/`-productidentifier`/`-productcompany` flags
+to this command, even though `wails3 init -help` lists them — confirmed during design (a real
+build attempt, not a guess) that passing multi-word values through this bash → `cmd.exe /c "..."`
+→ Windows-argv chain corrupts them: every value gets truncated at its first space with a stray
+literal `"` left attached, and it silently corrupts the generated `build/windows/wails.exe.manifest`
+badly enough to break the build with an XML syntax error (plus wrong-but-not-broken data in
+`build/windows/info.json`, both `darwin/Info*.plist`, `linux/desktop`, `linux/nfpm/nfpm.yaml`).
+Product metadata is set safely in Step 2a below instead, by editing `build/config.yml` directly
+(plain text edit, no shell requoting involved) and regenerating the assets from it.
 
 Expected: `✓ Project 'assistente-idiomas' created successfully.` and
 `$SCAFFOLD_DIR/assistente-idiomas/` contains `frontend/`, `build/`, `Taskfile.yml`, `main.go`,
 `go.mod`, `go.sum`, `README.md`, `.gitignore`, `greetservice.go`.
 
-- [ ] **Step 2: Copy the frontend/build scaffold into the repo (do NOT copy go.mod/go.sum/README/.gitignore/main.go/greetservice.go)**
+- [ ] **Step 2: Copy the frontend/build/main.go/greetservice.go scaffold into the repo (do NOT copy go.mod/go.sum/README/.gitignore — those are merged separately in Step 4, not replaced)**
 
 Run from the repo root (`/mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas`):
 
@@ -74,11 +97,54 @@ SRC="/mnt/c/Users/lukff/AppData/Local/Temp/wails-scaffold/assistente-idiomas"
 cp -r "$SRC/frontend" ./frontend
 cp -r "$SRC/build" ./build
 cp "$SRC/Taskfile.yml" ./Taskfile.yml
+cp "$SRC/main.go" ./main.go
+cp "$SRC/greetservice.go" ./greetservice.go
 ```
 
-Expected: `ls frontend build Taskfile.yml` all exist; `git status` shows `frontend/`, `build/`,
-`Taskfile.yml` as untracked; `go.mod`, `cmd/`, `internal/`, `docs/` are unchanged (`git status`
-shows no modification to them from this step).
+Expected: `ls frontend build Taskfile.yml main.go greetservice.go` all exist; `git status` shows
+`frontend/`, `build/`, `Taskfile.yml`, `main.go`, `greetservice.go` as untracked; `cmd/`,
+`internal/`, `docs/` are unchanged (`git status` shows no modification to them from this step).
+`main.go` here is the template's demo content (registers `GreetService`, emits a `time` event
+every second) — this is intentional (see Task 1's Files/Interfaces note above), not a mistake to
+fix in this task.
+
+- [ ] **Step 2a: Set product metadata in `build/config.yml`, then regenerate the build assets from it**
+
+Edit `build/config.yml` (plain text edit — do not go through `cmd.exe`/shell quoting for this).
+The `info:` block currently reads:
+
+```yaml
+info:
+  companyName: "My Company" # The name of the company
+  productName: "My Product" # The name of the application
+  productIdentifier: "com.mycompany.myproduct" # The unique product identifier
+  description: "A program that does X" # The application description
+```
+
+Change those four values (leave `copyright`, `comments`, `version`, and everything else in the
+file untouched):
+
+```yaml
+info:
+  companyName: "Lucas Fernandes" # The name of the company
+  productName: "Assistente de Idiomas" # The name of the application
+  productIdentifier: "dev.lukff.assistente-idiomas" # The unique product identifier
+  description: "Arquivo e análise de aulas de inglês do Cambly" # The application description
+```
+
+Then regenerate the platform build assets (Windows manifest/info.json, macOS plists, Linux
+desktop file/nfpm.yaml) from the corrected config:
+
+```bash
+cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
+cmd.exe /c "wails3 task common:update:build-assets"
+```
+
+Expected: `Successfully updated build assets in ...\build`. Verify
+`build/windows/wails.exe.manifest` line 3 now reads
+`name="dev.lukff.assistente-idiomas"` (plain value, no stray quotes) —
+`grep -c '""' build/windows/wails.exe.manifest build/windows/info.json` should print `0` for
+both files.
 
 - [ ] **Step 3: Add the ignore rules for generated frontend/build output**
 
@@ -111,49 +177,7 @@ transitive indirect requires); the `go` directive is bumped from `1.23.6` to at 
 may trigger an automatic download of the go1.25 toolchain (`GOTOOLCHAIN=auto`) the first time —
 that's expected, not an error.
 
-- [ ] **Step 5: Write `main.go` (thin shell — no demo service, no demo event)**
-
-Create `main.go` at the repo root:
-
-```go
-package main
-
-import (
-	"embed"
-	"log"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
-)
-
-//go:embed all:frontend/dist
-var assets embed.FS
-
-func main() {
-	app := application.New(application.Options{
-		Name:        "Assistente de Idiomas",
-		Description: "Arquivo e análise de aulas de inglês do Cambly",
-		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
-		},
-		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
-		},
-	})
-
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Assistente de Idiomas",
-		Width:            1200,
-		Height:           760,
-		BackgroundColour: application.NewRGB(20, 24, 31), // #14181F — colors.bg
-	})
-
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-- [ ] **Step 6: Verify the full build pipeline (npm install, vite build, go build, embed)**
+- [ ] **Step 5: Verify the full build pipeline (npm install, vite build, go build, embed) — stock demo, unmodified**
 
 ```bash
 cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
@@ -162,10 +186,14 @@ cmd.exe /c "wails3 build"
 
 Expected: ends with `task: [windows:build:native] go build ...` and produces
 `bin/assistente-idiomas.exe`. `npm install` output and a Vite build summary appear along the way;
-warnings about `uname`/`tail` not found and an a11y lint note on the (still-demo) `App.svelte` are
-expected noise from the Windows toolchain and do not fail the build.
+warnings about `uname`/`tail` not found and an a11y lint note on the demo `App.svelte` are
+expected noise from the Windows toolchain and do not fail the build. This is the stock template
+demo (Greet button, GreetService binding, ticking clock) building end-to-end — confirmed to work
+this way during design (a full `wails3 build` test with the unmodified template succeeded). If
+this step fails, stop and escalate — do not modify `App.svelte`, `main.go`, or `greetservice.go`
+to work around it; those changes belong to Task 5, not this task.
 
-- [ ] **Step 7: `go vet` check**
+- [ ] **Step 6: `go vet` check**
 
 ```bash
 go.exe vet ./...
@@ -173,16 +201,15 @@ go.exe vet ./...
 
 Expected: no output (clean).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Stage (do not commit — user controls commit timing)**
 
 ```bash
-git add main.go go.mod go.sum .gitignore Taskfile.yml build frontend
+git add main.go greetservice.go go.mod go.sum .gitignore Taskfile.yml build frontend
 git status
-git commit -m "feat: adiciona esqueleto Wails v3 + Svelte (template padrao)"
 ```
 
-Expected: `git status` before the commit shows `frontend/node_modules`, `frontend/dist`,
-`frontend/bindings`, `bin/` as ignored (not staged) — only source/config files staged.
+Expected: `git status` shows `frontend/node_modules`, `frontend/dist`, `frontend/bindings`, `bin/`
+as ignored (not staged) — only source/config files staged. Do not run `git commit`.
 
 ---
 
@@ -304,12 +331,14 @@ cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
 Expected: `svelte-check` reports `0 errors` (the pre-existing a11y warning on the demo
 `App.svelte`'s `<a>` tag may still show — that file is untouched until Task 5).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Stage (do not commit — user controls commit timing)**
 
 ```bash
 git add frontend/package.json frontend/package-lock.json frontend/src/lib/theme.ts frontend/src/app.css frontend/src/main.ts
-git commit -m "feat: adiciona tema (cores/fontes) e fontes auto-hospedadas"
+git status
 ```
+
+Do not run `git commit`.
 
 ---
 
@@ -405,12 +434,14 @@ cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
 Expected: `0 errors` attributable to the new files (pre-existing demo `App.svelte` a11y warning
 may still show).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Stage (do not commit — user controls commit timing)**
 
 ```bash
 git add frontend/src/lib/screens
-git commit -m "feat: adiciona telas placeholder (Biblioteca, Fila, Progresso)"
+git status
 ```
+
+Do not run `git commit`.
 
 ---
 
@@ -542,18 +573,22 @@ cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
 
 Expected: `0 errors` attributable to the new files.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Stage (do not commit — user controls commit timing)**
 
 ```bash
 git add frontend/src/lib/Sidebar.svelte frontend/src/lib/Header.svelte
-git commit -m "feat: adiciona Sidebar e Header do esqueleto"
+git status
 ```
+
+Do not run `git commit`.
 
 ---
 
 ### Task 5: Wire up App.svelte, remove demo assets, final verification
 
 **Files:**
+- Modify: `main.go` (replace the demo content from Task 1 with the real thin shell)
+- Delete: `greetservice.go` (its only consumer, the demo `App.svelte`, is replaced in this task too)
 - Modify: `frontend/src/App.svelte` (replace demo content with the real shell)
 - Modify: `frontend/index.html` (title, drop demo favicon/background references)
 - Delete: `frontend/public/wails.png`, `frontend/public/svelte.svg`,
@@ -568,7 +603,60 @@ git commit -m "feat: adiciona Sidebar e Header do esqueleto"
 - Produces: the running app shell — nothing downstream in this story consumes `App.svelte`
   directly (it's the composition root).
 
-- [ ] **Step 1: Replace `frontend/src/App.svelte`**
+- [ ] **Step 1: Replace `main.go` with the real thin shell (no demo service, no demo event)**
+
+Task 1 left `main.go` as the template's demo content (registers `GreetService`, emits a `time`
+event). Replace it entirely:
+
+```go
+package main
+
+import (
+	"embed"
+	"log"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
+
+//go:embed all:frontend/dist
+var assets embed.FS
+
+func main() {
+	app := application.New(application.Options{
+		Name:        "Assistente de Idiomas",
+		Description: "Arquivo e análise de aulas de inglês do Cambly",
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
+		},
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+	})
+
+	app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Assistente de Idiomas",
+		Width:            1200,
+		Height:           760,
+		BackgroundColour: application.NewRGB(20, 24, 31), // #14181F — colors.bg
+	})
+
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+- [ ] **Step 2: Delete `greetservice.go`**
+
+```bash
+cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
+rm greetservice.go
+```
+
+Expected: no other Go file references `GreetService` (it was only wired into the demo
+`main.go`, just replaced in Step 1) — `go.exe vet ./...` in Step 6 below confirms this.
+
+- [ ] **Step 3: Replace `frontend/src/App.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -619,7 +707,7 @@ git commit -m "feat: adiciona Sidebar e Header do esqueleto"
 </style>
 ```
 
-- [ ] **Step 2: Update `frontend/index.html`**
+- [ ] **Step 4: Update `frontend/index.html`**
 
 Current content:
 
@@ -658,10 +746,10 @@ Replace with:
 </html>
 ```
 
-(The favicon link and `/style.css` link are dropped along with the demo assets in Step 3; the
+(The favicon link and `/style.css` link are dropped along with the demo assets in Step 5; the
 `app.css` import inside `main.ts`, added in Task 2, already covers global styling.)
 
-- [ ] **Step 3: Delete the now-unused demo assets**
+- [ ] **Step 5: Delete the now-unused demo assets**
 
 ```bash
 cd /mnt/c/Users/lukff/Documents/Projetos/assistente-idiomas
@@ -669,25 +757,28 @@ rm frontend/public/wails.png frontend/public/svelte.svg frontend/public/bg-deskt
 rm "frontend/Inter Font License.txt"
 ```
 
-- [ ] **Step 4: Full build verification**
+- [ ] **Step 6: Full build verification**
 
 ```bash
 cmd.exe /c "wails3 build"
 ```
 
-Expected: succeeds, produces `bin/assistente-idiomas.exe`, no references to the deleted assets
-break the build (Vite would fail on a missing referenced asset — a clean build confirms
-`index.html`/`App.svelte` don't reference anything just deleted).
+Expected: succeeds, produces `bin/assistente-idiomas.exe`. This is the first build since Steps
+1–3 removed the `GreetService` binding and its consumer together, and Steps 3–5 replaced/pruned
+the frontend demo — a clean build here confirms nothing was left dangling (Vite would fail on a
+missing referenced asset or unresolved import; `go build` would fail on a stray reference to the
+deleted `greetservice.go`).
 
-- [ ] **Step 5: `go vet` check**
+- [ ] **Step 7: `go vet` check**
 
 ```bash
 go.exe vet ./...
 ```
 
-Expected: no output (clean).
+Expected: no output (clean) — in particular, no complaint about a missing `GreetService` type,
+confirming Step 2's deletion left no dangling reference.
 
-- [ ] **Step 6: Manual visual verification (both machines)**
+- [ ] **Step 8: Manual visual verification (both machines)**
 
 ```bash
 cmd.exe /c "wails3 dev"
@@ -700,7 +791,7 @@ content pane and the active nav highlight. Header area is empty. Repeat this che
 machine (risk 3 area — confirms nothing OS-specific broke, per `docs/fase-1-mvp.md` risk list).
 This step needs a real display, so it is manual — not scriptable in this environment.
 
-- [ ] **Step 7: Update `docs/fase-1-mvp.md` progress table**
+- [ ] **Step 9: Update `docs/fase-1-mvp.md` progress table**
 
 In `docs/fase-1-mvp.md`, the `## Registro de progresso` table currently has one empty row:
 
@@ -721,27 +812,29 @@ Replace the empty row with:
 Also check the checkboxes under `## História 1` (all four acceptance criteria) from `- [ ]` to
 `- [x]`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Stage (do not commit — user controls commit timing)**
 
 ```bash
-git add frontend docs/fase-1-mvp.md
+git add main.go greetservice.go frontend docs/fase-1-mvp.md
 git status
-git commit -m "feat: liga shell do app (Sidebar/Header/telas) e finaliza esqueleto"
 ```
 
 (`git add frontend` picks up the edited `App.svelte`/`index.html`, the deletions under
 `frontend/public/` *and* the deleted `frontend/Inter Font License.txt` at the frontend root, in
 one go — nothing new is generated under `frontend/` at this step that isn't already covered by
-the `.gitignore` rules from Task 1.)
+the `.gitignore` rules from Task 1. `git add main.go` stages the thin-shell rewrite; `git add
+greetservice.go` stages its deletion — `git add` stages a file deletion the same way it stages an
+edit. Confirm in `git status` output: `deleted: greetservice.go`.)
 
-Expected: `git status` shows the six deleted demo files under the `deleted:` section, staged.
+Expected: `git status` shows the seven deleted demo files (six under `frontend/`, plus
+`greetservice.go`) under the `deleted:` section, staged. Do not run `git commit`.
 
 ---
 
 ## Self-Review Notes
 
 - **Spec coverage:** all four `docs/fase-1-mvp.md` História 1 acceptance criteria map to tasks —
-  compiling/opening window → Task 1 Step 6 + Task 5 Step 4/6; thin-layer/no-Wails-in-internal →
+  compiling/opening window → Task 1 Step 5 + Task 5 Step 6/8; thin-layer/no-Wails-in-internal →
   Global Constraints (nothing in this story touches `internal/`, so it holds trivially, verified
   by `go vet` after every Go change); sidebar/header portado → Tasks 3–5; Svelte 5 runes only →
   every component uses `$state`/`$props`, no legacy syntax.
@@ -750,3 +843,20 @@ Expected: `git status` shows the six deleted demo files under the `deleted:` sec
 - **Type consistency:** `Screen = "library" | "progress" | "queue"` is used identically in
   `Sidebar.svelte` (Task 4) and `App.svelte` (Task 5); `colors`/`fonts` field names match between
   `theme.ts` (Task 2) and every consumer (Tasks 3–5).
+- **Revision note (post-Task-1 dispatch, round 1):** Task 1's implementer correctly caught that
+  the original plan had Task 1 write the thin `main.go` while leaving the demo `App.svelte` in
+  place — a hard build break, since the demo `App.svelte` imports a `GreetService` binding that
+  only exists when the demo service is registered. Fixed by moving the thin-`main.go` rewrite and
+  the `greetservice.go` deletion into Task 5, alongside the `App.svelte` replacement that removes
+  the binding's only consumer. Task 1 now ships the *stock* demo end-to-end, and Task 5 swaps
+  every piece of it out together.
+- **Revision note (post-Task-1 dispatch, round 2):** after the round 1 fix, the implementer hit a
+  second, unrelated defect: Step 1's original `wails3 init` command passed
+  `-productname "Assistente de Idiomas"` etc. through `cmd.exe /c "..."` from bash, and that
+  two-layer quoting corrupted every multi-word value across the whole `build/` tree (confirmed:
+  truncated at the first space plus a stray literal `"`), breaking the Windows manifest's XML and
+  breaking the build. This was never actually exercised during design — the design-time build
+  test used the bare `wails3 init` form without `-product*` flags. Fixed by dropping those flags
+  from Step 1 entirely and adding Step 2a: edit `build/config.yml` directly (plain text, no shell
+  requoting) and run `wails3 task common:update:build-assets` to regenerate the platform files
+  from it — verified end-to-end (clean manifest, full `wails3 build` success) during this fix.
