@@ -56,8 +56,11 @@ func (s *SetupService) ChooseStorageFolder() (string, error) {
 // funcionar, grava storageRoot em config.json. Nessa ordem: se a credencial
 // falhar, config.json não é tocado e o app continua detectando first-run.
 func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
+	if storageRoot == "" {
+		return fmt.Errorf("pasta de armazenamento não pode ser vazia")
+	}
 	if err := config.SaveSTTAPIKey(apiKey); err != nil {
-		return err
+		return fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
 	}
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		return fmt.Errorf("gravar configuração: %w", err)

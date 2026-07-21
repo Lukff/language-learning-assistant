@@ -1,9 +1,13 @@
 package services
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/zalando/go-keyring"
 )
 
 func TestIsDirWritable_WritableDirReturnsNil(t *testing.T) {
@@ -42,5 +46,31 @@ func TestIsDirWritable_LeavesNoTempFileBehind(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("esperava dir vazio após isDirWritable, achou %d entradas", len(entries))
+	}
+}
+
+func TestCompleteSetup_KeyringUnavailableReturnsActionableError(t *testing.T) {
+	sentinel := errors.New("secret service indisponível")
+	keyring.MockInitWithError(sentinel)
+	t.Cleanup(keyring.MockInit)
+
+	svc := NewSetupService()
+	err := svc.CompleteSetup("/some/path", "sk-test")
+	if err == nil {
+		t.Fatal("esperava erro, veio nil")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Errorf("erro não envolve o erro original do keyring: %v", err)
+	}
+	if !strings.Contains(err.Error(), "gnome-keyring") {
+		t.Errorf("erro não menciona gnome-keyring/kwallet: %v", err)
+	}
+}
+
+func TestCompleteSetup_EmptyStorageRootRejected(t *testing.T) {
+	svc := NewSetupService()
+	err := svc.CompleteSetup("", "sk-test")
+	if err == nil {
+		t.Fatal("esperava erro para storageRoot vazio, veio nil")
 	}
 }
