@@ -48,10 +48,10 @@ versionados (custa pouco e evita migration dolorosa).
 armazenamento, **para** que aulas importadas persistam entre sessões.
 
 ### Critérios de aceite
-- [ ] SQLite (`modernc.org/sqlite`, WAL) criado no diretório de dados do SO — **fora** da pasta sincronizada.
-- [ ] Migrations `goose` embutidas (`embed.FS`); schema v1: `lessons`, `transcripts`, `jobs`, `prompts` (estas duas últimas já no formato definido em `decisoes-tecnologia.md`, mesmo sem uso completo nesta fase).
-- [ ] Config local (caminho da raiz de armazenamento) no diretório de configuração do SO; primeira execução pede a pasta com validação visual.
-- [ ] Credenciais do provedor STT gravadas/lidas via `go-keyring`; nunca em texto plano. Testado em Windows e Linux (risco 3).
+- [x] SQLite (`modernc.org/sqlite`, WAL) criado no diretório de dados do SO — **fora** da pasta sincronizada.
+- [x] Migrations `goose` embutidas (`embed.FS`); schema v1: `lessons`, `transcripts`, `jobs`, `prompts` (estas duas últimas já no formato definido em `decisoes-tecnologia.md`, mesmo sem uso completo nesta fase).
+- [x] Config local (caminho da raiz de armazenamento) no diretório de configuração do SO; primeira execução pede a pasta com validação visual.
+- [ ] Credenciais do provedor STT gravadas/lidas via `go-keyring`; nunca em texto plano. Cobertura unitária completa (round-trip + falha de keyring simulada); verificação manual em Windows e Linux (risco 3) ainda pendente.
 
 ### Dependências
 História 1.
@@ -158,3 +158,4 @@ Fase 5: Configurações completas (seleção de provedor, estimativa de custo, a
 | Data | O que foi feito | Observações |
 |------|-----------------|-------------|
 | 20/07/2026 | História 1 implementada: esqueleto Wails v3 + Svelte 5 (sidebar, header vazio, 3 telas placeholder); build de produção confirmado | wails3 v3.0.0-alpha2.117 pinada; fontes auto-hospedadas via @fontsource; falta verificação visual (janela abrindo) em Windows e Linux antes de fechar a história |
+| 21/07/2026 | História 2 implementada: banco SQLite (schema v1: lessons/transcripts/jobs/prompts, migrations goose), config local (config.json) e credencial ElevenLabs via keyring, tudo no wizard de primeira execução | No Linux, `go build`/`go vet`/`go test` de qualquer pacote que importe Wails exige `CGO_ENABLED=1` + `libgtk-4-dev libwebkitgtk-6.0-dev` instalados (gtk4/webkitgtk-6.0, não gtk3) — vale documentar/instalar isso cedo em máquina Linux nova |
