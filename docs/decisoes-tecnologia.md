@@ -82,11 +82,13 @@
   aplicação já no primeiro candidato testado (correções, vocabulário — incluindo candidatos de
   code-switching PT/ES — e expressões do tutor todos úteis na aula 01), a um custo desprezível.
 - **`deepseek-v4-pro` mantido como backup documentado** (testado pontualmente na aula 01, não é o
-  provedor default): achou 6 correções contra 0 do Flash na mesma aula, mas com imprecisão notável
-  (uma das 6 é falso positivo do próprio prompt — mais sinal de refinamento de prompt necessário
-  que de limitação do modelo), a ~3,6x o custo do Flash. Não convenceu o suficiente pra trocar o
-  default agora; candidato pra uma futura opção de "análise mais aprofundada" — ver
-  `docs/notas-analise-llm.md`.
+  provedor default): produziu análise **mais aprofundada** que a do Flash, porém com **diversos
+  pontos imprecisos**. Hipótese principal: o prompt (v1, não otimizado) é a causa das imprecisões,
+  não uma limitação do modelo. Como o Flash já encontrou os destaques desejados — o que se queria
+  validar era a capacidade de processar a transcrição sob a ótica de análise de linguagem, e nisso
+  a diferença observada foi de profundidade, não de cobertura do essencial —, o Pro fica reservado
+  (a ~3,6x o custo do Flash) como candidato a uma futura opção de "análise mais aprofundada", após
+  refinamento do prompt — ver `docs/notas-analise-llm.md`.
 - **Candidatos mantidos on hold** (não eliminados, apenas não testados): Qwen, GLM, Anthropic
   (Claude), OpenAI (GPT), Gemini. A interface `analysis.Provider` já abstrai o provedor — trocar ou
   adicionar um é estender `openai_compatible.go` (ou um client próprio, se a API não for
@@ -113,4 +115,4 @@
 | 18/07/2026 | Troca de React por **Svelte 5** no frontend (o dev revisa com mais autoridade em Svelte 5; gargalo com agentes de IA é revisão, não produção). Protótipo React mantido como referência de UX a portar. |
 | 19/07/2026 | Decisão de STT fechada: **ElevenLabs Scribe** como provedor principal (melhor diarização dos 4 candidatos testados na aula 01); **AssemblyAI** mantida como alternativa documentada para possível seleção de provedor no app final. Decisão tomada com evidência de 1 aula, não da comparação completa da amostra. |
 | 19/07/2026 | Decisão de análise LLM fechada: **DeepSeek** (`deepseek-v4-flash`) escolhido como provedor principal — qualidade suficiente já no primeiro candidato testado, custo desprezível (~US$ 0,0014/aula). Qwen/GLM/Anthropic/OpenAI/Gemini ficam **on hold**, não descartados. Decisão tomada com 1 execução em 1 aula. |
-| 19/07/2026 | `deepseek-v4-pro` testado pontualmente e registrado como **backup documentado** (não é o default): mais correções que o Flash, mas impreciso e ~3,6x mais caro; candidato a uma futura opção de análise mais aprofundada. |
+| 19/07/2026 | `deepseek-v4-pro` testado pontualmente e registrado como **backup documentado** (não é o default): análise mais aprofundada que a do Flash, mas com diversos pontos imprecisos (hipótese: prompt v1 não otimizado) e ~3,6x mais caro; candidato a uma futura opção de análise mais aprofundada. |
