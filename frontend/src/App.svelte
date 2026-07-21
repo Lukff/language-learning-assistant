@@ -16,8 +16,11 @@
   let firstRun = $state(false);
 
   onMount(async () => {
-    firstRun = await SetupService.IsFirstRun();
-    checkingFirstRun = false;
+    try {
+      firstRun = await SetupService.IsFirstRun();
+    } finally {
+      checkingFirstRun = false;
+    }
   });
 </script>
 

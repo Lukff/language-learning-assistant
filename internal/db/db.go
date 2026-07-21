@@ -24,7 +24,7 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("criar diretório do banco: %w", err)
 	}
 
-	conn, err := sql.Open("sqlite", path)
+	conn, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("abrir banco: %w", err)
 	}
