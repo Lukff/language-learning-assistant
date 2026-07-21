@@ -4,6 +4,9 @@
 *.mov
 .env
 .superpowers/
+.tokensave/
+.claude/
+
 .task
 bin/
 frontend/dist
