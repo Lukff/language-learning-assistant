@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Agents.md
 
 ## O projeto
 
