@@ -120,3 +120,45 @@ func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
 		t.Error("ConfirmImport() com tutor vazio esperava erro, veio nil")
 	}
 }
+
+func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	storageRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("nao-e-um-video-de-verdade"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-22", "Sarah M."); err != nil {
+		t.Fatalf("ConfirmImport() com vídeo inválido não deveria falhar (duração é melhor esforço): %v", err)
+	}
+
+	lesson, err := db.FindLessonByPath(conn, "aula.mp4")
+	if err != nil {
+		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+	}
+	if lesson == nil {
+		t.Fatal("lesson não foi confirmada")
+	}
+	if lesson.DurationSeconds != nil {
+		t.Errorf("DurationSeconds = %v, esperado nil (fixture não é um vídeo real, ffprobe deveria falhar ou estar ausente)", *lesson.DurationSeconds)
+	}
+}
