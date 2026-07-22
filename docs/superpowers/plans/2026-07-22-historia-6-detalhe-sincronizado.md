@@ -930,12 +930,9 @@ Expected: 3 linhas de saída — `"studentSpeakerLabel"` dentro de `Lesson`, `ex
 Run: `grep -n "export function GetTranscript\|export function SetStudentSpeaker" frontend/bindings/assistente-idiomas/services/libraryservice.ts`
 Expected: 2 linhas de saída.
 
-- [ ] **Step 4: Commit**
-
-```bash
-git add frontend/bindings/
-git commit -m "chore: regenera bindings do LibraryService (transcricao e toggle de speaker)"
-```
+`frontend/bindings/` está no `.gitignore` (nunca foi commitado — é artefato de build
+regenerado localmente por `wails3 generate bindings`, não uma fonte versionada). Nada a
+commitar nesta task; os arquivos gerados já ficam no working tree pras Tasks 6 e 7 usarem.
 
 ---
 
