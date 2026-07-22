@@ -17,13 +17,28 @@ Novo pacote `internal/jobs` (Go puro, sem import de Wails — camada fina, igual
 ```
 type Worker struct {
     conn          *sql.DB
-    storageRoot   string              // absoluto, resolvido 1x na criação
+    storageRoot   StorageRootResolver // resolvido a cada job, não na criação (ver nota abaixo)
     audioCacheDir string              // absoluto, fora da pasta sincronizada
     extractAudio  MediaExtractorFunc  // assinatura de media.ExtractAudio
-    sttProvider   stt.Provider
+    sttProvider   STTProviderFactory  // idem — resolvido a cada job
     notifier      Notifier
     wake          chan struct{}
 }
+
+type StorageRootResolver func() (string, error)
+type STTProviderFactory func() (stt.Provider, error)
+```
+
+**Nota — resolução tardia de config/credencial:** o wizard de primeira execução
+(`SetupService.CompleteSetup`) roda *dentro* da mesma sessão do app, depois que `main.go` já
+montou os serviços. Se `storageRoot`/o provedor de STT fossem resolvidos uma única vez na
+construção do `Worker` (como uma primeira versão deste desenho propunha), o worker nunca
+chegaria a iniciar na sessão do primeiro uso — `config.Load()`/`config.GetSTTAPIKey()` ainda
+falhariam nesse momento. Por isso `storageRoot` e `sttProvider` são resolvidos **a cada job**
+(dentro de `runExtractAudio`/`runTranscribe`), não guardados como valor fixo. Isso também elimina
+qualquer necessidade de gating especial em `main.go`: o worker sempre inicia junto com o app;
+antes do wizard, a fila está vazia mesmo (jobs só existem depois de uma lesson confirmada, que já
+exige `storage_root` configurado), então não há nada pra processar até a resolução funcionar.
 
 type Notifier interface {
     JobChanged(JobEvent)
@@ -106,8 +121,9 @@ Sem migração — reaproveita as colunas `attempts` e `updated_at` que já exis
 ## Provedor de STT
 
 ElevenLabs Scribe (`internal/stt.NewElevenLabsProvider`), único provedor desta fase (decisão
-vigente em `decisoes-tecnologia.md`). API key lida via `config.GetSTTAPIKey()` (keyring) na
-construção do `Worker` em `main.go`.
+vigente em `decisoes-tecnologia.md`). `main.go` passa ao `Worker` uma `STTProviderFactory` que lê
+`config.GetSTTAPIKey()` (keyring) e chama `stt.NewElevenLabsProvider` — reavaliada a cada job de
+`transcribe` (ver nota de resolução tardia acima), não construída antecipadamente.
 
 ## Resiliência
 
