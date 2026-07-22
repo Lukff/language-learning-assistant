@@ -30,6 +30,7 @@ func main() {
 		Description: "Arquivo e análise de aulas de inglês do Cambly",
 		Services: []application.Service{
 			application.NewService(services.NewSetupService()),
+			application.NewService(services.NewImportService(conn)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
