@@ -69,3 +69,27 @@ func TestSaveThenLoad_RoundTrips(t *testing.T) {
 		t.Errorf("StorageRoot = %q, esperado %q", got.StorageRoot, want.StorageRoot)
 	}
 }
+
+func TestAudioCacheDir_IsUnderAppDataDirAudioCacheSubdirAndCreated(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	appDir, err := AppDataDir()
+	if err != nil {
+		t.Fatalf("AppDataDir() erro inesperado: %v", err)
+	}
+	cacheDir, err := AudioCacheDir()
+	if err != nil {
+		t.Fatalf("AudioCacheDir() erro inesperado: %v", err)
+	}
+	want := filepath.Join(appDir, "audio-cache")
+	if cacheDir != want {
+		t.Errorf("AudioCacheDir() = %q, esperado %q", cacheDir, want)
+	}
+	info, err := os.Stat(cacheDir)
+	if err != nil {
+		t.Fatalf("diretório não foi criado: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("%q não é um diretório", cacheDir)
+	}
+}
