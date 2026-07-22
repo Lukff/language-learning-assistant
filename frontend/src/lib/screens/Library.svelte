@@ -3,23 +3,42 @@
   import { colors, fonts } from "../theme";
   import * as ImportService from "../../../bindings/assistente-idiomas/services/importservice";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
-  import type { PendingImport, Lesson } from "../../../bindings/assistente-idiomas/services/models";
+  import type { PendingImport, Lesson, LessonFilter } from "../../../bindings/assistente-idiomas/services/models";
   import ImportConfirmModal from "../ImportConfirmModal.svelte";
+
+  let { onOpenLesson }: { onOpenLesson: (lessonId: number) => void } = $props();
 
   let pending: PendingImport[] = $state([]);
   let lessons: Lesson[] = $state([]);
+  let tutors: string[] = $state([]);
   let loading: boolean = $state(true);
   let syncing: boolean = $state(false);
   let syncMessage: string = $state("");
   let error: string = $state("");
   let reviewing: PendingImport | null = $state(null);
+  let retryingId: number | null = $state(null);
+
+  let filterTutor: string = $state("");
+  let filterDateFrom: string = $state("");
+  let filterDateTo: string = $state("");
+
+  const STATUS_LABEL: Record<string, string> = {
+    pronta: "pronta",
+    processando: "processando…",
+    erro: "erro",
+  };
 
   async function loadPending() {
     pending = (await ImportService.ListPendingImports()) ?? [];
   }
 
   async function loadLessons() {
-    lessons = (await LibraryService.ListLessons()) ?? [];
+    const filter: LessonFilter = { tutor: filterTutor, dateFrom: filterDateFrom, dateTo: filterDateTo };
+    lessons = (await LibraryService.ListLessons(filter)) ?? [];
+  }
+
+  async function loadTutors() {
+    tutors = (await LibraryService.ListTutors()) ?? [];
   }
 
   // lessonDate é gravado como "AAAA-MM-DD" ou "AAAA-MM-DDTHH:MM" (formato de
@@ -32,13 +51,30 @@
     return timePart ? `${formattedDate} ${timePart}` : formattedDate;
   }
 
+  function formatDuration(seconds: number | null): string {
+    if (seconds == null) return "";
+    const totalMinutes = Math.round(seconds / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
+  }
+
   async function loadAll() {
     try {
-      await Promise.all([loadPending(), loadLessons()]);
+      await Promise.all([loadPending(), loadLessons(), loadTutors()]);
     } catch (e) {
       error = String(e);
     } finally {
       loading = false;
+    }
+  }
+
+  async function applyFilter() {
+    error = "";
+    try {
+      await loadLessons();
+    } catch (e) {
+      error = String(e);
     }
   }
 
@@ -64,9 +100,28 @@
   async function onConfirmed() {
     reviewing = null;
     try {
-      await Promise.all([loadPending(), loadLessons()]);
+      await Promise.all([loadPending(), loadLessons(), loadTutors()]);
     } catch (e) {
       error = String(e);
+    }
+  }
+
+  async function retry(lessonId: number) {
+    error = "";
+    retryingId = lessonId;
+    try {
+      await LibraryService.RetryLesson(lessonId);
+      await loadLessons();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      retryingId = null;
+    }
+  }
+
+  function openLesson(lesson: Lesson) {
+    if (lesson.status === "pronta") {
+      onOpenLesson(lesson.id);
     }
   }
 
@@ -105,15 +160,64 @@
       </section>
     {/if}
 
+    <section class="filters" style="background: {colors.surface}; border: 1px solid {colors.line};">
+      <label>
+        Tutor
+        <select bind:value={filterTutor} onchange={applyFilter}>
+          <option value="">Todos</option>
+          {#each tutors as tutor (tutor)}
+            <option value={tutor}>{tutor}</option>
+          {/each}
+        </select>
+      </label>
+      <label>
+        De
+        <input type="date" bind:value={filterDateFrom} onchange={applyFilter} />
+      </label>
+      <label>
+        Até
+        <input type="date" bind:value={filterDateTo} onchange={applyFilter} />
+      </label>
+    </section>
+
     {#if lessons.length > 0}
       <section class="lessons" style="background: {colors.surface}; border: 1px solid {colors.line};">
         <h2 style="font-family: {fonts.display};">{lessons.length} aulas</h2>
         <ul>
           {#each lessons as lesson (lesson.id)}
             <li>
-              <span class="date" style="color: {colors.text};">{formatLessonDateTime(lesson.lessonDate)}</span>
-              <span class="tutor" style="color: {colors.mut};">{lesson.tutor}</span>
-              <span class="path" style="font-family: {fonts.mono}; color: {colors.mut};">{lesson.videoPath}</span>
+              <button
+                class="lesson-main"
+                onclick={() => openLesson(lesson)}
+                style="cursor: {lesson.status === 'pronta' ? 'pointer' : 'default'}; opacity: {lesson.status === 'pronta' ? 1 : 0.7};"
+              >
+                <span class="date" style="color: {colors.text};">{formatLessonDateTime(lesson.lessonDate)}</span>
+                <span class="tutor" style="color: {colors.mut};"
+                  >{lesson.tutor}{formatDuration(lesson.durationSeconds)
+                    ? ` · ${formatDuration(lesson.durationSeconds)}`
+                    : ""}</span
+                >
+              </button>
+              {#if lesson.status === "erro"}
+                <div class="status-block">
+                  <span class="badge" style="color: {colors.red}; background: rgba(224,108,108,.1);">erro</span>
+                  <span class="error-message" style="color: {colors.mut};">{lesson.errorMessage}</span>
+                  <button onclick={() => retry(lesson.id)} disabled={retryingId === lesson.id}>
+                    {retryingId === lesson.id ? "Reprocessando…" : "Reprocessar"}
+                  </button>
+                </div>
+              {:else}
+                <span
+                  class="badge"
+                  style="color: {lesson.status === 'pronta'
+                    ? colors.green
+                    : colors.blue}; background: {lesson.status === 'pronta'
+                    ? 'rgba(111,191,142,.1)'
+                    : 'rgba(110,168,254,.1)'};"
+                >
+                  {STATUS_LABEL[lesson.status] ?? lesson.status}
+                </span>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -161,10 +265,22 @@
     margin: 0 0 1rem;
   }
   .pending,
-  .lessons {
+  .lessons,
+  .filters {
     border-radius: 0.75rem;
     padding: 1rem 1.25rem;
     margin-bottom: 1rem;
+  }
+  .filters {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .filters label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.8rem;
   }
   .pending h2,
   .lessons h2 {
@@ -189,18 +305,45 @@
   .lessons li {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
+  }
+  .lesson-main {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    flex: 1;
+    min-width: 0;
   }
   .lessons .date {
     font-size: 0.85rem;
-    min-width: 9rem;
   }
   .lessons .tutor {
-    font-size: 0.85rem;
-    flex: 1;
+    font-size: 0.8rem;
   }
   .path {
     font-size: 0.8rem;
     word-break: break-all;
+  }
+  .status-block {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  .error-message {
+    font-size: 0.75rem;
+    max-width: 16rem;
+  }
+  .badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    flex-shrink: 0;
   }
 </style>
