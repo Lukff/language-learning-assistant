@@ -108,15 +108,24 @@ História 3.
 **para** importar e continuar usando o app (ou fechá-lo) sem esperar.
 
 ### Critérios de aceite
-- [ ] Worker único (goroutine) processa jobs sequencialmente: `extract_audio` → `transcribe` (ElevenLabs Scribe, configuração registrada na Fase 0).
-- [ ] Estados `pending/running/done/error` com `attempts`, `last_error` e backoff simples; idempotência (job confere artefato de saída antes de rodar).
-- [ ] Ao abrir o app, jobs presos em `running` voltam a `pending`.
-- [ ] Transcrição persistida em `transcripts` (falas diarizadas + timestamps por palavra); JSON bruto do provedor salvo na raiz de armazenamento junto à aula.
-- [ ] Falha de rede/API deixa a aula íntegra (vídeo assistível) com erro legível na Fila — princípio de resiliência.
-- [ ] Eventos Wails notificam o frontend de progresso/estado (consumidos nas Histórias 5 e 7).
+- [x] Worker único (goroutine) processa jobs sequencialmente: `extract_audio` → `transcribe` (ElevenLabs Scribe, configuração registrada na Fase 0).
+- [x] Estados `pending/running/done/error` com `attempts`, `last_error` e backoff simples; idempotência (job confere artefato de saída antes de rodar).
+- [x] Ao abrir o app, jobs presos em `running` voltam a `pending`.
+- [x] Transcrição persistida em `transcripts` (falas diarizadas + timestamps por palavra); JSON bruto do provedor salvo na raiz de armazenamento junto à aula.
+- [x] Falha de rede/API deixa a aula íntegra (vídeo assistível) com erro legível — princípio de resiliência garantido na camada de dados (falha nunca toca `lessons`); a superfície visual "erro legível na Fila" é telas da História 7, ainda não construída.
+- [x] Eventos Wails notificam o frontend de progresso/estado (evento `job:updated` emitido a cada transição) — transporte pronto, nenhuma tela consome ainda (consumo fica pras Histórias 5 e 7).
 
 ### Dependências
 História 3.
+
+### Notas de implementação
+`storage_root`/credencial de STT são resolvidos a cada job (não uma vez só na criação do worker),
+porque o wizard de primeira execução roda depois que o app já iniciou — resolução antecipada faria
+o worker nunca começar na sessão do primeiro uso. `Worker.Wake()` (acordar o worker na hora ao
+confirmar uma aula, em vez de esperar o poll) existe mas não foi ligado ao fluxo de confirmação de
+importação nesta fatia — decisão deliberada, o poll de fallback (~5s) é imperceptível numa fila de
+background. Design completo em
+`docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md`.
 
 ---
 
@@ -188,3 +197,4 @@ Fase 5: Configurações completas (seleção de provedor, estimativa de custo, a
 | 20/07/2026 | História 1 implementada: esqueleto Wails v3 + Svelte 5 (sidebar, header vazio, 3 telas placeholder); build de produção confirmado | wails3 v3.0.0-alpha2.117 pinada; fontes auto-hospedadas via @fontsource; falta verificação visual (janela abrindo) em Windows e Linux antes de fechar a história |
 | 21/07/2026 | História 2 implementada: banco SQLite (schema v1: lessons/transcripts/jobs/prompts, migrations goose), config local (config.json) e credencial ElevenLabs via keyring, tudo no wizard de primeira execução | No Linux, `go build`/`go vet`/`go test` de qualquer pacote que importe Wails exige `CGO_ENABLED=1` + `libgtk-4-dev libwebkitgtk-6.0-dev` instalados (gtk4/webkitgtk-6.0, não gtk3) — vale documentar/instalar isso cedo em máquina Linux nova; gap conhecido: se a credencial do keyring for perdida/limpa depois do setup, o app não detecta isso (config.json continua existindo) e não há UI pra recadastrar até a tela de Configurações da Fase 5 |
 | 22/07/2026 | História 3 implementada: varredura recursiva da pasta de armazenamento (identificação por nome+SHA-256, sem estrutura assumida), stat-cache antes do hash, candidatos pendentes revisados um a um na Biblioteca (modal de data/tutor), lesson+jobs criados na confirmação; índice único em video_hash garante não-duplicação | Nenhuma extensão além de `.mp4` reconhecida nesta fatia (fácil de estender depois); `wails3` CLI precisa ser instalado manualmente (`go install .../cmd/wails3@v3.0.0-alpha2.117`) em máquina nova, não é dependência do go.mod; fluxo completo do wizard→varredura→revisão ainda não verificado visualmente numa janela real (sem display neste ambiente de build) |
+| 22/07/2026 | História 4 implementada: worker único em `internal/jobs` processa `extract_audio`→`transcribe` sequencialmente com precedência (transcribe bloqueado se extract_audio falhou, sem gastar chamada de STT), idempotência real por artefato (WAV em cache / linha em `transcripts`), retry com backoff (3 tentativas, 10s/60s/5min) e requeue de jobs presos em `running` na abertura; `storage_root`/credencial resolvidos por job (não na criação do worker) pra sobreviver ao timing do wizard de primeira execução; evento Wails `job:updated` emitido a cada transição (transporte pronto, sem consumidor ainda) | Executado via subagent-driven-development (8 tasks, revisão por task + revisão final de branch); revisão final pegou um bug real cross-task (worker podia chamar `application.Get()` antes de `application.New()` rodar, causando panic se houvesse job pendente de sessão anterior) — corrigido com nil-guard no notifier; `Worker.Wake()` existe mas não foi ligado ao fluxo de confirmação de importação (decisão deliberada — poll de fallback de ~5s é aceitável); fluxo completo (pipeline processando de verdade numa aula real) ainda não verificado visualmente numa janela real (sem display neste ambiente de build) |
