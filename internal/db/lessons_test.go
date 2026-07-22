@@ -167,6 +167,9 @@ func TestFindLessonByID_FindsExistingAndNilWhenMissing(t *testing.T) {
 	if found == nil || found.VideoPath != "aula-01.mp4" {
 		t.Errorf("FindLessonByID() = %+v, esperado video_path aula-01.mp4", found)
 	}
+	if found.DurationSeconds != nil {
+		t.Errorf("DurationSeconds = %v, esperado nil antes de SetLessonDuration", *found.DurationSeconds)
+	}
 
 	missing, err := FindLessonByID(conn, id+999)
 	if err != nil {
@@ -174,5 +177,61 @@ func TestFindLessonByID_FindsExistingAndNilWhenMissing(t *testing.T) {
 	}
 	if missing != nil {
 		t.Errorf("FindLessonByID() para id inexistente = %+v, esperado nil", missing)
+	}
+}
+
+func TestSetLessonDuration_UpdatesDurationSeconds(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	res, err := conn.Exec(
+		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert de fixture falhou: %v", err)
+	}
+	id, _ := res.LastInsertId()
+
+	if err := SetLessonDuration(conn, id, 1860); err != nil {
+		t.Fatalf("SetLessonDuration() erro inesperado: %v", err)
+	}
+
+	lesson, err := FindLessonByID(conn, id)
+	if err != nil {
+		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+	}
+	if lesson.DurationSeconds == nil || *lesson.DurationSeconds != 1860 {
+		t.Errorf("DurationSeconds = %v, esperado 1860", lesson.DurationSeconds)
+	}
+}
+
+func TestListTutors_ReturnsDistinctSortedTutors(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	insert := `INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
+	for _, row := range []struct{ date, tutor, path string }{
+		{"2026-07-10", "Sarah M.", "a.mp4"},
+		{"2026-07-11", "Sarah M.", "b.mp4"},
+		{"2026-07-12", "James K.", "c.mp4"},
+	} {
+		if _, err := conn.Exec(insert, row.date, row.tutor, row.path, row.date+"T10:00:00Z", row.date+"T10:00:00Z"); err != nil {
+			t.Fatalf("insert de fixture falhou: %v", err)
+		}
+	}
+
+	tutors, err := ListTutors(conn)
+	if err != nil {
+		t.Fatalf("ListTutors() erro inesperado: %v", err)
+	}
+	if len(tutors) != 2 || tutors[0] != "James K." || tutors[1] != "Sarah M." {
+		t.Errorf("ListTutors() = %+v, esperado [James K. Sarah M.] (distintos, ordem alfabética)", tutors)
 	}
 }
