@@ -43,3 +43,19 @@ func configPath() (string, error) {
 	}
 	return filepath.Join(dir, "config.json"), nil
 }
+
+// AudioCacheDir resolve (criando se necessário) o diretório de cache de
+// áudio intermediário (WAVs extraídos pra chamar a API de STT) dentro do
+// AppDataDir — fora da pasta sincronizada, já que esses arquivos são
+// descartáveis assim que a transcrição é salva (ver internal/jobs).
+func AudioCacheDir() (string, error) {
+	dir, err := AppDataDir()
+	if err != nil {
+		return "", err
+	}
+	cacheDir := filepath.Join(dir, "audio-cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", fmt.Errorf("criar diretório de cache de áudio: %w", err)
+	}
+	return cacheDir, nil
+}
