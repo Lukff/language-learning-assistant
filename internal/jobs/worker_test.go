@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -326,5 +327,147 @@ func TestRunTranscribe_WritesRawJSONInsertsTranscriptAndCleansCache(t *testing.T
 
 	if _, err := os.Stat(w.audioPathFor(lessonID)); !os.IsNotExist(err) {
 		t.Errorf("WAV do cache deveria ter sido removido após sucesso, err=%v", err)
+	}
+}
+
+type recordingNotifier struct {
+	events *[]JobEvent
+}
+
+func (r recordingNotifier) JobChanged(e JobEvent) {
+	*r.events = append(*r.events, e)
+}
+
+func TestEligibleForRetry_RespectsBackoffWindow(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name     string
+		attempts int
+		updated  time.Time
+		want     bool
+	}{
+		{"primeira tentativa sempre elegível", 0, now, true},
+		{"1 falha, ainda dentro dos 10s", 1, now.Add(-5 * time.Second), false},
+		{"1 falha, passou dos 10s", 1, now.Add(-11 * time.Second), true},
+		{"2 falhas, ainda dentro de 60s", 2, now.Add(-30 * time.Second), false},
+		{"2 falhas, passou de 60s", 2, now.Add(-61 * time.Second), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			j := db.Job{Attempts: tc.attempts, UpdatedAt: tc.updated.Format(time.RFC3339)}
+			got := eligibleForRetry(j, now)
+			if got != tc.want {
+				t.Errorf("eligibleForRetry(attempts=%d, updated=%s) = %v, esperado %v", tc.attempts, tc.updated, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFail_RetriesThenTerminatesAfterMaxAttempts(t *testing.T) {
+	conn := newTestDB(t)
+	lessonID := insertLesson(t, conn, "aula.mp4")
+	job := db.Job{ID: insertJob(t, conn, lessonID, "extract_audio", "running", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z"), LessonID: lessonID, Kind: "extract_audio"}
+
+	var events []JobEvent
+	notifier := recordingNotifier{events: &events}
+	w := NewWorker(
+		conn,
+		func() (string, error) { return t.TempDir(), nil },
+		t.TempDir(),
+		fakeExtractAudioAlwaysOK,
+		func() (stt.Provider, error) { return &fakeSTTProvider{}, nil },
+		notifier,
+	)
+
+	w.fail(job, errors.New("falha simulada"))
+	w.fail(job, errors.New("falha simulada"))
+	w.fail(job, errors.New("falha simulada"))
+
+	got, err := db.FindJob(conn, lessonID, "extract_audio")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if got.Status != "error" || got.Attempts != 3 {
+		t.Errorf("job após 3 falhas = %+v, esperado status=error attempts=3", got)
+	}
+	if len(events) != 3 || events[2].Status != "error" {
+		t.Errorf("eventos notificados = %+v, esperado 3 eventos terminando em error", events)
+	}
+}
+
+func TestRun_RequeuesRunningJobsOnStart(t *testing.T) {
+	conn := newTestDB(t)
+	lessonID := insertLesson(t, conn, "aula.mp4")
+	stuckID := insertJob(t, conn, lessonID, "extract_audio", "running", 1, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+
+	w := newTestWorker(t, conn, WithPollInterval(10*time.Millisecond))
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_ = w.Run(ctx)
+
+	job, err := db.FindJob(conn, lessonID, "extract_audio")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if job.ID != stuckID {
+		t.Fatalf("job errado retornado por FindJob")
+	}
+	if job.Status == "running" {
+		t.Errorf("job.Status = running, esperado que o requeue tivesse tirado do estado preso")
+	}
+}
+
+func TestRun_ProcessesExtractAudioThenTranscribeEndToEnd(t *testing.T) {
+	conn := newTestDB(t)
+	storageRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("video"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	lessonID := insertLesson(t, conn, "aula.mp4")
+	now := time.Now().UTC().Format(time.RFC3339)
+	insertJob(t, conn, lessonID, "extract_audio", "pending", 0, now, now)
+	insertJob(t, conn, lessonID, "transcribe", "pending", 0, now, now)
+
+	audioCacheDir := t.TempDir()
+	w := NewWorker(
+		conn,
+		func() (string, error) { return storageRoot, nil },
+		audioCacheDir,
+		func(ctx context.Context, videoPath, outputPath string) error {
+			return os.WriteFile(outputPath, []byte("wav"), 0o644)
+		},
+		func() (stt.Provider, error) {
+			return &fakeSTTProvider{result: &stt.Result{RawResponse: []byte(`{}`), Utterances: []stt.Utterance{{Speaker: "speaker_0", Text: "oi"}}}}, nil
+		},
+		noopNotifier{},
+		WithPollInterval(10*time.Millisecond),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_ = w.Run(ctx)
+
+	extractJob, err := db.FindJob(conn, lessonID, "extract_audio")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if extractJob.Status != "done" {
+		t.Errorf("extract_audio.Status = %q, esperado done", extractJob.Status)
+	}
+	transcribeJob, err := db.FindJob(conn, lessonID, "transcribe")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if transcribeJob.Status != "done" {
+		t.Errorf("transcribe.Status = %q, esperado done", transcribeJob.Status)
+	}
+	has, err := db.HasTranscript(conn, lessonID)
+	if err != nil {
+		t.Fatalf("HasTranscript() erro inesperado: %v", err)
+	}
+	if !has {
+		t.Error("HasTranscript() = false, esperado true após pipeline completo")
 	}
 }
