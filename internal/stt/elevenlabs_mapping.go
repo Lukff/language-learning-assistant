@@ -3,7 +3,9 @@ package stt
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 )
 
 type elevenLabsResponse struct {
@@ -85,4 +87,8 @@ func groupElevenLabsWords(items []elevenLabsWord) []Utterance {
 	flush()
 
 	return utterances
+}
+
+func secondsToDuration(s float64) time.Duration {
+	return time.Duration(math.Round(s*1000)) * time.Millisecond
 }

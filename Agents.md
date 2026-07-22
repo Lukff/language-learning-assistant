@@ -22,7 +22,7 @@ progresso, sync, FTS ficam para fases seguintes) e os **riscos técnicos a ataca
 
 Regras da fase:
 - Os packages da Fase 0 (`media`, `stt`, `analysis`) são reaproveitados como estão — não copiar, não reescrever.
-- O CLI `cmd/spike` continua existindo e compilando (serve para retestes de provedor).
+- O CLI `cmd/spike` e os providers de STT descartados na comparação (Gladia, AssemblyAI, Deepgram) foram removidos: cumpriram o papel de validação da Fase 0 e não têm mais chamador no app. `internal/stt` mantém só o ElevenLabs.
 - STT do app: ElevenLabs Scribe (`scribe_v2`, diarização, detecção multilíngue) — configuração registrada no `decisoes-tecnologia.md`.
 - Princípio de resiliência: falha de transcrição/análise nunca impede assistir ao vídeo.
 
@@ -34,9 +34,8 @@ Todo o core vive em packages Go puros, **sem imports de Wails** — o Wails entr
 ```
 main.go             # entrada do app Wails v3 (casca)
 frontend/           # Svelte 5 (runes) — UI portada do protótipo React
-cmd/spike/          # CLI da Fase 0 (mantido para retestes de provedor)
 internal/media/     # extração de áudio (ffmpeg via os/exec)
-internal/stt/       # interface Provider + implementações (Scribe ativo)
+internal/stt/       # interface Provider + implementação ElevenLabs (única ativa)
 internal/analysis/  # análise via LLM (usada de fato na Fase 2)
 internal/db/        # SQLite (modernc.org/sqlite, WAL) + migrations goose (embed.FS)
 internal/jobs/      # fila em tabela + worker único (estados, retry, idempotência)
@@ -54,7 +53,7 @@ prompts versionados ativos; tags + FTS5; sync pull-work-push entre máquinas com
 
 - Go recente; preferir **stdlib**: `net/http` para APIs, `os/exec` para ffmpeg, `log/slog` para logs, `encoding/json`.
 - Dependências externas só com justificativa (as aprovadas estão no `decisoes-tecnologia.md`).
-- **Credenciais:** no app, via `zalando/go-keyring` (armazenamento nativo do SO) — nunca em texto plano, nunca na pasta sincronizada. No CLI `cmd/spike`, variáveis de ambiente continuam aceitáveis (`ELEVENLABS_API_KEY`, `DEEPSEEK_API_KEY`, ...). Nada hardcoded, nada commitado.
+- **Credenciais:** via `zalando/go-keyring` (armazenamento nativo do SO) — nunca em texto plano, nunca na pasta sincronizada. Nada hardcoded, nada commitado.
 - **SQL portável** na camada de repositório: nada específico de driver (trocar modernc ↔ mattn deve ser só o import + `sql.Open`).
 - **Banco nunca dentro da pasta sincronizada**; paths de vídeo no banco sempre **relativos** à raiz de armazenamento — nunca absolutos ou específicos de máquina.
 - **Frontend: Svelte 5 com runes, sempre.** Nunca usar sintaxe legada do Svelte 3/4 (stores com `$:`, `export let`, etc.) — usar `$state`, `$derived`, `$effect`, `$props`. Se houver dúvida entre padrão antigo e novo, parar e perguntar.
@@ -67,7 +66,6 @@ prompts versionados ativos; tags + FTS5; sync pull-work-push entre máquinas com
 ```bash
 wails3 dev                # app em modo dev (hot reload do frontend)
 wails3 build              # build do app
-go run ./cmd/spike        # CLI da Fase 0 (retestes de provedor)
 go test ./...             # testes (fixtures em testdata/)
 go vet ./...              # antes de commitar
 ```
