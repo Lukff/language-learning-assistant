@@ -97,38 +97,6 @@ func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fil
 	return nil
 }
 
-// ListLessons lista todas as lessons registradas, mais recentes primeiro
-// por data da aula — usado pela Biblioteca da História 3 (sem status
-// derivado dos jobs; isso é ListLessonsWithStatus, da História 5). Fica
-// nesta task só até a Task 6 trocar o chamador em services/library.go por
-// ListLessonsWithStatus e remover esta função (mantém o repositório
-// compilando entre as duas tasks).
-func ListLessons(conn *sql.DB) ([]Lesson, error) {
-	rows, err := conn.Query(`SELECT ` + lessonColumns + ` FROM lessons ORDER BY lesson_date DESC, id DESC`)
-	if err != nil {
-		return nil, fmt.Errorf("listar lessons: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Lesson
-	for rows.Next() {
-		var l Lesson
-		var duration sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.LessonDate, &l.Tutor, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime, &duration); err != nil {
-			return nil, fmt.Errorf("ler lesson: %w", err)
-		}
-		if duration.Valid {
-			d := duration.Int64
-			l.DurationSeconds = &d
-		}
-		out = append(out, l)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar lessons: %w", err)
-	}
-	return out, nil
-}
-
 // SetLessonDuration grava a duração do vídeo (calculada via ffprobe na
 // confirmação da importação, best-effort — ver ImportService.ConfirmImport)
 // — só é chamado quando o probe teve sucesso.
