@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // fakeRepo é um Repo em memória — os testes deste pacote nunca tocam banco
@@ -115,11 +116,32 @@ func TestScan_NewVideoBecomesCandidate(t *testing.T) {
 	if got.Path != "aula-2026-07-15.mp4" {
 		t.Errorf("Path = %q, esperado aula-2026-07-15.mp4", got.Path)
 	}
-	if got.SuggestedDate != "2026-07-15" {
-		t.Errorf("SuggestedDate = %q, esperado 2026-07-15 (extraído do nome)", got.SuggestedDate)
+	if got.SuggestedDate != "2026-07-15T00:00" {
+		t.Errorf("SuggestedDate = %q, esperado 2026-07-15T00:00 (data extraída do nome, horário desconhecido)", got.SuggestedDate)
 	}
 	if got.SHA256 == "" {
 		t.Error("SHA256 vazio, esperado hash calculado")
+	}
+}
+
+func TestScan_SuggestedDateFallsBackToMTimeWithTimeOfDayWhenFilenameHasNoDate(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "gravacao-cambly.mp4")
+	writeFile(t, path, "conteudo-sem-data-no-nome")
+	mtime := time.Date(2026, 7, 15, 14, 30, 0, 0, time.UTC)
+	if err := os.Chtimes(path, mtime, mtime); err != nil {
+		t.Fatalf("Chtimes() falhou: %v", err)
+	}
+	repo := newFakeRepo()
+
+	if _, err := Scan(root, repo); err != nil {
+		t.Fatalf("Scan() erro inesperado: %v", err)
+	}
+	if len(repo.inserted) != 1 {
+		t.Fatalf("candidatos inseridos = %d, esperado 1", len(repo.inserted))
+	}
+	if got := repo.inserted[0].SuggestedDate; got != "2026-07-15T14:30" {
+		t.Errorf("SuggestedDate = %q, esperado 2026-07-15T14:30 (data e horário do mtime)", got)
 	}
 }
 
