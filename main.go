@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"embed"
 	"log"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
+	"assistente-idiomas/internal/jobs"
+	"assistente-idiomas/internal/media"
+	"assistente-idiomas/internal/stt"
 	"assistente-idiomas/services"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -24,6 +29,8 @@ func main() {
 		log.Fatalf("abrir banco de dados: %v", err)
 	}
 	defer conn.Close()
+
+	startJobWorker(conn)
 
 	app := application.New(application.Options{
 		Name:        "Assistente de Idiomas",
@@ -51,4 +58,39 @@ func main() {
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// startJobWorker inicia o pipeline em background (História 4) numa
+// goroutine. storage_root e a credencial de STT são resolvidos a cada job,
+// não aqui — o wizard de primeira execução ainda não rodou neste ponto do
+// startup, então resolvê-los agora falharia sempre na primeira sessão do
+// app (ver docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
+// Só o cache de áudio (que não depende do wizard) é resolvido aqui; se
+// isso falhar, é um problema de disco/permissão e o worker não inicia.
+func startJobWorker(conn *sql.DB) {
+	audioCacheDir, err := config.AudioCacheDir()
+	if err != nil {
+		log.Printf("worker de jobs não iniciado: %v", err)
+		return
+	}
+	storageRoot := func() (string, error) {
+		cfg, err := config.Load()
+		if err != nil {
+			return "", err
+		}
+		return cfg.StorageRoot, nil
+	}
+	sttFactory := func() (stt.Provider, error) {
+		apiKey, err := config.GetSTTAPIKey()
+		if err != nil {
+			return nil, err
+		}
+		return stt.NewElevenLabsProvider(apiKey)
+	}
+	worker := jobs.NewWorker(conn, storageRoot, audioCacheDir, media.ExtractAudio, sttFactory, services.WailsJobNotifier{})
+	go func() {
+		if err := worker.Run(context.Background()); err != nil {
+			log.Printf("worker de jobs encerrado: %v", err)
+		}
+	}()
 }
