@@ -82,6 +82,52 @@ func TestUpdateLessonPath_ChangesPathSizeAndMTime(t *testing.T) {
 	}
 }
 
+func TestListLessons_ReturnsAllOrderedByDateDesc(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	insert := `INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+	if _, err := conn.Exec(insert, "2026-07-10", "Sarah", "a.mp4", "hash-a", "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z"); err != nil {
+		t.Fatalf("insert a falhou: %v", err)
+	}
+	if _, err := conn.Exec(insert, "2026-07-20", "Marcus", "b.mp4", "hash-b", "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z"); err != nil {
+		t.Fatalf("insert b falhou: %v", err)
+	}
+
+	lessons, err := ListLessons(conn)
+	if err != nil {
+		t.Fatalf("ListLessons() erro inesperado: %v", err)
+	}
+	if len(lessons) != 2 {
+		t.Fatalf("ListLessons() = %d lessons, esperado 2", len(lessons))
+	}
+	if lessons[0].VideoPath != "b.mp4" || lessons[0].LessonDate != "2026-07-20" || lessons[0].Tutor != "Marcus" {
+		t.Errorf("lessons[0] = %+v, esperado b.mp4/2026-07-20/Marcus (mais recente primeiro)", lessons[0])
+	}
+	if lessons[1].VideoPath != "a.mp4" || lessons[1].LessonDate != "2026-07-10" || lessons[1].Tutor != "Sarah" {
+		t.Errorf("lessons[1] = %+v, esperado a.mp4/2026-07-10/Sarah", lessons[1])
+	}
+}
+
+func TestListLessons_EmptyReturnsEmptyNotNilError(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	lessons, err := ListLessons(conn)
+	if err != nil {
+		t.Fatalf("ListLessons() erro inesperado: %v", err)
+	}
+	if len(lessons) != 0 {
+		t.Errorf("ListLessons() = %+v, esperado vazio", lessons)
+	}
+}
+
 func TestLessons_VideoHashUniqueIndexRejectsDuplicate(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
