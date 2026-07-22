@@ -58,19 +58,47 @@ História 1.
 
 ---
 
-## História 3 — Importar aula
+## História 3 — Importar aula: varredura da pasta existente
 
-**Como** usuário, **quero** arrastar o vídeo de uma aula para o app e confirmar data/tutor,
-**para** registrá-la na biblioteca e disparar o processamento.
+**Como** usuário, **quero** que o app encontre sozinho os vídeos de aula que já estão na pasta
+de armazenamento e me deixe confirmar data/tutor de cada um, **para** registrá-los na
+biblioteca e disparar o processamento — sem depender de eu ter organizado a pasta antes ou de
+importar um por um manualmente.
+
+**Expectativa vigente (ajustada em 22/07/2026):** a pasta de armazenamento escolhida no wizard
+provavelmente **já** tem vídeos de aulas anteriores, soltos, sem nenhuma convenção de
+subpastas. O app não deve assumir nem impor estrutura de diretórios para reconhecê-los.
+Identificação e dedup são sempre por **nome do arquivo + SHA-256**, nunca por convenção de path.
+Escopo desta história é só a varredura + revisão; drag-and-drop de importação manual foi
+descolado para a **História 3b**, já que a pasta já ter as aulas é o caso mais urgente. Design
+completo em `docs/superpowers/specs/2026-07-22-historia-3-importar-aula-design.md`.
 
 ### Critérios de aceite
-- [ ] Drag-and-drop (ou fallback por file dialog — risco 2) abre modal de confirmação com data (pré-preenchida do nome/metadata do arquivo quando possível) e tutor (texto livre).
-- [ ] O vídeo é copiado para a raiz de armazenamento em estrutura previsível (ex.: `aulas/2026/2026-07-15/`); o banco guarda **apenas o path relativo**.
-- [ ] Registro em `lessons` + jobs `extract_audio` e `transcribe` criados como `pending`.
-- [ ] Importação duplicada (mesmo arquivo/hash) é detectada e avisada, não duplicada.
+- [ ] **Varredura da pasta de armazenamento:** recursiva, sem assumir nenhuma estrutura de subpastas; identifica vídeos `.mp4` e calcula SHA-256 de cada um (custo medido: ~1-3s por vídeo típico de aula, mesmo sem aceleração de hardware — não é gargalo).
+- [ ] **Cache por stat antes do hash:** para vídeos já registrados, a varredura confere primeiro path + tamanho + mtime salvos; só recalcula o SHA-256 se algo mudou. Evita reler o conteúdo inteiro de arquivos inalterados a cada "Sincronizar pasta".
+- [ ] Vídeo com hash já registrado é ignorado; mesmo hash em path diferente **atualiza o path da lesson** (arquivo só foi movido/renomeado), sem virar candidato nem duplicata.
+- [ ] Vídeos novos viram candidatos numa lista de **pendentes de revisão** na Biblioteca (sem estrutura de "Ignorar" — a pasta só deve conter aulas). Confirmar um candidato (modal de data/tutor) grava a `lesson` + jobs `extract_audio`/`transcribe` como `pending`, e o remove da lista de pendentes.
+- [ ] A varredura roda automaticamente ao final do wizard de primeira execução (depois de escolher a pasta) e também fica disponível como ação sob demanda depois ("Sincronizar pasta"), para pegar vídeos jogados manualmente na pasta depois do setup.
+- [ ] Importação duplicada (mesmo hash) é detectada e não duplicada — garantida por índice único no banco.
 
 ### Dependências
 História 2.
+
+---
+
+## História 3b — Importar aula manualmente (drag-and-drop)
+
+**Como** usuário, **quero** arrastar o vídeo de uma aula nova para o app e confirmar data/tutor,
+**para** registrá-la sem esperar a próxima varredura da pasta.
+
+### Critérios de aceite
+- [ ] Drag-and-drop (ou fallback por file dialog — risco 2) abre o mesmo modal de confirmação da História 3 (data pré-preenchida do nome/metadata do arquivo quando possível, tutor texto livre).
+- [ ] O vídeo é copiado para a raiz de armazenamento em estrutura previsível (ex.: `aulas/2026/2026-07-15/`); o banco guarda **apenas o path relativo**.
+- [ ] Registro em `lessons` + jobs `extract_audio` e `transcribe` criados como `pending`, reaproveitando a mesma lógica de confirmação/dedup por hash da História 3.
+- [ ] Importação duplicada (mesmo arquivo/hash) é detectada e avisada, não duplicada.
+
+### Dependências
+História 3.
 
 ---
 
@@ -142,7 +170,7 @@ História 4.
 
 ## Marcos
 
-- **M1 — "Importa e guarda":** Histórias 1–3. O app abre, importa e registra aulas.
+- **M1 — "Importa e guarda":** Histórias 1–3 (3b opcional, importação manual). O app abre, mapeia as aulas já existentes na pasta e registra.
 - **M2 — "Transcreve sozinho":** História 4 (+7 opcional). Importar à noite, transcrição pronta de manhã.
 - **M3 — MVP completo:** Histórias 5–6. Assistir com transcrição sincronizada. **A partir daqui o app entra em uso real nas suas aulas.**
 
