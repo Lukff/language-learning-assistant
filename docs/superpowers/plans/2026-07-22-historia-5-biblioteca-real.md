@@ -117,13 +117,13 @@ git commit -m "feat: adiciona internal/media.Duration via ffprobe"
 
 **Interfaces:**
 - Consumes: nada de tasks anteriores.
-- Produces: `Lesson.DurationSeconds *int64` (novo campo); `func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error`; `func ListTutors(conn *sql.DB) ([]string, error)`. `FindLessonByPath`/`FindLessonByHash`/`FindLessonByID` mantêm as mesmas assinaturas, mas o `*Lesson` retornado agora carrega `DurationSeconds`. `ListLessons` (a versão sem status, da História 3) é **removida** — substituída por `ListLessonsWithStatus` na Task 3, sem mais nenhum chamador depois da Task 6.
+- Produces: `Lesson.DurationSeconds *int64` (novo campo); `func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error`; `func ListTutors(conn *sql.DB) ([]string, error)`. `FindLessonByPath`/`FindLessonByHash`/`FindLessonByID` mantêm as mesmas assinaturas, mas o `*Lesson` retornado agora carrega `DurationSeconds`. `ListLessons` (a versão sem status, da História 3) **fica intocada nesta task** — `services/library.go:30` ainda a chama, e removê-la aqui deixaria o repositório sem compilar até a Task 6 rodar. `ListLessonsWithStatus` (Task 3) é a substituta; a remoção de `ListLessons` e dos dois testes que a cobrem (`TestListLessons_ReturnsAllOrderedByDateDesc`, `TestListLessons_EmptyReturnsEmptyNotNilError`) acontece **na Task 6**, no mesmo commit que reescreve `services/library.go` pra parar de chamá-la — assim o repositório nunca fica num estado intermediário sem compilar. (Nota de execução: esta correção de sequenciamento foi feita depois que a revisão da Task 2 pegou o build quebrado — a Task 2 originalmente removia `ListLessons` cedo demais.)
 
 Este task reescreve `internal/db/lessons.go` por completo (extrai um scanner comum pras três buscas, que hoje repetem a mesma lista de colunas) — arquivo pequeno, mais claro reescrever do que remendar.
 
 - [ ] **Step 1: Escrever os testes que falham**
 
-Em `internal/db/lessons_test.go`, remover as duas funções `TestListLessons_ReturnsAllOrderedByDateDesc` e `TestListLessons_EmptyReturnsEmptyNotNilError` (o `ListLessons` que elas testam deixa de existir). No teste `TestFindLessonByID_FindsExistingAndNilWhenMissing` já existente, adicionar a verificação de duração nula por padrão, trocando o bloco:
+Em `internal/db/lessons_test.go`, **não mexer** em `TestListLessons_ReturnsAllOrderedByDateDesc` nem `TestListLessons_EmptyReturnsEmptyNotNilError` — ficam como estão, a remoção é só na Task 6. No teste `TestFindLessonByID_FindsExistingAndNilWhenMissing` já existente, adicionar a verificação de duração nula por padrão, trocando o bloco:
 
 ```go
 	found, err := FindLessonByID(conn, id)
@@ -319,6 +319,38 @@ func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fil
 	return nil
 }
 
+// ListLessons lista todas as lessons registradas, mais recentes primeiro
+// por data da aula — usado pela Biblioteca da História 3 (sem status
+// derivado dos jobs; isso é ListLessonsWithStatus, da História 5). Fica
+// nesta task só até a Task 6 trocar o chamador em services/library.go por
+// ListLessonsWithStatus e remover esta função (mantém o repositório
+// compilando entre as duas tasks).
+func ListLessons(conn *sql.DB) ([]Lesson, error) {
+	rows, err := conn.Query(`SELECT ` + lessonColumns + ` FROM lessons ORDER BY lesson_date DESC, id DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("listar lessons: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Lesson
+	for rows.Next() {
+		var l Lesson
+		var duration sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.LessonDate, &l.Tutor, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime, &duration); err != nil {
+			return nil, fmt.Errorf("ler lesson: %w", err)
+		}
+		if duration.Valid {
+			d := duration.Int64
+			l.DurationSeconds = &d
+		}
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterar lessons: %w", err)
+	}
+	return out, nil
+}
+
 // SetLessonDuration grava a duração do vídeo (calculada via ffprobe na
 // confirmação da importação, best-effort — ver ImportService.ConfirmImport)
 // — só é chamado quando o probe teve sucesso.
@@ -360,7 +392,12 @@ func ListTutors(conn *sql.DB) ([]string, error) {
 - [ ] **Step 4: Rodar os testes do pacote e confirmar que passam**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos — inclusive `TestFindLessonByPathAndByHash_FindExistingRow`, `TestUpdateLessonPath_ChangesPathSizeAndMTime`, `TestLessons_VideoHashUniqueIndexRejectsDuplicate` (já existentes, não devem quebrar com o refactor).
+Expected: PASS em todos — inclusive `TestFindLessonByPathAndByHash_FindExistingRow`, `TestUpdateLessonPath_ChangesPathSizeAndMTime`, `TestLessons_VideoHashUniqueIndexRejectsDuplicate`, `TestListLessons_ReturnsAllOrderedByDateDesc`, `TestListLessons_EmptyReturnsEmptyNotNilError` (já existentes, não devem quebrar com o refactor — `ListLessons` continua existindo nesta task).
+
+Também confirmar que o repositório inteiro ainda compila (não só `internal/db`), já que `services/library.go` ainda chama `db.ListLessons`:
+
+Run: `go build ./internal/... ./services/... .`
+Expected: sem erro.
 
 - [ ] **Step 5: Commit**
 
@@ -941,6 +978,8 @@ git commit -m "feat: calcula duracao do video em melhor esforco na confirmacao d
 **Files:**
 - Modify: `services/library.go`
 - Modify: `services/library_test.go`
+- Modify: `internal/db/lessons.go` — remover a função `ListLessons` (deixada de propósito na Task 2; este é o task que troca seu único chamador, `services/library.go`, por `ListLessonsWithStatus` — a remoção acontece no mesmo commit pra nunca deixar o repositório sem compilar entre uma coisa e outra).
+- Modify: `internal/db/lessons_test.go` — remover `TestListLessons_ReturnsAllOrderedByDateDesc` e `TestListLessons_EmptyReturnsEmptyNotNilError` (cobrem a função que este task remove).
 - Regenerate: `frontend/bindings/` (via `wails3 generate bindings -ts -i ./...`, não versionado)
 
 **Interfaces:**
@@ -1276,10 +1315,21 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes do pacote e confirmar que passam**
+- [ ] **Step 3b: Remover `ListLessons` de `internal/db`**
 
-Run: `go test ./services/... -v`
-Expected: PASS em todos.
+Este método (da História 3) fica sem chamador depois da Step 3 acima — `services/library.go` agora chama `db.ListLessonsWithStatus`, não mais `db.ListLessons`. Removê-lo neste mesmo commit (não antes: a Task 2 deixou `ListLessons` intocada de propósito, pra nunca deixar o repositório sem compilar entre as duas tasks).
+
+Em `internal/db/lessons.go`, remover a função `ListLessons` inteira (a que lista todas as lessons ordenadas por `lesson_date DESC, id DESC`, sem status).
+
+Em `internal/db/lessons_test.go`, remover `TestListLessons_ReturnsAllOrderedByDateDesc` e `TestListLessons_EmptyReturnsEmptyNotNilError` (cobrem a função removida).
+
+- [ ] **Step 4: Rodar os testes e confirmar que passam**
+
+Run: `go test ./internal/db/... ./services/... -v`
+Expected: PASS em todos — nenhum teste deve referenciar `db.ListLessons` depois desta step.
+
+Run: `go build ./internal/... ./services/... .`
+Expected: sem erro (confirma que remover `ListLessons` não deixou nenhum outro chamador esquecido em nenhum pacote).
 
 - [ ] **Step 5: Regenerar os bindings do frontend**
 
@@ -1289,7 +1339,7 @@ Expected: saída `INFO Processed: ... Services, ... Methods, ... Models ...` sem
 - [ ] **Step 6: Commit**
 
 ```bash
-git add services/library.go services/library_test.go
+git add services/library.go services/library_test.go internal/db/lessons.go internal/db/lessons_test.go
 git commit -m "feat: status/duracao/filtro/reprocessar/detalhe na LibraryService"
 ```
 
