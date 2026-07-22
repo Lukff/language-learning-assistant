@@ -13,20 +13,21 @@ import (
 // História 5 gravá-lo (best-effort, via ffprobe, na confirmação da
 // importação) — nunca bloqueia nada por ser nil.
 type Lesson struct {
-	ID              int64
-	LessonDate      string
-	Tutor           string
-	VideoPath       string
-	VideoHash       string
-	FileSize        int64
-	FileMTime       string
-	DurationSeconds *int64
+	ID                  int64
+	LessonDate          string
+	Tutor               string
+	VideoPath           string
+	VideoHash           string
+	FileSize            int64
+	FileMTime           string
+	DurationSeconds     *int64
+	StudentSpeakerLabel *string
 }
 
 // lessonColumns é a lista de colunas (nesta ordem) que scanLessonRow espera
 // — compartilhada por FindLessonByPath/ByHash/ByID pra manter as três
 // consultas idênticas na forma como leem duration_seconds nullable.
-const lessonColumns = `id, lesson_date, tutor, video_path, COALESCE(video_hash, ''), COALESCE(file_size, 0), COALESCE(file_mtime, ''), duration_seconds`
+const lessonColumns = `id, lesson_date, tutor, video_path, COALESCE(video_hash, ''), COALESCE(file_size, 0), COALESCE(file_mtime, ''), duration_seconds, student_speaker_label`
 
 // scanLessonRow faz o scan de uma linha selecionada com lessonColumns.
 // Retorna (nil, nil) se a linha não existir (sql.ErrNoRows) — path/hash/id
@@ -34,7 +35,8 @@ const lessonColumns = `id, lesson_date, tutor, video_path, COALESCE(video_hash, 
 func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	var l Lesson
 	var duration sql.NullInt64
-	err := row.Scan(&l.ID, &l.LessonDate, &l.Tutor, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime, &duration)
+	var studentSpeaker sql.NullString
+	err := row.Scan(&l.ID, &l.LessonDate, &l.Tutor, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime, &duration, &studentSpeaker)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -44,6 +46,10 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	if duration.Valid {
 		d := duration.Int64
 		l.DurationSeconds = &d
+	}
+	if studentSpeaker.Valid {
+		s := studentSpeaker.String
+		l.StudentSpeakerLabel = &s
 	}
 	return &l, nil
 }
@@ -107,6 +113,20 @@ func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	)
 	if err != nil {
 		return fmt.Errorf("gravar duração da lesson %d: %w", lessonID, err)
+	}
+	return nil
+}
+
+// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
+// nesta lesson — escolha feita pelo toggle do Detalhe (História 6).
+// Sobrescreve qualquer valor anterior, permitindo o usuário corrigir.
+func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error {
+	_, err := conn.Exec(
+		`UPDATE lessons SET student_speaker_label = ?, updated_at = ? WHERE id = ?`,
+		speakerLabel, time.Now().UTC().Format(time.RFC3339), lessonID,
+	)
+	if err != nil {
+		return fmt.Errorf("gravar student_speaker_label da lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
