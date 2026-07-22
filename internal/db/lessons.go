@@ -55,6 +55,22 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	return &l, nil
 }
 
+// FindLessonByID busca a lesson por id. Retorna (nil, nil) se não houver.
+func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
+	var l Lesson
+	err := conn.QueryRow(
+		`SELECT id, lesson_date, tutor, video_path, COALESCE(video_hash, ''), COALESCE(file_size, 0), COALESCE(file_mtime, '') FROM lessons WHERE id = ?`,
+		id,
+	).Scan(&l.ID, &l.LessonDate, &l.Tutor, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("buscar lesson por id: %w", err)
+	}
+	return &l, nil
+}
+
 // ListLessons lista todas as lessons registradas, mais recentes primeiro
 // por data da aula — usado pela Biblioteca para mostrar as aulas já
 // confirmadas (crua nesta fatia: sem status/duração/filtro, isso é escopo

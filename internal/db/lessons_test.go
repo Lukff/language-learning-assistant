@@ -143,3 +143,36 @@ func TestLessons_VideoHashUniqueIndexRejectsDuplicate(t *testing.T) {
 		t.Error("esperava erro de índice único em video_hash duplicado, veio nil")
 	}
 }
+
+func TestFindLessonByID_FindsExistingAndNilWhenMissing(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	res, err := conn.Exec(
+		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert de fixture falhou: %v", err)
+	}
+	id, _ := res.LastInsertId()
+
+	found, err := FindLessonByID(conn, id)
+	if err != nil {
+		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+	}
+	if found == nil || found.VideoPath != "aula-01.mp4" {
+		t.Errorf("FindLessonByID() = %+v, esperado video_path aula-01.mp4", found)
+	}
+
+	missing, err := FindLessonByID(conn, id+999)
+	if err != nil {
+		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+	}
+	if missing != nil {
+		t.Errorf("FindLessonByID() para id inexistente = %+v, esperado nil", missing)
+	}
+}
