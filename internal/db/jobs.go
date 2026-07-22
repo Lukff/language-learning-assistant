@@ -156,3 +156,26 @@ func RequeueRunningJobs(conn *sql.DB) (int64, error) {
 	}
 	return n, nil
 }
+
+// ResetErrorJobsForLesson reseta todos os jobs em "error" da lesson pra
+// "pending" (attempts=0, last_error=NULL) — usado pelo botão "Reprocessar"
+// da Biblioteca (História 5). Reseta os dois jobs de uma vez de propósito:
+// quando extract_audio falha em definitivo, o worker já marca transcribe
+// como "error" também (bloqueado por dependência — ver claimNextEligibleJob
+// em internal/jobs/worker.go), e resetar só o extract_audio deixaria o
+// transcribe preso em erro pra sempre. Retorna quantos jobs foram
+// resetados (0 não é erro — a lesson pode não ter nenhum job em erro).
+func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error) {
+	res, err := conn.Exec(
+		`UPDATE jobs SET status = 'pending', attempts = 0, last_error = NULL, updated_at = ? WHERE lesson_id = ? AND status = 'error'`,
+		time.Now().UTC().Format(time.RFC3339), lessonID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("resetar jobs com erro da lesson %d: %w", lessonID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("confirmar reset de jobs da lesson %d: %w", lessonID, err)
+	}
+	return n, nil
+}
