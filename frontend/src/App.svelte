@@ -3,17 +3,31 @@
   import Sidebar from "./lib/Sidebar.svelte";
   import Header from "./lib/Header.svelte";
   import Library from "./lib/screens/Library.svelte";
+  import LessonDetail from "./lib/screens/LessonDetail.svelte";
   import Progress from "./lib/screens/Progress.svelte";
   import Queue from "./lib/screens/Queue.svelte";
   import SetupWizard from "./lib/SetupWizard.svelte";
   import { colors, fonts } from "./lib/theme";
   import * as SetupService from "../bindings/assistente-idiomas/services/setupservice";
 
-  type Screen = "library" | "progress" | "queue";
+  type NavScreen = "library" | "progress" | "queue";
+  type Route =
+    | { screen: "library" }
+    | { screen: "lesson-detail"; lessonId: number }
+    | { screen: "progress" }
+    | { screen: "queue" };
 
-  let screen: Screen = $state("library");
+  let route: Route = $state({ screen: "library" });
   let checkingFirstRun = $state(true);
   let firstRun = $state(false);
+
+  function navigate(screen: NavScreen) {
+    route = { screen };
+  }
+
+  function openLesson(lessonId: number) {
+    route = { screen: "lesson-detail", lessonId };
+  }
 
   onMount(async () => {
     try {
@@ -30,13 +44,15 @@
   <SetupWizard onComplete={() => (firstRun = false)} />
 {:else}
   <div class="shell" style="background: {colors.bg}; font-family: {fonts.body};">
-    <Sidebar active={screen} onNavigate={(s) => (screen = s)} />
+    <Sidebar active={route.screen === "lesson-detail" ? "library" : route.screen} onNavigate={navigate} />
     <main class="main">
       <Header />
       <div class="content">
-        {#if screen === "library"}
-          <Library />
-        {:else if screen === "progress"}
+        {#if route.screen === "library"}
+          <Library onOpenLesson={openLesson} />
+        {:else if route.screen === "lesson-detail"}
+          <LessonDetail lessonId={route.lessonId} onBack={() => navigate("library")} />
+        {:else if route.screen === "progress"}
           <Progress />
         {:else}
           <Queue />

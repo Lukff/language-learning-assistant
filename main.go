@@ -30,7 +30,15 @@ func main() {
 	}
 	defer conn.Close()
 
-	startJobWorker(conn)
+	storageRoot := func() (string, error) {
+		cfg, err := config.Load()
+		if err != nil {
+			return "", err
+		}
+		return cfg.StorageRoot, nil
+	}
+
+	startJobWorker(conn, storageRoot)
 
 	app := application.New(application.Options{
 		Name:        "Assistente de Idiomas",
@@ -41,7 +49,8 @@ func main() {
 			application.NewService(services.NewLibraryService(conn)),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler:    application.AssetFileServerFS(assets),
+			Middleware: services.VideoAssetMiddleware(conn, storageRoot),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
@@ -61,24 +70,17 @@ func main() {
 }
 
 // startJobWorker inicia o pipeline em background (História 4) numa
-// goroutine. storage_root e a credencial de STT são resolvidos a cada job,
-// não aqui — o wizard de primeira execução ainda não rodou neste ponto do
-// startup, então resolvê-los agora falharia sempre na primeira sessão do
-// app (ver docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
-// Só o cache de áudio (que não depende do wizard) é resolvido aqui; se
-// isso falhar, é um problema de disco/permissão e o worker não inicia.
-func startJobWorker(conn *sql.DB) {
+// goroutine. storageRoot é resolvido a cada job, não uma vez só aqui — o
+// wizard de primeira execução ainda não rodou neste ponto do startup, então
+// resolvê-lo antecipadamente falharia sempre na primeira sessão do app (ver
+// docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
+// Só o cache de áudio (que não depende do wizard) é resolvido aqui; se isso
+// falhar, é um problema de disco/permissão e o worker não inicia.
+func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {
 	audioCacheDir, err := config.AudioCacheDir()
 	if err != nil {
 		log.Printf("worker de jobs não iniciado: %v", err)
 		return
-	}
-	storageRoot := func() (string, error) {
-		cfg, err := config.Load()
-		if err != nil {
-			return "", err
-		}
-		return cfg.StorageRoot, nil
 	}
 	sttFactory := func() (stt.Provider, error) {
 		apiKey, err := config.GetSTTAPIKey()

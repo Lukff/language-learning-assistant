@@ -222,3 +222,72 @@ func TestRequeueRunningJobs_MovesRunningBackToPendingWithoutIncrementingAttempts
 		t.Errorf("job done = %+v, não deveria ser afetado pelo requeue", done)
 	}
 }
+
+func TestResetErrorJobsForLesson_ResetsOnlyErrorJobsOfThatLesson(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	failing := mustInsertLessonForJobs(t, conn, "falhou.mp4")
+	extractID := mustInsertJob(t, conn, failing, "extract_audio", "error", 3, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+	transcribeID := mustInsertJob(t, conn, failing, "transcribe", "error", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+	if _, err := conn.Exec(`UPDATE jobs SET last_error = 'falhou' WHERE id IN (?, ?)`, extractID, transcribeID); err != nil {
+		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+	}
+
+	other := mustInsertLessonForJobs(t, conn, "outra.mp4")
+	otherDoneID := mustInsertJob(t, conn, other, "extract_audio", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+
+	n, err := ResetErrorJobsForLesson(conn, failing)
+	if err != nil {
+		t.Fatalf("ResetErrorJobsForLesson() erro inesperado: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("ResetErrorJobsForLesson() = %d, esperado 2 jobs resetados", n)
+	}
+
+	extract, err := FindJob(conn, failing, "extract_audio")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if extract.Status != "pending" || extract.Attempts != 0 || extract.LastError != "" {
+		t.Errorf("extract_audio após reset = %+v, esperado status=pending attempts=0 last_error vazio", extract)
+	}
+
+	transcribe, err := FindJob(conn, failing, "transcribe")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if transcribe.Status != "pending" || transcribe.Attempts != 0 || transcribe.LastError != "" {
+		t.Errorf("transcribe após reset = %+v, esperado status=pending attempts=0 last_error vazio", transcribe)
+	}
+
+	otherJob, err := FindJob(conn, other, "extract_audio")
+	if err != nil {
+		t.Fatalf("FindJob() erro inesperado: %v", err)
+	}
+	if otherJob.ID != otherDoneID || otherJob.Status != "done" {
+		t.Errorf("job de outra lesson = %+v, não deveria ser afetado pelo reset", otherJob)
+	}
+}
+
+func TestResetErrorJobsForLesson_NoErrorJobsReturnsZeroNoError(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLessonForJobs(t, conn, "aula.mp4")
+	mustInsertJob(t, conn, lessonID, "extract_audio", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+
+	n, err := ResetErrorJobsForLesson(conn, lessonID)
+	if err != nil {
+		t.Fatalf("ResetErrorJobsForLesson() erro inesperado: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("ResetErrorJobsForLesson() = %d, esperado 0 (nenhum job em erro)", n)
+	}
+}

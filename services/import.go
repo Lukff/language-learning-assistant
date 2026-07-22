@@ -1,12 +1,16 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"path/filepath"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
 	"assistente-idiomas/internal/importer"
+	"assistente-idiomas/internal/media"
 )
 
 // ImportService cobre a História 3: varrer a pasta de armazenamento em
@@ -67,7 +71,9 @@ func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 }
 
 // ConfirmImport grava o candidato id como lesson real (lessonDate no
-// formato AAAA-MM-DD, tutor livre) e cria os jobs de processamento.
+// formato AAAA-MM-DD, tutor livre) e cria os jobs de processamento. Depois
+// de confirmar, tenta calcular a duração do vídeo (melhor esforço — ver
+// setDurationBestEffort).
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error {
 	if lessonDate == "" {
 		return fmt.Errorf("data da aula não pode ser vazia")
@@ -75,8 +81,39 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	if tutor == "" {
 		return fmt.Errorf("tutor não pode ser vazio")
 	}
-	_, err := db.ConfirmPendingImport(s.conn, id, lessonDate, tutor)
-	return err
+	lessonID, err := db.ConfirmPendingImport(s.conn, id, lessonDate, tutor)
+	if err != nil {
+		return err
+	}
+	s.setDurationBestEffort(lessonID)
+	return nil
+}
+
+// setDurationBestEffort calcula a duração do vídeo recém-confirmado via
+// ffprobe e grava em lessons.duration_seconds. Duração é metadado
+// intrínseco do vídeo, não produto do pipeline de transcrição — deve ficar
+// disponível mesmo que o pipeline falhe (princípio de resiliência,
+// CLAUDE.md). Por isso qualquer falha aqui (ffprobe ausente, arquivo
+// inválido, etc.) é só logada: nunca propagada como erro de ConfirmImport,
+// que já confirmou a lesson com sucesso.
+func (s *ImportService) setDurationBestEffort(lessonID int64) {
+	lesson, err := db.FindLessonByID(s.conn, lessonID)
+	if err != nil || lesson == nil {
+		return
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	videoPath := filepath.Join(cfg.StorageRoot, filepath.FromSlash(lesson.VideoPath))
+	dur, err := media.Duration(context.Background(), videoPath)
+	if err != nil {
+		slog.Warn("importer: não foi possível calcular a duração do vídeo", "lesson_id", lessonID, "erro", err)
+		return
+	}
+	if err := db.SetLessonDuration(s.conn, lessonID, int64(dur.Seconds())); err != nil {
+		slog.Warn("importer: não foi possível gravar a duração do vídeo", "lesson_id", lessonID, "erro", err)
+	}
 }
 
 // dbRepo adapta internal/db (que expõe Lesson com path e hash juntos) à
