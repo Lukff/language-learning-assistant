@@ -14,7 +14,7 @@
     onClose: () => void;
   } = $props();
 
-  // Cópia editável do palpite de data — deliberadamente não reativa a
+  // Cópia editável do palpite de data/horário — deliberadamente não reativa a
   // mudanças de `pending` (cada candidato tem sua própria instância deste
   // componente, ver Library.svelte). `untrack` documenta essa intenção pro
   // linter do Svelte 5.
@@ -55,8 +55,8 @@
     <h2 style="font-family: {fonts.display};">Confirmar aula encontrada</h2>
     <p class="path" style="color: {colors.mut}; font-family: {fonts.mono};">{pending.path}</p>
 
-    <label for="lesson-date">Data da aula</label>
-    <input id="lesson-date" type="date" bind:value={lessonDate} />
+    <label for="lesson-date">Data e horário da aula</label>
+    <input id="lesson-date" type="datetime-local" bind:value={lessonDate} />
 
     <label for="tutor">Tutor</label>
     <input id="tutor" type="text" bind:value={tutor} placeholder="Nome do tutor" />

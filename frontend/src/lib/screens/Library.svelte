@@ -22,6 +22,16 @@
     lessons = (await LibraryService.ListLessons()) ?? [];
   }
 
+  // lessonDate é gravado como "AAAA-MM-DD" ou "AAAA-MM-DDTHH:MM" (formato de
+  // <input type="datetime-local">); aqui só reformata pra exibição em pt-BR
+  // sem depender de fuso horário (não é um timestamp com "Z", é hora local).
+  function formatLessonDateTime(value: string): string {
+    const [datePart, timePart] = value.split("T");
+    const [year, month, day] = datePart.split("-");
+    const formattedDate = `${day}/${month}/${year}`;
+    return timePart ? `${formattedDate} ${timePart}` : formattedDate;
+  }
+
   async function loadAll() {
     try {
       await Promise.all([loadPending(), loadLessons()]);
@@ -101,7 +111,7 @@
         <ul>
           {#each lessons as lesson (lesson.id)}
             <li>
-              <span class="date" style="color: {colors.text};">{lesson.lessonDate}</span>
+              <span class="date" style="color: {colors.text};">{formatLessonDateTime(lesson.lessonDate)}</span>
               <span class="tutor" style="color: {colors.mut};">{lesson.tutor}</span>
               <span class="path" style="font-family: {fonts.mono}; color: {colors.mut};">{lesson.videoPath}</span>
             </li>
@@ -183,7 +193,7 @@
   }
   .lessons .date {
     font-size: 0.85rem;
-    min-width: 6rem;
+    min-width: 9rem;
   }
   .lessons .tutor {
     font-size: 0.85rem;
