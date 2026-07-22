@@ -190,12 +190,16 @@ func hashFile(path string) (string, error) {
 
 var isoDateInName = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})`)
 
-// suggestDate tenta achar uma data AAAA-MM-DD no nome do arquivo; na falta
-// disso, usa a data do mtime. É só um palpite pré-preenchido no modal de
-// confirmação — o usuário sempre pode corrigir.
+// suggestDate tenta achar uma data AAAA-MM-DD no nome do arquivo — nesse
+// caso o horário é desconhecido, sugerido como 00:00. Na falta de data no
+// nome, usa data e horário do mtime do arquivo (aproximação razoável: o
+// arquivo normalmente é baixado logo depois da aula). Formato compatível
+// com <input type="datetime-local"> (AAAA-MM-DDTHH:MM). É só um palpite
+// pré-preenchido no modal de confirmação — o usuário sempre pode corrigir
+// data e horário.
 func suggestDate(filename string, mtime time.Time) string {
 	if m := isoDateInName.FindString(filename); m != "" {
-		return m
+		return m + "T00:00"
 	}
-	return mtime.Format("2006-01-02")
+	return mtime.Format("2006-01-02T15:04")
 }

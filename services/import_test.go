@@ -40,11 +40,11 @@ func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
 	}
-	if len(pending) != 1 || pending[0].Path != "aula-2026-07-15.mp4" || pending[0].SuggestedDate != "2026-07-15" {
-		t.Fatalf("ListPendingImports() = %+v, esperado 1 item aula-2026-07-15.mp4/2026-07-15", pending)
+	if len(pending) != 1 || pending[0].Path != "aula-2026-07-15.mp4" || pending[0].SuggestedDate != "2026-07-15T00:00" {
+		t.Fatalf("ListPendingImports() = %+v, esperado 1 item aula-2026-07-15.mp4/2026-07-15T00:00", pending)
 	}
 
-	if err := svc.ConfirmImport(pending[0].ID, "2026-07-15", "Sarah M."); err != nil {
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-15T00:00", "Sarah M."); err != nil {
 		t.Fatalf("ConfirmImport() erro inesperado: %v", err)
 	}
 
