@@ -1,10 +1,11 @@
 <script lang="ts">
   import { colors, fonts } from "./theme";
   import * as SetupService from "../../bindings/assistente-idiomas/services/setupservice";
+  import * as ImportService from "../../bindings/assistente-idiomas/services/importservice";
 
   let { onComplete }: { onComplete: () => void } = $props();
 
-  type Step = "folder" | "credentials";
+  type Step = "folder" | "credentials" | "scanning";
   let step: Step = $state("folder");
   let storageRoot: string = $state("");
   let apiKey: string = $state("");
@@ -33,6 +34,15 @@
     saving = true;
     try {
       await SetupService.CompleteSetup(storageRoot, apiKey);
+      step = "scanning";
+      // Falha na varredura não deve travar o wizard nem esconder o app do
+      // usuário — o setup já está salvo; a próxima "Sincronizar pasta" na
+      // Biblioteca tenta de novo.
+      try {
+        await ImportService.ScanFolder();
+      } catch {
+        // ignorado de propósito — ver comentário acima
+      }
       onComplete();
     } catch (e) {
       error = String(e);
@@ -53,7 +63,7 @@
       <button onclick={chooseFolder} disabled={choosing}>
         {choosing ? "Abrindo…" : "Escolher pasta"}
       </button>
-    {:else}
+    {:else if step === "credentials"}
       <h1 style="font-family: {fonts.display};">Pasta selecionada</h1>
       <p class="mono" style="color: {colors.mut};">{storageRoot}</p>
       <h2 style="font-family: {fonts.display};">Chave da API (ElevenLabs)</h2>
@@ -61,6 +71,11 @@
       <button onclick={complete} disabled={saving || apiKey.length === 0}>
         {saving ? "Salvando…" : "Concluir"}
       </button>
+    {:else}
+      <h1 style="font-family: {fonts.display};">Procurando aulas na pasta…</h1>
+      <p style="color: {colors.mut};">
+        Verificando se já existem vídeos de aula em {storageRoot}.
+      </p>
     {/if}
     {#if error}
       <p class="error" style="color: {colors.red};">{error}</p>
