@@ -381,7 +381,21 @@ func TestFail_RetriesThenTerminatesAfterMaxAttempts(t *testing.T) {
 	)
 
 	w.fail(job, errors.New("falha simulada"))
+	if len(events) != 1 {
+		t.Fatalf("eventos após 1ª falha = %+v, esperado 1 evento", events)
+	}
+	if events[0].Status != "pending" || events[0].Attempts != 1 {
+		t.Errorf("eventos[0] = %+v, esperado status=pending attempts=1", events[0])
+	}
+
 	w.fail(job, errors.New("falha simulada"))
+	if len(events) != 2 {
+		t.Fatalf("eventos após 2ª falha = %+v, esperado 2 eventos", events)
+	}
+	if events[1].Status != "pending" || events[1].Attempts != 2 {
+		t.Errorf("eventos[1] = %+v, esperado status=pending attempts=2", events[1])
+	}
+
 	w.fail(job, errors.New("falha simulada"))
 
 	got, err := db.FindJob(conn, lessonID, "extract_audio")
@@ -393,6 +407,9 @@ func TestFail_RetriesThenTerminatesAfterMaxAttempts(t *testing.T) {
 	}
 	if len(events) != 3 || events[2].Status != "error" {
 		t.Errorf("eventos notificados = %+v, esperado 3 eventos terminando em error", events)
+	}
+	if events[2].Status != "error" || events[2].Attempts != 3 {
+		t.Errorf("eventos[2] = %+v, esperado status=error attempts=3", events[2])
 	}
 }
 
