@@ -20,11 +20,12 @@ import (
 // busca de vídeos de aula ainda não registrados, listar os candidatos
 // pendentes de revisão e confirmar um deles (data/tutor) como lesson real.
 type ImportService struct {
-	conn *sql.DB
+	conn     *sql.DB
+	moveFile func(string, string) error
 }
 
 func NewImportService(conn *sql.DB) *ImportService {
-	return &ImportService{conn: conn}
+	return &ImportService{conn: conn, moveFile: moveFileNoClobber}
 }
 
 // ScanSummary é o resultado de uma varredura, exposto ao frontend pra um
@@ -86,6 +87,11 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	}
 	if !hasTimeComponent(lessonDate) {
 		return fmt.Errorf("horário da aula é obrigatório")
+	}
+	const lessonDateLayout = "2006-01-02T15:04"
+	parsedLessonDate, err := time.Parse(lessonDateLayout, lessonDate)
+	if err != nil || parsedLessonDate.Format(lessonDateLayout) != lessonDate {
+		return fmt.Errorf("data e horário da aula devem estar no formato AAAA-MM-DDTHH:MM")
 	}
 	lessonID, err := db.ConfirmPendingImport(s.conn, id, lessonDate, tutor)
 	if err != nil {
@@ -178,24 +184,66 @@ func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 	}
 
 	targetAbsPath := filepath.Join(targetAbsDir, candidate)
-	if targetAbsPath == currentAbsPath {
+	targetInfo, err := os.Stat(targetAbsPath)
+	targetIsCurrent := err == nil && os.SameFile(info, targetInfo)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Warn("importer: não foi possível verificar o destino antes de mover o vídeo", "lesson_id", lessonID, "erro", err)
 		return
 	}
-	if err := os.Rename(currentAbsPath, targetAbsPath); err != nil {
-		slog.Warn("importer: não foi possível renomear o vídeo pro nome padronizado", "lesson_id", lessonID, "erro", err)
-		return
+	if !targetIsCurrent {
+		if err := s.moveFile(currentAbsPath, targetAbsPath); err != nil {
+			slog.Warn("importer: não foi possível mover o vídeo pro nome padronizado", "lesson_id", lessonID, "erro", err)
+			return
+		}
 	}
 
 	targetRelPath := filepath.ToSlash(filepath.Join(relDir, candidate))
 	mtime := info.ModTime().UTC().Format(time.RFC3339)
 	if err := db.UpdateLessonPath(s.conn, lessonID, targetRelPath, info.Size(), mtime); err != nil {
-		rollbackErr := os.Rename(targetAbsPath, currentAbsPath)
-		if rollbackErr != nil {
-			slog.Error("importer: falha ao atualizar o path da lesson e ao reverter o rename", "lesson_id", lessonID, "erro_original", err, "erro_rollback", rollbackErr)
-			return
+		if !targetIsCurrent {
+			rollbackErr := s.moveFile(targetAbsPath, currentAbsPath)
+			if rollbackErr != nil {
+				slog.Error("importer: falha ao atualizar o path da lesson e ao reverter o move", "lesson_id", lessonID, "erro_original", err, "erro_rollback", rollbackErr)
+				return
+			}
 		}
-		slog.Warn("importer: não foi possível atualizar o path da lesson após renomear; rename revertido", "lesson_id", lessonID, "erro_original", err)
+		slog.Warn("importer: não foi possível atualizar o path da lesson após mover; operação revertida", "lesson_id", lessonID, "erro_original", err)
 	}
+}
+
+// moveFileNoClobber move um arquivo na mesma pasta sem substituir um destino
+// criado entre a checagem de colisão e a operação. Hard links podem não ser
+// suportados por todo filesystem; nesse caso o rename cosmético é abandonado.
+func moveFileNoClobber(oldPath, newPath string) error {
+	if err := os.Link(oldPath, newPath); err != nil {
+		return fmt.Errorf("criar hard link de destino: %w", err)
+	}
+	if err := os.Remove(oldPath); err != nil {
+		cleanupErr := removeLinkIfSameFile(oldPath, newPath)
+		if cleanupErr != nil {
+			return fmt.Errorf("remover arquivo original: %w; limpar hard link de destino: %v", err, cleanupErr)
+		}
+		return fmt.Errorf("remover arquivo original: %w", err)
+	}
+	return nil
+}
+
+func removeLinkIfSameFile(originalPath, linkPath string) error {
+	originalInfo, err := os.Stat(originalPath)
+	if err != nil {
+		return fmt.Errorf("verificar arquivo original: %w", err)
+	}
+	linkInfo, err := os.Stat(linkPath)
+	if err != nil {
+		return fmt.Errorf("verificar hard link de destino: %w", err)
+	}
+	if !os.SameFile(originalInfo, linkInfo) {
+		return fmt.Errorf("destino não aponta mais para o arquivo original")
+	}
+	if err := os.Remove(linkPath); err != nil {
+		return fmt.Errorf("remover hard link de destino: %w", err)
+	}
+	return nil
 }
 
 func renameCandidateAvailable(currentInfo os.FileInfo, candidatePath string) (bool, error) {

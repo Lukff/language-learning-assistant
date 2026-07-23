@@ -1,9 +1,11 @@
 package services
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
@@ -132,6 +134,9 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenRenameFails(t *testing.T) {
 	defer conn.Close()
 
 	svc := NewImportService(conn)
+	svc.moveFile = func(_, _ string) error {
+		return errors.New("falha injetada")
+	}
 	if _, err := svc.ScanFolder(); err != nil {
 		t.Fatalf("ScanFolder() erro inesperado: %v", err)
 	}
@@ -139,20 +144,6 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenRenameFails(t *testing.T) {
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
 	}
-
-	storageInfo, err := os.Stat(storageRoot)
-	if err != nil {
-		t.Fatalf("stat da pasta de armazenamento falhou: %v", err)
-	}
-	originalPerm := storageInfo.Mode().Perm()
-	if err := os.Chmod(storageRoot, 0o555); err != nil {
-		t.Fatalf("chmod da pasta de armazenamento falhou: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chmod(storageRoot, originalPerm); err != nil {
-			t.Errorf("restaurar permissões da pasta de armazenamento falhou: %v", err)
-		}
-	})
 
 	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
 		t.Fatalf("ConfirmImport() não deveria falhar mesmo com rename impossível: %v", err)
@@ -164,6 +155,154 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenRenameFails(t *testing.T) {
 	}
 	if lesson == nil {
 		t.Fatal("lesson deveria ter sido confirmada com o path original, já que o rename falhou")
+	}
+	if _, err := os.Stat(filepath.Join(storageRoot, originalName)); err != nil {
+		t.Errorf("arquivo original deveria permanecer após falha do move: %v", err)
+	}
+}
+
+func TestImportService_ConfirmImport_DoesNotClobberDestinationCreatedBeforeMove(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	originalName := "aula-original.mp4"
+	originalPath := filepath.Join(storageRoot, originalName)
+	if err := os.WriteFile(originalPath, []byte("video original"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo original falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	intruderContent := []byte("arquivo intruso")
+	svc.moveFile = func(oldPath, newPath string) error {
+		if err := os.WriteFile(newPath, intruderContent, 0o644); err != nil {
+			return err
+		}
+		return moveFileNoClobber(oldPath, newPath)
+	}
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport() não deveria falhar com colisão TOCTOU: %v", err)
+	}
+
+	targetName := "2026-07-23_14H30_maria-jose.mp4"
+	gotIntruder, err := os.ReadFile(filepath.Join(storageRoot, targetName))
+	if err != nil {
+		t.Fatalf("ler arquivo intruso falhou: %v", err)
+	}
+	if string(gotIntruder) != string(intruderContent) {
+		t.Errorf("destino foi sobrescrito: conteúdo = %q", gotIntruder)
+	}
+	if _, err := os.Stat(originalPath); err != nil {
+		t.Errorf("arquivo original deveria permanecer: %v", err)
+	}
+	if lesson, err := db.FindLessonByPath(conn, originalName); err != nil || lesson == nil {
+		t.Errorf("banco deveria continuar no path original: lesson=%+v err=%v", lesson, err)
+	}
+}
+
+func TestImportService_ConfirmImport_RollsBackMoveWhenDatabasePathUpdateFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	originalName := "aula-original.mp4"
+	originalPath := filepath.Join(storageRoot, originalName)
+	if err := os.WriteFile(originalPath, []byte("video original"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo original falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+	if _, err := conn.Exec(`CREATE TRIGGER reject_video_path_update BEFORE UPDATE OF video_path ON lessons BEGIN SELECT RAISE(ABORT, 'falha injetada'); END`); err != nil {
+		t.Fatalf("criar trigger de falha falhou: %v", err)
+	}
+
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport() não deveria propagar falha de atualização do path: %v", err)
+	}
+
+	targetPath := filepath.Join(storageRoot, "2026-07-23_14H30_maria-jose.mp4")
+	if _, err := os.Stat(originalPath); err != nil {
+		t.Errorf("rollback deveria restaurar arquivo original: %v", err)
+	}
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Errorf("target não deveria existir após rollback, err=%v", err)
+	}
+	if lesson, err := db.FindLessonByPath(conn, originalName); err != nil || lesson == nil {
+		t.Errorf("banco deveria apontar para o path original: lesson=%+v err=%v", lesson, err)
+	}
+}
+
+func TestImportService_ConfirmImport_NormalizesPathAlreadyPointingToTargetFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	targetName := "2026-07-23_14H30_maria-jose.mp4"
+	targetPath := filepath.Join(storageRoot, targetName)
+	if err := os.WriteFile(targetPath, []byte("video original"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo original falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatalf("stat do vídeo falhou: %v", err)
+	}
+	if err := db.InsertPendingImport(conn, db.PendingImport{
+		Path:          "./" + targetName,
+		FileSize:      info.Size(),
+		FileMTime:     info.ModTime().UTC().Format(time.RFC3339),
+		SHA256:        "hash-sintetico",
+		SuggestedDate: "2026-07-23T14:30",
+	}); err != nil {
+		t.Fatalf("InsertPendingImport() falhou: %v", err)
+	}
+
+	svc := NewImportService(conn)
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport() erro inesperado: %v", err)
+	}
+
+	if lesson, err := db.FindLessonByPath(conn, targetName); err != nil || lesson == nil {
+		t.Errorf("path textual deveria ser normalizado sem sufixo: lesson=%+v err=%v", lesson, err)
+	}
+	if _, err := os.Stat(filepath.Join(storageRoot, "2026-07-23_14H30_maria-jose-2.mp4")); !os.IsNotExist(err) {
+		t.Errorf("não deveria criar arquivo com sufixo -2, err=%v", err)
 	}
 }
 
@@ -311,11 +450,43 @@ func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
 	defer conn.Close()
 	svc := NewImportService(conn)
 
-	if err := svc.ConfirmImport(1, "", "Sarah M."); err == nil {
-		t.Error("ConfirmImport() com data vazia esperava erro, veio nil")
+	if err := svc.ConfirmImport(1, "", ""); err == nil || err.Error() != "data da aula não pode ser vazia" {
+		t.Errorf("ConfirmImport() com data e tutor vazios = %v, esperado data da aula não pode ser vazia", err)
 	}
-	if err := svc.ConfirmImport(1, "2026-07-15", ""); err == nil || err.Error() != "tutor não pode ser vazio" {
+	if err := svc.ConfirmImport(1, "../foraT12:30", ""); err == nil || err.Error() != "tutor não pode ser vazio" {
 		t.Errorf("ConfirmImport() com tutor vazio = %v, esperado tutor não pode ser vazio", err)
+	}
+}
+
+func TestImportService_ConfirmImport_RejectsMalformedLessonDate(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+	svc := NewImportService(conn)
+
+	for _, lessonDate := range []string{
+		"../foraT12:30",
+		"2026-02-30T12:30",
+		"2026-07-15T12:30:00",
+		"2026-07-15T12:30Z",
+	} {
+		t.Run(lessonDate, func(t *testing.T) {
+			err := svc.ConfirmImport(1, lessonDate, "Sarah M.")
+			if err == nil || err.Error() != "data e horário da aula devem estar no formato AAAA-MM-DDTHH:MM" {
+				t.Errorf("ConfirmImport(%q) = %v, esperado erro de formato", lessonDate, err)
+			}
+		})
+	}
+
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM lessons`).Scan(&count); err != nil {
+		t.Fatalf("count de lessons falhou: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("datas inválidas não deveriam criar lessons, count = %d", count)
 	}
 }
 
