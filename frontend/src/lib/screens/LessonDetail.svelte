@@ -9,6 +9,9 @@
   let lesson: Lesson | null = $state(null);
   let loading: boolean = $state(true);
   let lessonError: string = $state("");
+  // Erro de uma ação pontual (toggle de speaker, reprocessar) — não deve
+  // derrubar o vídeo/painel, por isso fica separado de lessonError.
+  let actionError: string = $state("");
 
   let transcript: Transcript | null = $state(null);
   let loadingTranscript: boolean = $state(false);
@@ -107,24 +110,26 @@
 
   async function chooseStudentSpeaker(speaker: string) {
     if (!lesson) return;
+    actionError = "";
     const previous = lesson.studentSpeakerLabel;
     lesson = { ...lesson, studentSpeakerLabel: speaker };
     try {
       await LibraryService.SetStudentSpeaker(lessonId, speaker);
     } catch (e) {
       lesson = { ...lesson, studentSpeakerLabel: previous };
-      lessonError = String(e);
+      actionError = String(e);
     }
   }
 
   async function retry() {
+    actionError = "";
     retrying = true;
     try {
       await LibraryService.RetryLesson(lessonId);
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchTranscriptIfReady();
     } catch (e) {
-      lessonError = String(e);
+      actionError = String(e);
     } finally {
       retrying = false;
     }
@@ -150,6 +155,10 @@
   {:else if lessonError}
     <p class="error" style="color: {colors.red};">{lessonError}</p>
   {:else if lesson}
+    {#if actionError}
+      <p class="action-error" style="color: {colors.red}; border: 1px solid {colors.red};">{actionError}</p>
+    {/if}
+
     <div class="header-row">
       <h1 style="font-family: {fonts.display};">{formatLessonDateTime(lesson.lessonDate)}</h1>
       <span class="meta" style="color: {colors.mut}; font-family: {fonts.mono};"
@@ -330,5 +339,11 @@
   }
   .error {
     font-size: 0.85rem;
+  }
+  .action-error {
+    font-size: 0.85rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
   }
 </style>
