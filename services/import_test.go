@@ -113,6 +113,44 @@ func TestImportService_ConfirmImport_RenamesVideoToStandardFilename(t *testing.T
 	}
 }
 
+func TestRenameCandidateAvailable_DistinguishesCurrentFileFromCollision(t *testing.T) {
+	dir := t.TempDir()
+	currentPath := filepath.Join(dir, "video.MP4")
+	if err := os.WriteFile(currentPath, []byte("video atual"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo atual falhou: %v", err)
+	}
+	currentInfo, err := os.Stat(currentPath)
+	if err != nil {
+		t.Fatalf("os.Stat() do vídeo atual falhou: %v", err)
+	}
+
+	collisionPath := filepath.Join(dir, "outro.mp4")
+	if err := os.WriteFile(collisionPath, []byte("outro vídeo"), 0o644); err != nil {
+		t.Fatalf("preparar colisão falhou: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "mesmo arquivo", path: currentPath, want: true},
+		{name: "nome livre", path: filepath.Join(dir, "livre.mp4"), want: true},
+		{name: "outro arquivo", path: collisionPath, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := renameCandidateAvailable(currentInfo, tt.path)
+			if err != nil {
+				t.Fatalf("renameCandidateAvailable() falhou: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("renameCandidateAvailable() = %v, esperado %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestImportService_ScanFolderTwiceDoesNotDuplicateCandidate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 

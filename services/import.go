@@ -138,11 +138,16 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 // confirmação da lesson.
 func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
-	if err != nil || lesson == nil {
+	if err != nil {
+		slog.Warn("importer: não foi possível carregar a lesson antes de renomear o vídeo", "lesson_id", lessonID, "erro", err)
+		return
+	}
+	if lesson == nil {
 		return
 	}
 	cfg, err := config.Load()
 	if err != nil {
+		slog.Warn("importer: não foi possível carregar a configuração antes de renomear o vídeo", "lesson_id", lessonID, "erro", err)
 		return
 	}
 
@@ -152,26 +157,28 @@ func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 	targetBase := strings.TrimSuffix(targetName, targetExt)
 	currentAbsPath := filepath.Join(cfg.StorageRoot, filepath.FromSlash(lesson.VideoPath))
 	targetAbsDir := filepath.Join(cfg.StorageRoot, relDir)
+	info, err := os.Stat(currentAbsPath)
+	if err != nil {
+		slog.Warn("importer: não foi possível ler o vídeo antes de renomear", "lesson_id", lessonID, "erro", err)
+		return
+	}
 
 	candidate := targetName
 	for i := 2; ; i++ {
 		candidateAbsPath := filepath.Join(targetAbsDir, candidate)
-		if candidateAbsPath == currentAbsPath {
-			return
-		}
-		if _, err := os.Stat(candidateAbsPath); os.IsNotExist(err) {
-			break
-		} else if err != nil {
+		available, err := renameCandidateAvailable(info, candidateAbsPath)
+		if err != nil {
 			slog.Warn("importer: erro ao checar colisão de nome padronizado", "lesson_id", lessonID, "erro", err)
 			return
+		}
+		if available {
+			break
 		}
 		candidate = fmt.Sprintf("%s-%d%s", targetBase, i, targetExt)
 	}
 
 	targetAbsPath := filepath.Join(targetAbsDir, candidate)
-	info, err := os.Stat(currentAbsPath)
-	if err != nil {
-		slog.Warn("importer: não foi possível ler o vídeo antes de renomear", "lesson_id", lessonID, "erro", err)
+	if targetAbsPath == currentAbsPath {
 		return
 	}
 	if err := os.Rename(currentAbsPath, targetAbsPath); err != nil {
@@ -189,6 +196,17 @@ func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 		}
 		slog.Warn("importer: não foi possível atualizar o path da lesson após renomear; rename revertido", "lesson_id", lessonID, "erro_original", err)
 	}
+}
+
+func renameCandidateAvailable(currentInfo os.FileInfo, candidatePath string) (bool, error) {
+	candidateInfo, err := os.Stat(candidatePath)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return os.SameFile(currentInfo, candidateInfo), nil
 }
 
 // dbRepo adapta internal/db (que expõe Lesson com path e hash juntos) à
