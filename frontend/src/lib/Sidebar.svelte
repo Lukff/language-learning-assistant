@@ -1,5 +1,6 @@
 <script lang="ts">
   import { colors, fonts } from "./theme";
+  import { jobsStore } from "./jobsStore.svelte";
 
   type Screen = "library" | "progress" | "queue";
 
@@ -32,6 +33,11 @@
     >
       <span class="icon">{item.icon}</span>
       {item.label}
+      {#if item.key === "queue" && jobsStore.activeCount > 0}
+        <span class="badge" style="background: {colors.blue}; color: {colors.bg};">
+          {jobsStore.activeCount}
+        </span>
+      {/if}
     </button>
   {/each}
 </aside>
@@ -73,5 +79,13 @@
     display: inline-block;
     width: 1.1rem;
     text-align: center;
+  }
+  .badge {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    flex-shrink: 0;
   }
 </style>

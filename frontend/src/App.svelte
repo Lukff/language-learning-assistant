@@ -8,6 +8,7 @@
   import Queue from "./lib/screens/Queue.svelte";
   import SetupWizard from "./lib/SetupWizard.svelte";
   import { colors, fonts } from "./lib/theme";
+  import { initJobsStore } from "./lib/jobsStore.svelte";
   import * as SetupService from "../bindings/assistente-idiomas/services/setupservice";
 
   type NavScreen = "library" | "progress" | "queue";
@@ -30,6 +31,7 @@
   }
 
   onMount(async () => {
+    initJobsStore();
     try {
       firstRun = await SetupService.IsFirstRun();
     } finally {
