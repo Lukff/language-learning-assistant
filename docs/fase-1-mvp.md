@@ -80,6 +80,7 @@ completo em `docs/superpowers/specs/2026-07-22-historia-3-importar-aula-design.m
 - [x] Vídeos novos viram candidatos numa lista de **pendentes de revisão** na Biblioteca (sem estrutura de "Ignorar" — a pasta só deve conter aulas). Confirmar um candidato (modal de data/tutor) grava a `lesson` + jobs `extract_audio`/`transcribe` como `pending`, e o remove da lista de pendentes.
 - [ ] A varredura roda automaticamente ao final do wizard de primeira execução (depois de escolher a pasta) e também fica disponível como ação sob demanda depois ("Sincronizar pasta"), para pegar vídeos jogados manualmente na pasta depois do setup. (compilação e tipos verificados — `pnpm run check`/`pnpm run build` limpos, wiring revisado — mas fluxo real ainda não clicado numa janela de verdade; verificar visualmente em Windows/Linux antes de fechar a história)
 - [x] Importação duplicada (mesmo hash) é detectada e não duplicada — garantida por índice único no banco.
+- [ ] Depois de confirmado (data/horário/tutor no modal), o arquivo de vídeo é renomeado *in place* para `AAAA-MM-DD_HHHMM_tutor-slug.ext` (ex.: `2026-07-23_14H30_maria-jose.mp4`); falha no rename não impede a confirmação (best-effort, logada). Horário passa a ser obrigatório na confirmação — candidato sem data, horário ou tutor continua pendente. Design em `docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md`.
 
 ### Dependências
 História 2.
