@@ -113,6 +113,60 @@ func TestImportService_ConfirmImport_RenamesVideoToStandardFilename(t *testing.T
 	}
 }
 
+func TestImportService_ConfirmImport_SucceedsEvenWhenRenameFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	storageRoot := t.TempDir()
+	originalName := "aula-original.mp4"
+	if err := os.WriteFile(filepath.Join(storageRoot, originalName), []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	storageInfo, err := os.Stat(storageRoot)
+	if err != nil {
+		t.Fatalf("stat da pasta de armazenamento falhou: %v", err)
+	}
+	originalPerm := storageInfo.Mode().Perm()
+	if err := os.Chmod(storageRoot, 0o555); err != nil {
+		t.Fatalf("chmod da pasta de armazenamento falhou: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(storageRoot, originalPerm); err != nil {
+			t.Errorf("restaurar permissões da pasta de armazenamento falhou: %v", err)
+		}
+	})
+
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport() não deveria falhar mesmo com rename impossível: %v", err)
+	}
+
+	lesson, err := db.FindLessonByPath(conn, originalName)
+	if err != nil {
+		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+	}
+	if lesson == nil {
+		t.Fatal("lesson deveria ter sido confirmada com o path original, já que o rename falhou")
+	}
+}
+
 func TestImportService_ConfirmImport_ResolvesFilenameCollisionWithSuffix(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
