@@ -131,3 +131,37 @@ func TestListLessonsWithStatus_FiltraPorTutorEPeriodo(t *testing.T) {
 		t.Errorf("ListLessonsWithStatus(2026-07-15..2026-07-31) = %+v, esperado só a aula de 20/07 (inclui horário, filtra só pela data)", byDate)
 	}
 }
+
+func TestFindLessonWithStatusByID_FindsExistingWithStatusAndNilWhenMissing(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLessonForJobs(t, conn, "aula.mp4")
+	mustInsertJob(t, conn, lessonID, "extract_audio", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+	mustInsertJob(t, conn, lessonID, "transcribe", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
+	if err := SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+	}
+
+	found, err := FindLessonWithStatusByID(conn, lessonID)
+	if err != nil {
+		t.Fatalf("FindLessonWithStatusByID() erro inesperado: %v", err)
+	}
+	if found == nil || found.Status != "pronta" {
+		t.Fatalf("FindLessonWithStatusByID() = %+v, esperado status=pronta", found)
+	}
+	if found.StudentSpeakerLabel == nil || *found.StudentSpeakerLabel != "speaker_0" {
+		t.Errorf("StudentSpeakerLabel = %v, esperado speaker_0", found.StudentSpeakerLabel)
+	}
+
+	missing, err := FindLessonWithStatusByID(conn, lessonID+999)
+	if err != nil {
+		t.Fatalf("FindLessonWithStatusByID() erro inesperado: %v", err)
+	}
+	if missing != nil {
+		t.Errorf("FindLessonWithStatusByID() para id inexistente = %+v, esperado nil", missing)
+	}
+}
