@@ -192,7 +192,7 @@ func TestImportService_ConfirmImport_DoesNotClobberDestinationCreatedBeforeMove(
 		if err := os.WriteFile(newPath, intruderContent, 0o644); err != nil {
 			return err
 		}
-		return moveFileNoReplace(oldPath, newPath, os.Remove)
+		return moveFileNoReplace(oldPath, newPath)
 	}
 	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
 		t.Fatalf("ConfirmImport() não deveria falhar com colisão TOCTOU: %v", err)
@@ -442,31 +442,7 @@ func TestClassifySameFilePath(t *testing.T) {
 	}
 }
 
-func TestMoveFileNoReplace_KeepsBothLinksWhenRemovingOriginalFails(t *testing.T) {
-	dir := t.TempDir()
-	originalPath := filepath.Join(dir, "original.mp4")
-	targetPath := filepath.Join(dir, "target.mp4")
-	if err := os.WriteFile(originalPath, []byte("video"), 0o644); err != nil {
-		t.Fatalf("preparar arquivo original falhou: %v", err)
-	}
-
-	err := moveFileNoReplace(originalPath, targetPath, func(string) error {
-		return errors.New("falha injetada ao remover original")
-	})
-	if err == nil {
-		t.Fatal("moveFileNoReplace() deveria retornar a falha de remoção")
-	}
-	originalInfo, originalErr := os.Stat(originalPath)
-	targetInfo, targetErr := os.Stat(targetPath)
-	if originalErr != nil || targetErr != nil {
-		t.Fatalf("ambos os hard links deveriam permanecer: original=%v target=%v", originalErr, targetErr)
-	}
-	if !os.SameFile(originalInfo, targetInfo) {
-		t.Error("destino deveria continuar como hard link do original")
-	}
-}
-
-func TestMoveToExistingSameFile_RemovesOnlyDistinctOriginalHardLink(t *testing.T) {
+func TestMoveToExistingSameFile_KeepsDistinctHardLinkNames(t *testing.T) {
 	dir := t.TempDir()
 	originalPath := filepath.Join(dir, "original.mp4")
 	targetPath := filepath.Join(dir, "target.mp4")
@@ -477,11 +453,15 @@ func TestMoveToExistingSameFile_RemovesOnlyDistinctOriginalHardLink(t *testing.T
 		t.Skipf("filesystem não suporta hard links: %v", err)
 	}
 
-	if err := moveToExistingSameFile(originalPath, targetPath, sameFileDistinctHardLink, os.Remove); err != nil {
+	unexpectedMove := func(_, _ string) error {
+		t.Fatal("hard link distinto já existente não deveria executar move")
+		return nil
+	}
+	if err := moveToExistingSameFile(originalPath, targetPath, sameFileDistinctHardLink, unexpectedMove); err != nil {
 		t.Fatalf("moveToExistingSameFile() falhou: %v", err)
 	}
-	if _, err := os.Stat(originalPath); !os.IsNotExist(err) {
-		t.Errorf("nome original deveria ter sido removido, err=%v", err)
+	if _, err := os.Stat(originalPath); err != nil {
+		t.Errorf("nome original deveria permanecer: %v", err)
 	}
 	if got, err := os.ReadFile(targetPath); err != nil || string(got) != "video" {
 		t.Errorf("destino deveria permanecer intacto: conteúdo=%q err=%v", got, err)

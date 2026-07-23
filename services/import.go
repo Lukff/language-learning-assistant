@@ -27,10 +27,8 @@ type ImportService struct {
 
 func NewImportService(conn *sql.DB) *ImportService {
 	return &ImportService{
-		conn: conn,
-		moveFile: func(oldPath, newPath string) error {
-			return moveFileNoReplace(oldPath, newPath, os.Remove)
-		},
+		conn:     conn,
+		moveFile: moveFileNoReplace,
 	}
 }
 
@@ -199,15 +197,13 @@ func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 	var rollback func() error
 	if targetIsCurrent {
 		sameFileKind := classifySameFilePath(currentAbsPath, targetAbsPath, runtime.GOOS)
-		if err := moveToExistingSameFile(currentAbsPath, targetAbsPath, sameFileKind, os.Remove); err != nil {
+		if err := moveToExistingSameFile(currentAbsPath, targetAbsPath, sameFileKind, s.moveFile); err != nil {
 			slog.Warn("importer: não foi possível concluir o move para o mesmo arquivo", "lesson_id", lessonID, "erro", err)
 			return
 		}
 		switch sameFileKind {
 		case sameFileCaseOnlyPath:
-			rollback = func() error { return renameCaseOnlyNoReplace(targetAbsPath, currentAbsPath) }
-		case sameFileDistinctHardLink:
-			rollback = func() error { return os.Link(targetAbsPath, currentAbsPath) }
+			rollback = func() error { return s.moveFile(targetAbsPath, currentAbsPath) }
 		}
 	} else {
 		if err := s.moveFile(currentAbsPath, targetAbsPath); err != nil {
@@ -251,35 +247,20 @@ func classifySameFilePath(oldPath, newPath, goos string) sameFilePathKind {
 	return sameFileDistinctHardLink
 }
 
-func moveToExistingSameFile(oldPath, newPath string, kind sameFilePathKind, remove func(string) error) error {
+func moveToExistingSameFile(oldPath, newPath string, kind sameFilePathKind, moveFile func(string, string) error) error {
 	switch kind {
 	case sameFileExactPath:
 		return nil
 	case sameFileCaseOnlyPath:
-		return renameCaseOnlyNoReplace(oldPath, newPath)
+		return moveFile(oldPath, newPath)
 	case sameFileDistinctHardLink:
-		if err := remove(oldPath); err != nil {
-			return fmt.Errorf("remover nome original do hard link: %w", err)
-		}
+		// Não há unlink condicional atômico portátil. Preserva os dois nomes
+		// para eliminar qualquer risco de remover uma entrada concorrente.
 		return nil
 	default:
 		return fmt.Errorf("classificação de mesmo arquivo desconhecida: %d", kind)
 	}
 }
-
-// moveFileNoReplace move um arquivo na mesma pasta sem substituir um destino
-// criado entre a checagem de colisão e a operação. Hard links podem não ser
-// suportados por todo filesystem; nesse caso o rename cosmético é abandonado.
-func moveFileNoReplace(oldPath, newPath string, remove func(string) error) error {
-	if err := os.Link(oldPath, newPath); err != nil {
-		return fmt.Errorf("criar hard link de destino: %w", err)
-	}
-	if err := remove(oldPath); err != nil {
-		return fmt.Errorf("remover arquivo original: %w", err)
-	}
-	return nil
-}
-
 func renameCandidateAvailable(currentInfo os.FileInfo, candidatePath string) (bool, error) {
 	candidateInfo, err := os.Stat(candidatePath)
 	if os.IsNotExist(err) {
