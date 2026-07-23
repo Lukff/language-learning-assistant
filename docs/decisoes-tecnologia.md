@@ -35,6 +35,7 @@
 - **HTTP (APIs de STT e LLM):** `net/http` da stdlib.
 - **ffmpeg:** invocado via `os/exec`.
 - **Credenciais:** `zalando/go-keyring` — armazenamento seguro nativo do SO (nunca em texto plano).
+- **`golang.org/x/sys`:** usada só por `unix.Renameat2` (`services/move_noreplace_linux.go`) para o rename atômico *sem substituição* do vídeo ao confirmar a importação (História 3, renomeação padronizada) — já era dependência indireta via outras libs, promovida a direta nesta fatia.
 - **Hash do manifesto de sync:** `crypto/sha256` da stdlib.
 - **Logs:** `log/slog` da stdlib, em arquivo (essencial para depurar o pipeline em background).
 

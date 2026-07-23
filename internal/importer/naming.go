@@ -47,5 +47,11 @@ func StandardFilename(lessonDate, tutor, ext string) string {
 	datePart, timePart, _ := strings.Cut(lessonDate, "T")
 	timePart = strings.ReplaceAll(timePart, ":", "H")
 	slug := slugify(tutor)
+	if slug == "" {
+		// Tutor sem nenhum caractere alfanumérico (ex.: "..."). ConfirmImport só
+		// rejeita tutor vazio, não este caso degenerado — cai aqui pra nunca
+		// produzir um nome de arquivo com "_" solto antes da extensão.
+		slug = "tutor"
+	}
 	return fmt.Sprintf("%s_%s_%s%s", datePart, timePart, slug, strings.ToLower(ext))
 }

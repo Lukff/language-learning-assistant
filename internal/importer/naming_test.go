@@ -38,6 +38,13 @@ func TestStandardFilename(t *testing.T) {
 			ext:        ".mp4",
 			want:       "2026-01-05_23H59_joao-nandu.mp4",
 		},
+		{
+			name:       "tutor sem nenhum caractere alfanumérico cai no placeholder",
+			lessonDate: "2026-07-23T14:30",
+			tutor:      "...",
+			ext:        ".mp4",
+			want:       "2026-07-23_14H30_tutor.mp4",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
