@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
@@ -71,12 +72,15 @@ func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 }
 
 // ConfirmImport grava o candidato id como lesson real (lessonDate no
-// formato AAAA-MM-DD, tutor livre) e cria os jobs de processamento. Depois
+// formato AAAA-MM-DDTHH:MM, tutor livre) e cria os jobs de processamento. Depois
 // de confirmar, tenta calcular a duração do vídeo (melhor esforço — ver
 // setDurationBestEffort).
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error {
 	if lessonDate == "" {
 		return fmt.Errorf("data da aula não pode ser vazia")
+	}
+	if !hasTimeComponent(lessonDate) {
+		return fmt.Errorf("horário da aula é obrigatório")
 	}
 	if tutor == "" {
 		return fmt.Errorf("tutor não pode ser vazio")
@@ -87,6 +91,16 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	}
 	s.setDurationBestEffort(lessonID)
 	return nil
+}
+
+// hasTimeComponent indica se lessonDate (formato de <input type="datetime-local">,
+// "AAAA-MM-DDTHH:MM") tem um componente de horário não vazio depois do "T".
+// ConfirmImport exige isso porque o nome padronizado do arquivo
+// (StandardFilename, internal/importer) depende de sempre haver horário —
+// ver docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md.
+func hasTimeComponent(lessonDate string) bool {
+	_, timePart, found := strings.Cut(lessonDate, "T")
+	return found && timePart != ""
 }
 
 // setDurationBestEffort calcula a duração do vídeo recém-confirmado via

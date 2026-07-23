@@ -121,6 +121,53 @@ func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
 	}
 }
 
+func TestImportService_ConfirmImport_RejectsDateWithoutTime(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	storageRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-15", "Sarah M."); err == nil {
+		t.Error("ConfirmImport() com data sem horário esperava erro, veio nil")
+	}
+
+	pending, err = svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 1 {
+		t.Errorf("candidato deveria continuar pendente após confirmação recusada, ListPendingImports() = %+v", pending)
+	}
+
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM lessons`).Scan(&count); err != nil {
+		t.Fatalf("count de lessons falhou: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("nenhuma lesson deveria ter sido criada, count = %d", count)
+	}
+}
+
 func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
@@ -147,7 +194,7 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testi
 		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
 	}
 
-	if err := svc.ConfirmImport(pending[0].ID, "2026-07-22", "Sarah M."); err != nil {
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-22T09:00", "Sarah M."); err != nil {
 		t.Fatalf("ConfirmImport() com vídeo inválido não deveria falhar (duração é melhor esforço): %v", err)
 	}
 
