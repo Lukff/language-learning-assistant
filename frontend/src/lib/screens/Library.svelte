@@ -120,9 +120,7 @@
   }
 
   function openLesson(lesson: Lesson) {
-    if (lesson.status === "pronta") {
-      onOpenLesson(lesson.id);
-    }
+    onOpenLesson(lesson.id);
   }
 
   onMount(loadAll);
@@ -186,11 +184,7 @@
         <ul>
           {#each lessons as lesson (lesson.id)}
             <li>
-              <button
-                class="lesson-main"
-                onclick={() => openLesson(lesson)}
-                style="cursor: {lesson.status === 'pronta' ? 'pointer' : 'default'}; opacity: {lesson.status === 'pronta' ? 1 : 0.7};"
-              >
+              <button class="lesson-main" onclick={() => openLesson(lesson)}>
                 <span class="date" style="color: {colors.text};">{formatLessonDateTime(lesson.lessonDate)}</span>
                 <span class="tutor" style="color: {colors.mut};"
                   >{lesson.tutor}{formatDuration(lesson.durationSeconds)

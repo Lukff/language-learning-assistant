@@ -25,23 +25,62 @@ type LessonWithStatus struct {
 	ErrorMessage string
 }
 
+// lessonWithStatusColumns e lessonWithStatusFromJoin são compartilhados por
+// ListLessonsWithStatus (várias linhas) e FindLessonWithStatusByID (uma
+// linha, História 6) — mesma lista de colunas/JOIN, pra não divergirem.
+const lessonWithStatusColumns = `
+		l.id, l.lesson_date, l.tutor, l.video_path,
+		COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''),
+		l.duration_seconds, l.student_speaker_label,
+		COALESCE(ea.status, ''), COALESCE(ea.last_error, ''),
+		COALESCE(tr.status, ''), COALESCE(tr.last_error, '')`
+
+const lessonWithStatusFromJoin = `
+	FROM lessons l
+	LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
+	LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'`
+
+// rowScanner é satisfeito tanto por *sql.Row (uma linha) quanto por *sql.Rows
+// (várias linhas) — permite compartilhar o scan entre
+// ListLessonsWithStatus e FindLessonWithStatusByID.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanLessonWithStatusRow(s rowScanner) (LessonWithStatus, error) {
+	var lws LessonWithStatus
+	var duration sql.NullInt64
+	var studentSpeaker sql.NullString
+	var extractStatus, extractError, transcribeStatus, transcribeError string
+	err := s.Scan(
+		&lws.ID, &lws.LessonDate, &lws.Tutor, &lws.VideoPath,
+		&lws.VideoHash, &lws.FileSize, &lws.FileMTime,
+		&duration, &studentSpeaker,
+		&extractStatus, &extractError,
+		&transcribeStatus, &transcribeError,
+	)
+	if err != nil {
+		return LessonWithStatus{}, err
+	}
+	if duration.Valid {
+		d := duration.Int64
+		lws.DurationSeconds = &d
+	}
+	if studentSpeaker.Valid {
+		sp := studentSpeaker.String
+		lws.StudentSpeakerLabel = &sp
+	}
+	lws.Status, lws.ErrorMessage = deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError)
+	return lws, nil
+}
+
 // ListLessonsWithStatus lista as lessons confirmadas com o status derivado
 // dos jobs, mais recentes primeiro, aplicando filter (campos vazios são
 // ignorados). O filtro de data compara só a parte AAAA-MM-DD de
 // lesson_date (que pode ter horário, formato de <input type="datetime-local">),
 // pra incluir aulas com horário registrado no dia inteiro do intervalo.
 func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error) {
-	query := `
-		SELECT
-			l.id, l.lesson_date, l.tutor, l.video_path,
-			COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''),
-			l.duration_seconds,
-			COALESCE(ea.status, ''), COALESCE(ea.last_error, ''),
-			COALESCE(tr.status, ''), COALESCE(tr.last_error, '')
-		FROM lessons l
-		LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
-		LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'
-		WHERE 1=1`
+	query := `SELECT` + lessonWithStatusColumns + lessonWithStatusFromJoin + ` WHERE 1=1`
 	var args []any
 	if filter.Tutor != "" {
 		query += ` AND l.tutor = ?`
@@ -65,29 +104,33 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 
 	out := make([]LessonWithStatus, 0)
 	for rows.Next() {
-		var lws LessonWithStatus
-		var duration sql.NullInt64
-		var extractStatus, extractError, transcribeStatus, transcribeError string
-		if err := rows.Scan(
-			&lws.ID, &lws.LessonDate, &lws.Tutor, &lws.VideoPath,
-			&lws.VideoHash, &lws.FileSize, &lws.FileMTime,
-			&duration,
-			&extractStatus, &extractError,
-			&transcribeStatus, &transcribeError,
-		); err != nil {
+		lws, err := scanLessonWithStatusRow(rows)
+		if err != nil {
 			return nil, fmt.Errorf("ler lesson com status: %w", err)
 		}
-		if duration.Valid {
-			d := duration.Int64
-			lws.DurationSeconds = &d
-		}
-		lws.Status, lws.ErrorMessage = deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError)
 		out = append(out, lws)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterar lessons com status: %w", err)
 	}
 	return out, nil
+}
+
+// FindLessonWithStatusByID busca uma lesson por id já com o status
+// derivado dos jobs (mesmas regras de ListLessonsWithStatus) — usada pelo
+// Detalhe (História 6), que agora abre em qualquer status, não só
+// "pronta" (ver services.LibraryService.GetLesson). Retorna (nil, nil) se
+// a lesson não existir.
+func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error) {
+	row := conn.QueryRow(`SELECT`+lessonWithStatusColumns+lessonWithStatusFromJoin+` WHERE l.id = ?`, id)
+	lws, err := scanLessonWithStatusRow(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("buscar lesson com status por id %d: %w", id, err)
+	}
+	return &lws, nil
 }
 
 // deriveStatus aplica as regras de status da Biblioteca (História 5): erro

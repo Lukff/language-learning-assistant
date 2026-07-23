@@ -189,3 +189,40 @@ func TestListTutors_ReturnsDistinctSortedTutors(t *testing.T) {
 		t.Errorf("ListTutors() = %+v, esperado [James K. Sarah M.] (distintos, ordem alfabética)", tutors)
 	}
 }
+
+func TestSetStudentSpeaker_RoundTripsThroughFindLessonByID(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	res, err := conn.Exec(
+		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert de fixture falhou: %v", err)
+	}
+	id, _ := res.LastInsertId()
+
+	before, err := FindLessonByID(conn, id)
+	if err != nil {
+		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+	}
+	if before.StudentSpeakerLabel != nil {
+		t.Errorf("StudentSpeakerLabel = %v, esperado nil antes de SetStudentSpeaker", *before.StudentSpeakerLabel)
+	}
+
+	if err := SetStudentSpeaker(conn, id, "speaker_1"); err != nil {
+		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+	}
+
+	after, err := FindLessonByID(conn, id)
+	if err != nil {
+		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+	}
+	if after.StudentSpeakerLabel == nil || *after.StudentSpeakerLabel != "speaker_1" {
+		t.Errorf("StudentSpeakerLabel = %v, esperado speaker_1", after.StudentSpeakerLabel)
+	}
+}

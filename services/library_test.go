@@ -192,3 +192,86 @@ func TestLibraryService_GetLesson_FindsExistingAndErrorsWhenMissing(t *testing.T
 		t.Error("GetLesson() com id inexistente esperava erro, veio nil")
 	}
 }
+
+func TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "running", "")
+
+	svc := NewLibraryService(conn)
+	lesson, err := svc.GetLesson(lessonID)
+	if err != nil {
+		t.Fatalf("GetLesson() erro inesperado: %v", err)
+	}
+	if lesson.Status != "processando" {
+		t.Errorf("GetLesson().Status = %q, esperado processando (transcribe ainda rodando)", lesson.Status)
+	}
+	if lesson.StudentSpeakerLabel != nil {
+		t.Errorf("GetLesson().StudentSpeakerLabel = %v, esperado nil antes do toggle", lesson.StudentSpeakerLabel)
+	}
+
+	if err := svc.SetStudentSpeaker(lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+	}
+	lesson, err = svc.GetLesson(lessonID)
+	if err != nil {
+		t.Fatalf("GetLesson() erro inesperado: %v", err)
+	}
+	if lesson.StudentSpeakerLabel == nil || *lesson.StudentSpeakerLabel != "speaker_0" {
+		t.Errorf("GetLesson().StudentSpeakerLabel = %v, esperado speaker_0", lesson.StudentSpeakerLabel)
+	}
+}
+
+func TestLibraryService_GetTranscript_ReturnsUtterancesInSeconds(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
+	utterancesJSON := `[{"Speaker":"speaker_0","Text":"Hello","Start":0,"End":2000000000},{"Speaker":"speaker_1","Text":"Hi","Start":2000000000,"End":3500000000}]`
+	if err := db.InsertTranscript(conn, lessonID, "aula.transcript.json", utterancesJSON); err != nil {
+		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
+	}
+
+	svc := NewLibraryService(conn)
+	tr, err := svc.GetTranscript(lessonID)
+	if err != nil {
+		t.Fatalf("GetTranscript() erro inesperado: %v", err)
+	}
+	if len(tr.Utterances) != 2 {
+		t.Fatalf("GetTranscript().Utterances = %+v, esperado 2 falas", tr.Utterances)
+	}
+	if tr.Utterances[0].Speaker != "speaker_0" || tr.Utterances[0].StartSeconds != 0 || tr.Utterances[0].EndSeconds != 2 {
+		t.Errorf("Utterances[0] = %+v, esperado speaker_0 0s-2s", tr.Utterances[0])
+	}
+	if tr.Utterances[1].StartSeconds != 2 || tr.Utterances[1].EndSeconds != 3.5 {
+		t.Errorf("Utterances[1] = %+v, esperado 2s-3.5s", tr.Utterances[1])
+	}
+}
+
+func TestLibraryService_GetTranscript_ErrorsWhenNoTranscriptYet(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "running", "")
+
+	svc := NewLibraryService(conn)
+	if _, err := svc.GetTranscript(lessonID); err == nil {
+		t.Error("GetTranscript() sem transcrição esperava erro, veio nil")
+	}
+}
