@@ -113,6 +113,64 @@ func TestImportService_ConfirmImport_RenamesVideoToStandardFilename(t *testing.T
 	}
 }
 
+func TestImportService_ConfirmImport_ResolvesFilenameCollisionWithSuffix(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	storageRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(storageRoot, "a.mp4"), []byte("conteudo-a"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo a.mp4 falhou: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(storageRoot, "b.mp4"), []byte("conteudo-b-bem-diferente"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo b.mp4 falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	var idA, idB int64
+	for _, p := range pending {
+		switch p.Path {
+		case "a.mp4":
+			idA = p.ID
+		case "b.mp4":
+			idB = p.ID
+		}
+	}
+	if idA == 0 || idB == 0 {
+		t.Fatalf("não achei os dois candidatos esperados (a.mp4/b.mp4) em %+v", pending)
+	}
+
+	// Mesma data/horário/tutor pras duas aulas — mesmo nome-alvo, força colisão.
+	if err := svc.ConfirmImport(idA, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport(a) erro inesperado: %v", err)
+	}
+	if err := svc.ConfirmImport(idB, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport(b) erro inesperado: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(storageRoot, "2026-07-23_14H30_maria-jose.mp4")); err != nil {
+		t.Errorf("primeira aula deveria ter o nome base, sem sufixo: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(storageRoot, "2026-07-23_14H30_maria-jose-2.mp4")); err != nil {
+		t.Errorf("segunda aula deveria ter o sufixo -2: %v", err)
+	}
+}
+
 func TestRenameCandidateAvailable_DistinguishesCurrentFileFromCollision(t *testing.T) {
 	dir := t.TempDir()
 	currentPath := filepath.Join(dir, "video.MP4")
