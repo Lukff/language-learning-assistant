@@ -47,6 +47,7 @@ func main() {
 			application.NewService(services.NewSetupService()),
 			application.NewService(services.NewImportService(conn)),
 			application.NewService(services.NewLibraryService(conn)),
+			application.NewService(services.NewQueueService(conn)),
 		},
 		Assets: application.AssetOptions{
 			Handler:    application.AssetFileServerFS(assets),
