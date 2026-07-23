@@ -79,11 +79,11 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	if lessonDate == "" {
 		return fmt.Errorf("data da aula não pode ser vazia")
 	}
-	if !hasTimeComponent(lessonDate) {
-		return fmt.Errorf("horário da aula é obrigatório")
-	}
 	if tutor == "" {
 		return fmt.Errorf("tutor não pode ser vazio")
+	}
+	if !hasTimeComponent(lessonDate) {
+		return fmt.Errorf("horário da aula é obrigatório")
 	}
 	lessonID, err := db.ConfirmPendingImport(s.conn, id, lessonDate, tutor)
 	if err != nil {
