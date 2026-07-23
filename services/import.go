@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
@@ -90,6 +92,7 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 		return err
 	}
 	s.setDurationBestEffort(lessonID)
+	s.renameVideoBestEffort(lessonID)
 	return nil
 }
 
@@ -127,6 +130,64 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 	}
 	if err := db.SetLessonDuration(s.conn, lessonID, int64(dur.Seconds())); err != nil {
 		slog.Warn("importer: não foi possível gravar a duração do vídeo", "lesson_id", lessonID, "erro", err)
+	}
+}
+
+// renameVideoBestEffort renomeia o vídeo recém-confirmado pro nome
+// padronizado, sempre na mesma pasta. Falhas são logadas e não invalidam a
+// confirmação da lesson.
+func (s *ImportService) renameVideoBestEffort(lessonID int64) {
+	lesson, err := db.FindLessonByID(s.conn, lessonID)
+	if err != nil || lesson == nil {
+		return
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+
+	relDir := filepath.Dir(filepath.FromSlash(lesson.VideoPath))
+	targetName := importer.StandardFilename(lesson.LessonDate, lesson.Tutor, filepath.Ext(lesson.VideoPath))
+	targetExt := filepath.Ext(targetName)
+	targetBase := strings.TrimSuffix(targetName, targetExt)
+	currentAbsPath := filepath.Join(cfg.StorageRoot, filepath.FromSlash(lesson.VideoPath))
+	targetAbsDir := filepath.Join(cfg.StorageRoot, relDir)
+
+	candidate := targetName
+	for i := 2; ; i++ {
+		candidateAbsPath := filepath.Join(targetAbsDir, candidate)
+		if candidateAbsPath == currentAbsPath {
+			return
+		}
+		if _, err := os.Stat(candidateAbsPath); os.IsNotExist(err) {
+			break
+		} else if err != nil {
+			slog.Warn("importer: erro ao checar colisão de nome padronizado", "lesson_id", lessonID, "erro", err)
+			return
+		}
+		candidate = fmt.Sprintf("%s-%d%s", targetBase, i, targetExt)
+	}
+
+	targetAbsPath := filepath.Join(targetAbsDir, candidate)
+	info, err := os.Stat(currentAbsPath)
+	if err != nil {
+		slog.Warn("importer: não foi possível ler o vídeo antes de renomear", "lesson_id", lessonID, "erro", err)
+		return
+	}
+	if err := os.Rename(currentAbsPath, targetAbsPath); err != nil {
+		slog.Warn("importer: não foi possível renomear o vídeo pro nome padronizado", "lesson_id", lessonID, "erro", err)
+		return
+	}
+
+	targetRelPath := filepath.ToSlash(filepath.Join(relDir, candidate))
+	mtime := info.ModTime().UTC().Format(time.RFC3339)
+	if err := db.UpdateLessonPath(s.conn, lessonID, targetRelPath, info.Size(), mtime); err != nil {
+		rollbackErr := os.Rename(targetAbsPath, currentAbsPath)
+		if rollbackErr != nil {
+			slog.Error("importer: falha ao atualizar o path da lesson e ao reverter o rename", "lesson_id", lessonID, "erro_original", err, "erro_rollback", rollbackErr)
+			return
+		}
+		slog.Warn("importer: não foi possível atualizar o path da lesson após renomear; rename revertido", "lesson_id", lessonID, "erro_original", err)
 	}
 }
 

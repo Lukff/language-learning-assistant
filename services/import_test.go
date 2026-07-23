@@ -65,6 +65,54 @@ func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
 	}
 }
 
+func TestImportService_ConfirmImport_RenamesVideoToStandardFilename(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	storageRoot := t.TempDir()
+	originalName := "cambly-download-xyz.mp4"
+	if err := os.WriteFile(filepath.Join(storageRoot, originalName), []byte("conteudo-de-video"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
+		t.Fatalf("ConfirmImport() erro inesperado: %v", err)
+	}
+
+	wantPath := "2026-07-23_14H30_maria-jose.mp4"
+	lesson, err := db.FindLessonByPath(conn, wantPath)
+	if err != nil {
+		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+	}
+	if lesson == nil {
+		t.Fatalf("lesson não encontrada no path padronizado %q — video_path não foi atualizado", wantPath)
+	}
+
+	if _, err := os.Stat(filepath.Join(storageRoot, wantPath)); err != nil {
+		t.Errorf("arquivo renomeado não existe no disco em %q: %v", wantPath, err)
+	}
+	if _, err := os.Stat(filepath.Join(storageRoot, originalName)); !os.IsNotExist(err) {
+		t.Errorf("arquivo original %q ainda existe no disco após rename (err=%v)", originalName, err)
+	}
+}
+
 func TestImportService_ScanFolderTwiceDoesNotDuplicateCandidate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
@@ -198,7 +246,7 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testi
 		t.Fatalf("ConfirmImport() com vídeo inválido não deveria falhar (duração é melhor esforço): %v", err)
 	}
 
-	lesson, err := db.FindLessonByPath(conn, "aula.mp4")
+	lesson, err := db.FindLessonByPath(conn, "2026-07-22_09H00_sarah-m.mp4")
 	if err != nil {
 		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
 	}
