@@ -192,7 +192,7 @@ func TestImportService_ConfirmImport_DoesNotClobberDestinationCreatedBeforeMove(
 		if err := os.WriteFile(newPath, intruderContent, 0o644); err != nil {
 			return err
 		}
-		return moveFileNoClobber(oldPath, newPath)
+		return moveFileNoReplace(oldPath, newPath, os.Remove)
 	}
 	if err := svc.ConfirmImport(pending[0].ID, "2026-07-23T14:30", "Maria José"); err != nil {
 		t.Fatalf("ConfirmImport() não deveria falhar com colisão TOCTOU: %v", err)
@@ -399,6 +399,92 @@ func TestRenameCandidateAvailable_DistinguishesCurrentFileFromCollision(t *testi
 				t.Errorf("renameCandidateAvailable() = %v, esperado %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestClassifySameFilePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		goos    string
+		oldPath string
+		newPath string
+		want    sameFilePathKind
+	}{
+		{
+			name:    "path limpo exatamente igual",
+			goos:    "linux",
+			oldPath: filepath.Join("tmp", "dir", "..", "video.mp4"),
+			newPath: filepath.Join("tmp", "video.mp4"),
+			want:    sameFileExactPath,
+		},
+		{
+			name:    "alias case-only no Windows",
+			goos:    "windows",
+			oldPath: filepath.Join("tmp", "Video.MP4"),
+			newPath: filepath.Join("tmp", "video.mp4"),
+			want:    sameFileCaseOnlyPath,
+		},
+		{
+			name:    "hard link com nome distinto",
+			goos:    "windows",
+			oldPath: filepath.Join("tmp", "original.mp4"),
+			newPath: filepath.Join("tmp", "padronizado.mp4"),
+			want:    sameFileDistinctHardLink,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifySameFilePath(tt.oldPath, tt.newPath, tt.goos); got != tt.want {
+				t.Errorf("classifySameFilePath() = %v, esperado %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMoveFileNoReplace_KeepsBothLinksWhenRemovingOriginalFails(t *testing.T) {
+	dir := t.TempDir()
+	originalPath := filepath.Join(dir, "original.mp4")
+	targetPath := filepath.Join(dir, "target.mp4")
+	if err := os.WriteFile(originalPath, []byte("video"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo original falhou: %v", err)
+	}
+
+	err := moveFileNoReplace(originalPath, targetPath, func(string) error {
+		return errors.New("falha injetada ao remover original")
+	})
+	if err == nil {
+		t.Fatal("moveFileNoReplace() deveria retornar a falha de remoção")
+	}
+	originalInfo, originalErr := os.Stat(originalPath)
+	targetInfo, targetErr := os.Stat(targetPath)
+	if originalErr != nil || targetErr != nil {
+		t.Fatalf("ambos os hard links deveriam permanecer: original=%v target=%v", originalErr, targetErr)
+	}
+	if !os.SameFile(originalInfo, targetInfo) {
+		t.Error("destino deveria continuar como hard link do original")
+	}
+}
+
+func TestMoveToExistingSameFile_RemovesOnlyDistinctOriginalHardLink(t *testing.T) {
+	dir := t.TempDir()
+	originalPath := filepath.Join(dir, "original.mp4")
+	targetPath := filepath.Join(dir, "target.mp4")
+	if err := os.WriteFile(originalPath, []byte("video"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo original falhou: %v", err)
+	}
+	if err := os.Link(originalPath, targetPath); err != nil {
+		t.Skipf("filesystem não suporta hard links: %v", err)
+	}
+
+	if err := moveToExistingSameFile(originalPath, targetPath, sameFileDistinctHardLink, os.Remove); err != nil {
+		t.Fatalf("moveToExistingSameFile() falhou: %v", err)
+	}
+	if _, err := os.Stat(originalPath); !os.IsNotExist(err) {
+		t.Errorf("nome original deveria ter sido removido, err=%v", err)
+	}
+	if got, err := os.ReadFile(targetPath); err != nil || string(got) != "video" {
+		t.Errorf("destino deveria permanecer intacto: conteúdo=%q err=%v", got, err)
 	}
 }
 
