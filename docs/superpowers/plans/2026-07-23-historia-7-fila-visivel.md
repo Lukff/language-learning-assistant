@@ -611,7 +611,12 @@ Para:
 
 - [ ] **Step 2: Confirmar que o app compila**
 
-Run: `go build ./...`
+`go build ./...` inclui `build/ios`, um stub de scaffold do Wails que **já falha na `main`, sem
+nenhuma mudança desta história** (`function main is undeclared in the main package` —
+pré-existente, fora de escopo). Por isso o build de verificação é escopado nos pacotes que
+importam: raiz (`main.go`), `internal/...`, `services/...`.
+
+Run: `go build ./internal/... ./services/... .`
 Expected: sem output (build limpo)
 
 - [ ] **Step 3: Regenerar as bindings TypeScript**
@@ -1033,7 +1038,10 @@ git commit -m "feat: badge de jobs ativos na sidebar e inicializa o store da fil
 
 - [ ] **Step 1: Suíte Go completa**
 
-Run: `go build ./... && go vet ./... && go test ./...`
+`go build ./...` inclui `build/ios` (stub de scaffold do Wails, quebrado mesmo na `main` sem
+relação com esta história — ver Task 3 Step 2), por isso o build fica escopado.
+
+Run: `go build ./internal/... ./services/... . && go vet ./... && go test ./...`
 Expected: build limpo, vet sem output, `ok` em todos os pacotes
 
 - [ ] **Step 2: Suíte frontend completa**
