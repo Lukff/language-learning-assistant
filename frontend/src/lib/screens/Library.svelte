@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { Events } from "@wailsio/runtime";
   import { colors, fonts } from "../theme";
   import * as ImportService from "../../../bindings/assistente-idiomas/services/importservice";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
@@ -17,6 +18,13 @@
   let error: string = $state("");
   let reviewing: PendingImport | null = $state(null);
   let retryingId: number | null = $state(null);
+  let pendingQueue: PendingImport[] = $state([]);
+  let dropErrors: string[] = $state([]);
+
+  interface DropErrorPayload {
+    path: string;
+    error: string;
+  }
 
   let filterTutor: string = $state("");
   let filterDateFrom: string = $state("");
@@ -93,8 +101,16 @@
     }
   }
 
+  function openNextFromQueue() {
+    if (reviewing || pendingQueue.length === 0) return;
+    const [next, ...rest] = pendingQueue;
+    pendingQueue = rest;
+    reviewing = next;
+  }
+
   function closeReview() {
     reviewing = null;
+    openNextFromQueue();
   }
 
   async function onConfirmed() {
@@ -104,6 +120,7 @@
     } catch (e) {
       error = String(e);
     }
+    openNextFromQueue();
   }
 
   async function retry(lessonId: number) {
@@ -123,10 +140,30 @@
     onOpenLesson(lesson.id);
   }
 
-  onMount(loadAll);
+  onMount(() => {
+    loadAll();
+    const offDropped = Events.On("import:dropped", (ev) => {
+      const item = ev.data as PendingImport;
+      pendingQueue = [...pendingQueue, item];
+      openNextFromQueue();
+      loadPending().catch((e) => (error = String(e)));
+    });
+    const offDropError = Events.On("import:drop-error", (ev) => {
+      const { path, error: dropError } = ev.data as DropErrorPayload;
+      dropErrors = [...dropErrors, `${path}: ${dropError}`];
+    });
+    return () => {
+      offDropped();
+      offDropError();
+    };
+  });
 </script>
 
-<div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
+<div
+  class="screen"
+  data-file-drop-target
+  style="font-family: {fonts.body}; color: {colors.text}; --drop-highlight: {colors.blue};"
+>
   <div class="header-row">
     <h1 style="font-family: {fonts.display};">Biblioteca</h1>
     <button onclick={syncFolder} disabled={syncing}>
@@ -139,6 +176,13 @@
   {/if}
   {#if error}
     <p class="error" style="color: {colors.red};">{error}</p>
+  {/if}
+  {#if dropErrors.length > 0}
+    <ul class="drop-errors">
+      {#each dropErrors as msg, i (i)}
+        <li style="color: {colors.red};">{msg}</li>
+      {/each}
+    </ul>
   {/if}
 
   {#if loading}
@@ -339,5 +383,16 @@
     padding: 0.25rem 0.6rem;
     border-radius: 999px;
     flex-shrink: 0;
+  }
+  .screen:global(.file-drop-target-active) {
+    outline: 2px dashed var(--drop-highlight);
+    outline-offset: -8px;
+    border-radius: 0.75rem;
+  }
+  .drop-errors {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    font-size: 0.85rem;
   }
 </style>
