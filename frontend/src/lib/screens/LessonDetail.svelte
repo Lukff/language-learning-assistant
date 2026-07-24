@@ -164,6 +164,14 @@
       <span class="meta" style="color: {colors.mut}; font-family: {fonts.mono};"
         >{lesson.tutor}{formatDuration(lesson.durationSeconds) ? ` · ${formatDuration(lesson.durationSeconds)}` : ""}</span
       >
+      {#if lesson.videoMissing}
+        <span
+          class="video-missing-badge"
+          style="color: {colors.amber}; background: rgba(227,164,76,.1);"
+        >
+          vídeo não encontrado na pasta atual
+        </span>
+      {/if}
     </div>
 
     <div class="grid">
@@ -260,6 +268,11 @@
   }
   .meta {
     font-size: 0.85rem;
+  }
+  .video-missing-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
   }
   .grid {
     display: grid;

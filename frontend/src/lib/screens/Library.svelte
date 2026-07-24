@@ -256,6 +256,11 @@
                   {STATUS_LABEL[lesson.status] ?? lesson.status}
                 </span>
               {/if}
+              {#if lesson.videoMissing}
+                <span class="badge" style="color: {colors.amber}; background: rgba(227,164,76,.1);">
+                  vídeo ausente
+                </span>
+              {/if}
             </li>
           {/each}
         </ul>
