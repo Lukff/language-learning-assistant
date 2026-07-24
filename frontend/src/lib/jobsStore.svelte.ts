@@ -21,7 +21,11 @@ export const jobsStore = {
   },
 };
 
-async function refetch() {
+// refreshJobsStore busca a fila de novo agora — exportada pra quem acabou
+// de disparar uma ação que muda um job (ex.: Queue.svelte's retry) não
+// precisar esperar o próximo "job:updated" (que só chega quando o worker
+// pega o job no poll de ~5s) pra ver o resultado refletido na tela.
+export async function refreshJobsStore() {
   items = (await QueueService.ListQueue()) ?? [];
 }
 
@@ -32,6 +36,6 @@ async function refetch() {
 export function initJobsStore() {
   if (initialized) return;
   initialized = true;
-  refetch();
-  Events.On("job:updated", refetch);
+  refreshJobsStore();
+  Events.On("job:updated", refreshJobsStore);
 }

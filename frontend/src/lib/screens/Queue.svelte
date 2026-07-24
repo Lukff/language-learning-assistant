@@ -1,7 +1,7 @@
 <script lang="ts">
   import { colors, fonts } from "../theme";
   import * as QueueService from "../../../bindings/assistente-idiomas/services/queueservice";
-  import { jobsStore } from "../jobsStore.svelte";
+  import { jobsStore, refreshJobsStore } from "../jobsStore.svelte";
 
   let retryingId: number | null = $state(null);
   let error: string = $state("");
@@ -20,6 +20,10 @@
     retryingId = lessonId;
     try {
       await QueueService.RetryLesson(lessonId);
+      // Não espera o próximo "job:updated" (só chega quando o worker pega
+      // o job no poll de ~5s) — atualiza a fila na hora, mesmo padrão do
+      // botão "Reprocessar" da Biblioteca.
+      await refreshJobsStore();
     } catch (e) {
       error = String(e);
     } finally {
