@@ -1,13 +1,17 @@
 package services
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
 	"assistente-idiomas/internal/importer"
+
+	"github.com/zalando/go-keyring"
 )
 
 // configStorageRoot resolve storage_root a partir de config.Load() — mesmo
@@ -123,5 +127,50 @@ func TestSettingsService_ChangeStorageFolder_EmptyRejected(t *testing.T) {
 	svc := NewSettingsService(conn, configStorageRoot)
 	if _, err := svc.ChangeStorageFolder(""); err == nil {
 		t.Fatal("ChangeStorageFolder() esperava erro pra pasta vazia, veio nil")
+	}
+}
+
+func TestSettingsService_HasSTTCredential_FalseWhenNotConfigured(t *testing.T) {
+	keyring.MockInit()
+
+	svc := NewSettingsService(nil, configStorageRoot)
+	has, err := svc.HasSTTCredential()
+	if err != nil {
+		t.Fatalf("HasSTTCredential() erro inesperado: %v", err)
+	}
+	if has {
+		t.Error("HasSTTCredential() = true, esperado false (nenhuma credencial gravada ainda)")
+	}
+}
+
+func TestSettingsService_HasSTTCredential_TrueAfterSave(t *testing.T) {
+	keyring.MockInit()
+
+	svc := NewSettingsService(nil, configStorageRoot)
+	if err := svc.SaveSTTAPIKey("sk-test-123"); err != nil {
+		t.Fatalf("SaveSTTAPIKey() erro inesperado: %v", err)
+	}
+
+	has, err := svc.HasSTTCredential()
+	if err != nil {
+		t.Fatalf("HasSTTCredential() erro inesperado: %v", err)
+	}
+	if !has {
+		t.Error("HasSTTCredential() = false, esperado true após SaveSTTAPIKey")
+	}
+}
+
+func TestSettingsService_HasSTTCredential_KeyringUnavailablePropagatesError(t *testing.T) {
+	sentinel := errors.New("secret service indisponível")
+	keyring.MockInitWithError(sentinel)
+	t.Cleanup(keyring.MockInit)
+
+	svc := NewSettingsService(nil, configStorageRoot)
+	_, err := svc.HasSTTCredential()
+	if !errors.Is(err, sentinel) {
+		t.Errorf("HasSTTCredential() erro = %v, esperado envolver %v", err, sentinel)
+	}
+	if !strings.Contains(err.Error(), "gnome-keyring") {
+		t.Errorf("erro não menciona gnome-keyring/kwallet: %v", err)
 	}
 }

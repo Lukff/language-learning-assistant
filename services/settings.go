@@ -2,10 +2,13 @@ package services
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/importer"
+
+	"github.com/zalando/go-keyring"
 )
 
 // SettingsService cobre a tela de Configurações (História 8): ver/trocar a
@@ -55,4 +58,24 @@ func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, erro
 		return ScanSummary{}, err
 	}
 	return ScanSummary{New: sum.New, Updated: sum.Updated, Skipped: sum.Skipped, Errors: sum.Errors}, nil
+}
+
+// HasSTTCredential indica se há uma credencial gravada no keyring, sem
+// revelar o valor. false (sem erro) se simplesmente não configurada ainda;
+// erro só em falha real de acesso ao keyring (Secret Service indisponível,
+// risco 3 do projeto).
+func (s *SettingsService) HasSTTCredential() (bool, error) {
+	_, err := config.GetSTTAPIKey()
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, keyring.ErrNotFound) {
+		return false, nil
+	}
+	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
+}
+
+// SaveSTTAPIKey grava/sobrescreve a credencial do provedor STT.
+func (s *SettingsService) SaveSTTAPIKey(apiKey string) error {
+	return config.SaveSTTAPIKey(apiKey)
 }
