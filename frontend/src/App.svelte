@@ -6,6 +6,7 @@
   import LessonDetail from "./lib/screens/LessonDetail.svelte";
   import Progress from "./lib/screens/Progress.svelte";
   import Queue from "./lib/screens/Queue.svelte";
+  import Settings from "./lib/screens/Settings.svelte";
   import SetupWizard from "./lib/SetupWizard.svelte";
   import { colors, fonts } from "./lib/theme";
   import { initJobsStore } from "./lib/jobsStore.svelte";
@@ -16,7 +17,8 @@
     | { screen: "library" }
     | { screen: "lesson-detail"; lessonId: number }
     | { screen: "progress" }
-    | { screen: "queue" };
+    | { screen: "queue" }
+    | { screen: "settings" };
 
   let route: Route = $state({ screen: "library" });
   let checkingFirstRun = $state(true);
@@ -46,9 +48,12 @@
   <SetupWizard onComplete={() => (firstRun = false)} />
 {:else}
   <div class="shell" style="background: {colors.bg}; font-family: {fonts.body};">
-    <Sidebar active={route.screen === "lesson-detail" ? "library" : route.screen} onNavigate={navigate} />
+    <Sidebar
+      active={route.screen === "lesson-detail" || route.screen === "settings" ? "library" : route.screen}
+      onNavigate={navigate}
+    />
     <main class="main">
-      <Header />
+      <Header onOpenSettings={() => (route = { screen: "settings" })} />
       <div class="content">
         {#if route.screen === "library"}
           <Library onOpenLesson={openLesson} />
@@ -56,6 +61,8 @@
           <LessonDetail lessonId={route.lessonId} onBack={() => navigate("library")} />
         {:else if route.screen === "progress"}
           <Progress />
+        {:else if route.screen === "settings"}
+          <Settings />
         {:else}
           <Queue />
         {/if}
