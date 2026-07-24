@@ -16,6 +16,9 @@ onboarding multi-máquina · seleção de provedor STT/LLM · busca full-text (F
 edição de transcrição. O schema do banco, porém, já nasce preparado para análise e prompts
 versionados (custa pouco e evita migration dolorosa).
 
+Ideias e melhorias menores observadas no caminho (não chegam a virar critério de história)
+ficam registradas em `docs/backlog.md`.
+
 ## Riscos técnicos — atacar primeiro, não por último
 
 1. **Servir vídeo local ao webview com seek:** o clique-na-fala-pula-o-vídeo exige que o
