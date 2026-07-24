@@ -49,7 +49,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(services.NewSetupService()),
 			application.NewService(importService),
-			application.NewService(services.NewLibraryService(conn)),
+			application.NewService(services.NewLibraryService(conn, storageRoot)),
 			application.NewService(services.NewQueueService(conn)),
 		},
 		Assets: application.AssetOptions{

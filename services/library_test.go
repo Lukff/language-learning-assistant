@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestLibraryService_ListLessons_ReturnsConfirmedLessons(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	lessons, err := svc.ListLessons(LessonFilter{})
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
@@ -69,7 +70,7 @@ func TestLibraryService_ListLessons_EmptyReturnsEmptySlice(t *testing.T) {
 	}
 	defer conn.Close()
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	lessons, err := svc.ListLessons(LessonFilter{})
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
@@ -93,7 +94,7 @@ func TestLibraryService_ListLessons_FiltersByTutor(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, l2, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, l2, "transcribe", "done", "")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	lessons, err := svc.ListLessons(LessonFilter{Tutor: "James K."})
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
@@ -114,7 +115,7 @@ func TestLibraryService_ListLessons_ErrorStatusAndMessageFromExtractAudio(t *tes
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "error", "ffmpeg não encontrado")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "error", "depende de extract_audio que falhou: ffmpeg não encontrado")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	lessons, err := svc.ListLessons(LessonFilter{})
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
@@ -135,7 +136,7 @@ func TestLibraryService_ListTutors_ReturnsDistinctTutors(t *testing.T) {
 	mustInsertLesson(t, conn, "2026-07-21", "Sarah M.", "b.mp4")
 	mustInsertLesson(t, conn, "2026-07-22", "James K.", "c.mp4")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	tutors, err := svc.ListTutors()
 	if err != nil {
 		t.Fatalf("ListTutors() erro inesperado: %v", err)
@@ -156,7 +157,7 @@ func TestLibraryService_RetryLesson_ResetsErrorJobsToPending(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "error", "ffmpeg não encontrado")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "error", "depende de extract_audio que falhou")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	if err := svc.RetryLesson(lessonID); err != nil {
 		t.Fatalf("RetryLesson() erro inesperado: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestLibraryService_GetLesson_FindsExistingAndErrorsWhenMissing(t *testing.T
 
 	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	lesson, err := svc.GetLesson(lessonID)
 	if err != nil {
 		t.Fatalf("GetLesson() erro inesperado: %v", err)
@@ -204,7 +205,7 @@ func TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker(t *testing.T) 
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "running", "")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	lesson, err := svc.GetLesson(lessonID)
 	if err != nil {
 		t.Fatalf("GetLesson() erro inesperado: %v", err)
@@ -243,7 +244,7 @@ func TestLibraryService_GetTranscript_ReturnsUtterancesInSeconds(t *testing.T) {
 		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
 	}
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	tr, err := svc.GetTranscript(lessonID)
 	if err != nil {
 		t.Fatalf("GetTranscript() erro inesperado: %v", err)
@@ -270,8 +271,85 @@ func TestLibraryService_GetTranscript_ErrorsWhenNoTranscriptYet(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "running", "")
 
-	svc := NewLibraryService(conn)
+	svc := NewLibraryService(conn, testStorageRoot(t))
 	if _, err := svc.GetTranscript(lessonID); err == nil {
 		t.Error("GetTranscript() sem transcrição esperava erro, veio nil")
+	}
+}
+
+// testStorageRoot retorna um resolver de storage_root fixo, apontando pra
+// um diretório temporário vazio — usado pelos testes que não têm relação
+// com a checagem de vídeo ausente (essa tem testes próprios abaixo).
+func testStorageRoot(t *testing.T) func() (string, error) {
+	t.Helper()
+	dir := t.TempDir()
+	return func() (string, error) { return dir, nil }
+}
+
+func TestLibraryService_ListLessons_VideoMissingWhenFileNotFound(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
+
+	root := t.TempDir() // vazio — o arquivo "aula.mp4" não existe aqui
+	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
+	lessons, err := svc.ListLessons(LessonFilter{})
+	if err != nil {
+		t.Fatalf("ListLessons() erro inesperado: %v", err)
+	}
+	if len(lessons) != 1 || !lessons[0].VideoMissing {
+		t.Errorf("ListLessons()[0].VideoMissing = %v, esperado true (arquivo não existe)", lessons[0].VideoMissing)
+	}
+}
+
+func TestLibraryService_ListLessons_VideoNotMissingWhenFileExists(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "aula.mp4"), []byte("conteudo-fake"), 0o644); err != nil {
+		t.Fatalf("escrever vídeo de fixture falhou: %v", err)
+	}
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
+
+	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
+	lessons, err := svc.ListLessons(LessonFilter{})
+	if err != nil {
+		t.Fatalf("ListLessons() erro inesperado: %v", err)
+	}
+	if len(lessons) != 1 || lessons[0].VideoMissing {
+		t.Errorf("ListLessons()[0].VideoMissing = %v, esperado false (arquivo existe)", lessons[0].VideoMissing)
+	}
+}
+
+func TestLibraryService_GetLesson_VideoMissingWhenFileNotFound(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+
+	root := t.TempDir()
+	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
+	lesson, err := svc.GetLesson(lessonID)
+	if err != nil {
+		t.Fatalf("GetLesson() erro inesperado: %v", err)
+	}
+	if !lesson.VideoMissing {
+		t.Errorf("GetLesson().VideoMissing = %v, esperado true (arquivo não existe)", lesson.VideoMissing)
 	}
 }

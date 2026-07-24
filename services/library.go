@@ -3,6 +3,8 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"assistente-idiomas/internal/db"
 )
@@ -10,13 +12,15 @@ import (
 // LibraryService expõe as aulas já confirmadas para a Biblioteca —
 // listagem com status derivado dos jobs e duração (História 5), filtro por
 // tutor/período, reprocessamento de aulas com erro, busca de uma aula pro
-// Detalhe e sua transcrição sincronizada (História 6).
+// Detalhe e sua transcrição sincronizada (História 6), e checagem de
+// presença do arquivo de vídeo na storage_root atual (História 8).
 type LibraryService struct {
-	conn *sql.DB
+	conn        *sql.DB
+	storageRoot func() (string, error)
 }
 
-func NewLibraryService(conn *sql.DB) *LibraryService {
-	return &LibraryService{conn: conn}
+func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *LibraryService {
+	return &LibraryService{conn: conn, storageRoot: storageRoot}
 }
 
 // Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
@@ -24,7 +28,11 @@ func NewLibraryService(conn *sql.DB) *LibraryService {
 // ErrorMessage só é preenchido quando Status == "erro". DurationSeconds é
 // nil até o probe de duração (melhor esforço, na confirmação da
 // importação) ter sucesso. StudentSpeakerLabel é nil até o usuário marcar
-// quem é o aluno no toggle do Detalhe (História 6).
+// quem é o aluno no toggle do Detalhe (História 6). VideoMissing é
+// recalculado a cada leitura (nunca gravado no banco) — true quando o
+// arquivo de video_path não é encontrado na storage_root atual (História 8:
+// pasta trocada sem o vídeo reaparecer, ou arquivo apagado/movido por fora
+// do app).
 type Lesson struct {
 	ID                  int64   `json:"id"`
 	LessonDate          string  `json:"lessonDate"`
@@ -34,6 +42,7 @@ type Lesson struct {
 	Status              string  `json:"status"`
 	ErrorMessage        string  `json:"errorMessage"`
 	StudentSpeakerLabel *string `json:"studentSpeakerLabel"`
+	VideoMissing        bool    `json:"videoMissing"`
 }
 
 // LessonFilter filtra ListLessons — campos vazios são ignorados (sem
@@ -82,6 +91,7 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 			Status:              r.Status,
 			ErrorMessage:        r.ErrorMessage,
 			StudentSpeakerLabel: r.StudentSpeakerLabel,
+			VideoMissing:        s.videoMissing(r.VideoPath),
 		})
 	}
 	return out, nil
@@ -123,6 +133,7 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 		Status:              lws.Status,
 		ErrorMessage:        lws.ErrorMessage,
 		StudentSpeakerLabel: lws.StudentSpeakerLabel,
+		VideoMissing:        s.videoMissing(lws.VideoPath),
 	}, nil
 }
 
@@ -154,4 +165,18 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 // nesta lesson — toggle do Detalhe (História 6).
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
+}
+
+// videoMissing indica se o arquivo de vídeo de uma lesson não é encontrado
+// na storage_root atual. Qualquer erro de os.Stat (não só "não existe") é
+// tratado como ausente — resiliência: nunca deixa a Biblioteca quebrar por
+// causa disso, e não vale a pena diferenciar "ausente" de "sem permissão"
+// nesta fatia (História 8).
+func (s *LibraryService) videoMissing(videoPath string) bool {
+	root, err := s.storageRoot()
+	if err != nil {
+		return true
+	}
+	_, err = os.Stat(filepath.Join(root, filepath.FromSlash(videoPath)))
+	return err != nil
 }
