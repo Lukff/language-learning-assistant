@@ -20,7 +20,7 @@ func TestPendingImports_InsertListFindByHashRoundTrip(t *testing.T) {
 		t.Error("FindPendingImportByHash() = true antes de inserir, esperado false")
 	}
 
-	err = InsertPendingImport(conn, PendingImport{
+	_, err = InsertPendingImport(conn, PendingImport{
 		Path: "aula-nova.mp4", FileSize: 999, FileMTime: "2026-07-20T10:00:00Z",
 		SHA256: "hash-new", SuggestedDate: "2026-07-20",
 	})
@@ -52,7 +52,7 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 	}
 	defer conn.Close()
 
-	if err := InsertPendingImport(conn, PendingImport{
+	if _, err := InsertPendingImport(conn, PendingImport{
 		Path: "aula-nova.mp4", FileSize: 999, FileMTime: "2026-07-20T10:00:00Z",
 		SHA256: "hash-confirm", SuggestedDate: "2026-07-20",
 	}); err != nil {

@@ -315,11 +315,12 @@ func (r *dbRepo) PendingExists(hash string) (bool, error) {
 }
 
 func (r *dbRepo) InsertPending(c importer.Candidate) error {
-	return db.InsertPendingImport(r.conn, db.PendingImport{
+	_, err := db.InsertPendingImport(r.conn, db.PendingImport{
 		Path:          c.Path,
 		FileSize:      c.Size,
 		FileMTime:     c.MTime,
 		SHA256:        c.SHA256,
 		SuggestedDate: c.SuggestedDate,
 	})
+	return err
 }

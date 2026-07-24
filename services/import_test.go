@@ -279,7 +279,7 @@ func TestImportService_ConfirmImport_NormalizesPathAlreadyPointingToTargetFile(t
 	if err != nil {
 		t.Fatalf("stat do vídeo falhou: %v", err)
 	}
-	if err := db.InsertPendingImport(conn, db.PendingImport{
+	if _, err := db.InsertPendingImport(conn, db.PendingImport{
 		Path:          "./" + targetName,
 		FileSize:      info.Size(),
 		FileMTime:     info.ModTime().UTC().Format(time.RFC3339),

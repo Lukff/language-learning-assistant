@@ -32,16 +32,23 @@ func FindPendingImportByHash(conn *sql.DB, hash string) (bool, error) {
 	return true, nil
 }
 
-// InsertPendingImport grava um candidato novo achado pela varredura.
-func InsertPendingImport(conn *sql.DB, p PendingImport) error {
-	_, err := conn.Exec(
+// InsertPendingImport grava um candidato novo achado pela varredura (ou
+// por um drop manual, História 3b) e retorna o id da linha criada — o
+// chamador precisa dele pra montar o PendingImport exposto ao frontend
+// sem uma segunda consulta.
+func InsertPendingImport(conn *sql.DB, p PendingImport) (int64, error) {
+	res, err := conn.Exec(
 		`INSERT INTO pending_imports (path, file_size, file_mtime, sha256, suggested_date, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		p.Path, p.FileSize, p.FileMTime, p.SHA256, p.SuggestedDate, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return fmt.Errorf("inserir pending_import: %w", err)
+		return 0, fmt.Errorf("inserir pending_import: %w", err)
 	}
-	return nil
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("obter id do pending_import: %w", err)
+	}
+	return id, nil
 }
 
 // ListPendingImports lista os candidatos aguardando revisão, mais recentes
