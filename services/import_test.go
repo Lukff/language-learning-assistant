@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -642,5 +643,300 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testi
 	}
 	if lesson.DurationSeconds != nil {
 		t.Errorf("DurationSeconds = %v, esperado nil (fixture não é um vídeo real, ffprobe deveria falhar ou estar ausente)", *lesson.DurationSeconds)
+	}
+}
+
+func TestImportService_DropImport_RejectsUnsupportedExtension(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "aula.mov")
+	if err := os.WriteFile(srcPath, []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo de origem falhou: %v", err)
+	}
+
+	svc := NewImportService(conn)
+	results := svc.DropImport([]string{srcPath})
+	if len(results) != 1 || results[0].Error == "" {
+		t.Fatalf("DropImport() = %+v, esperado erro de extensão não suportada", results)
+	}
+
+	pending, err := svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("ListPendingImports() = %+v, esperado vazio (arquivo rejeitado)", pending)
+	}
+	entries, err := os.ReadDir(storageRoot)
+	if err != nil {
+		t.Fatalf("ler storageRoot falhou: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("storageRoot deveria continuar vazio, tem %d entradas", len(entries))
+	}
+}
+
+func TestImportService_DropImport_RejectsAlreadyImportedLesson(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	content := []byte("mesmo-conteudo")
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula-existente.mp4"), content, 0o644); err != nil {
+		t.Fatalf("preparar vídeo existente falhou: %v", err)
+	}
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-24T10:00", "Sarah M."); err != nil {
+		t.Fatalf("setup ConfirmImport() erro inesperado: %v", err)
+	}
+
+	srcDir := t.TempDir()
+	dropPath := filepath.Join(srcDir, "copia-baixada-de-novo.mp4")
+	if err := os.WriteFile(dropPath, content, 0o644); err != nil {
+		t.Fatalf("preparar cópia solta falhou: %v", err)
+	}
+
+	results := svc.DropImport([]string{dropPath})
+	if len(results) != 1 || results[0].Error == "" {
+		t.Fatalf("DropImport() = %+v, esperado erro de aula já importada", results)
+	}
+
+	pending, err = svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("ListPendingImports() = %+v, esperado vazio (hash já é uma lesson)", pending)
+	}
+}
+
+func TestImportService_DropImport_RejectsAlreadyPendingHash(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	content := []byte("mesmo-conteudo-pendente")
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula-pendente.mp4"), content, 0o644); err != nil {
+		t.Fatalf("preparar vídeo pendente falhou: %v", err)
+	}
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
+	}
+
+	srcDir := t.TempDir()
+	dropPath := filepath.Join(srcDir, "mesma-aula-de-novo.mp4")
+	if err := os.WriteFile(dropPath, content, 0o644); err != nil {
+		t.Fatalf("preparar cópia solta falhou: %v", err)
+	}
+
+	results := svc.DropImport([]string{dropPath})
+	if len(results) != 1 || results[0].Error == "" {
+		t.Fatalf("DropImport() = %+v, esperado erro de aula já aguardando revisão", results)
+	}
+
+	pending, err = svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 1 {
+		t.Errorf("ListPendingImports() = %+v, esperado continuar só o candidato original (sem duplicar)", pending)
+	}
+}
+
+func TestImportService_DropImport_RegistersFileAlreadyInsideStorageRootWithoutCopying(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	insidePath := filepath.Join(storageRoot, "ja-esta-na-pasta.mp4")
+	if err := os.WriteFile(insidePath, []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo dentro da storage root falhou: %v", err)
+	}
+
+	svc := NewImportService(conn)
+	results := svc.DropImport([]string{insidePath})
+	if len(results) != 1 || results[0].Error != "" {
+		t.Fatalf("DropImport() = %+v, esperado sucesso", results)
+	}
+
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("ListPendingImports() = %+v, %v, esperado 1 candidato", pending, err)
+	}
+	if pending[0].Path != "ja-esta-na-pasta.mp4" {
+		t.Errorf("Path = %q, esperado ja-esta-na-pasta.mp4 (sem cópia)", pending[0].Path)
+	}
+
+	entries, err := os.ReadDir(storageRoot)
+	if err != nil {
+		t.Fatalf("ler storageRoot falhou: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("storageRoot tem %d entradas, esperado 1 (nenhuma cópia criada)", len(entries))
+	}
+}
+
+func TestImportService_DropImport_CopiesFileFromOutsideStorageRoot(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "download-do-cambly.mp4")
+	if err := os.WriteFile(srcPath, []byte("conteudo-baixado"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo de origem falhou: %v", err)
+	}
+
+	svc := NewImportService(conn)
+	results := svc.DropImport([]string{srcPath})
+	if len(results) != 1 || results[0].Error != "" {
+		t.Fatalf("DropImport() = %+v, esperado sucesso", results)
+	}
+
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("ListPendingImports() = %+v, %v, esperado 1 candidato", pending, err)
+	}
+	if pending[0].Path != "download-do-cambly.mp4" {
+		t.Errorf("Path = %q, esperado download-do-cambly.mp4", pending[0].Path)
+	}
+	copied, err := os.ReadFile(filepath.Join(storageRoot, "download-do-cambly.mp4"))
+	if err != nil || string(copied) != "conteudo-baixado" {
+		t.Errorf("cópia no storageRoot = %q, err=%v, esperado conteudo-baixado", copied, err)
+	}
+	if _, err := os.ReadFile(srcPath); err != nil {
+		t.Errorf("arquivo original deveria permanecer na origem: %v", err)
+	}
+}
+
+func TestImportService_DropImport_ResolvesNameCollisionOnCopyWithSuffix(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	srcDirA := t.TempDir()
+	srcDirB := t.TempDir()
+	srcPathA := filepath.Join(srcDirA, "aula.mp4")
+	srcPathB := filepath.Join(srcDirB, "aula.mp4")
+	if err := os.WriteFile(srcPathA, []byte("conteudo-a"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo A falhou: %v", err)
+	}
+	if err := os.WriteFile(srcPathB, []byte("conteudo-b-bem-diferente"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo B falhou: %v", err)
+	}
+
+	svc := NewImportService(conn)
+	results := svc.DropImport([]string{srcPathA, srcPathB})
+	if len(results) != 2 || results[0].Error != "" || results[1].Error != "" {
+		t.Fatalf("DropImport() = %+v, esperado sucesso nos dois", results)
+	}
+
+	pending, err := svc.ListPendingImports()
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("ListPendingImports() = %+v, %v, esperado 2 candidatos", pending, err)
+	}
+	found := map[string]bool{}
+	for _, p := range pending {
+		found[p.Path] = true
+	}
+	if !found["aula.mp4"] || !found["aula-2.mp4"] {
+		t.Errorf("paths dos candidatos = %+v, esperado aula.mp4 e aula-2.mp4", pending)
+	}
+}
+
+func TestImportService_DropImport_FailedCopyReportsErrorAndDoesNotInsertPending(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permissão de escrita via os.Chmod não se aplica da mesma forma no Windows")
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	storageRoot := t.TempDir()
+	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "aula.mp4")
+	if err := os.WriteFile(srcPath, []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar arquivo de origem falhou: %v", err)
+	}
+	if err := os.Chmod(storageRoot, 0o500); err != nil {
+		t.Fatalf("Chmod() falhou: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(storageRoot, 0o700) })
+
+	svc := NewImportService(conn)
+	results := svc.DropImport([]string{srcPath})
+	if len(results) != 1 || results[0].Error == "" {
+		t.Fatalf("DropImport() = %+v, esperado erro de cópia", results)
+	}
+
+	pending, err := svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("ListPendingImports() = %+v, esperado vazio (cópia falhou)", pending)
 	}
 }

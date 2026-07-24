@@ -15,6 +15,8 @@ import (
 	"assistente-idiomas/internal/db"
 	"assistente-idiomas/internal/importer"
 	"assistente-idiomas/internal/media"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ImportService cobre a História 3: varrer a pasta de armazenamento em
@@ -47,6 +49,15 @@ type PendingImport struct {
 	ID            int64  `json:"id"`
 	Path          string `json:"path"`
 	SuggestedDate string `json:"suggestedDate"`
+}
+
+// DropResult é o resultado de processar um caminho recebido via
+// drag-and-drop nativo (main.go, evento WindowFilesDropped) — usado como
+// retorno de DropImport (testável) e também como payload do evento
+// DropErrorEvent quando Error não é vazio.
+type DropResult struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
 }
 
 // ScanFolder varre storage_root (de config.Load) e atualiza pending_imports
@@ -323,4 +334,156 @@ func (r *dbRepo) InsertPending(c importer.Candidate) error {
 		SuggestedDate: c.SuggestedDate,
 	})
 	return err
+}
+
+// DroppedImportEvent é emitido uma vez por candidato criado com sucesso
+// via drag-and-drop — payload é um PendingImport, mesmo formato que
+// ListPendingImports já expõe, pra ImportConfirmModal abrir sem buscar de
+// novo (História 3b).
+const DroppedImportEvent = "import:dropped"
+
+// DropErrorEvent é emitido por arquivo que falhou (extensão não
+// reconhecida, duplicata, falha de cópia) — nenhum candidato foi criado
+// pra esse arquivo.
+const DropErrorEvent = "import:drop-error"
+
+// DropImport processa arquivos recebidos via drag-and-drop nativo do
+// Wails (main.go chama isso a partir do evento WindowFilesDropped) — um
+// candidato pendente por arquivo válido, reaproveitando a mesma dedupe
+// por hash da varredura (História 3). Diferente do best-effort de
+// renameVideoBestEffort, falha aqui é sempre reportada (via
+// DropErrorEvent e no DropResult retornado) — sem um candidato em
+// pending_imports o usuário não teria outro jeito de saber que o arquivo
+// solto falhou.
+func (s *ImportService) DropImport(paths []string) []DropResult {
+	results := make([]DropResult, 0, len(paths))
+	for _, path := range paths {
+		pending, err := s.dropOne(path)
+		if err != nil {
+			results = append(results, DropResult{Path: path, Error: err.Error()})
+			s.emitDropError(path, err)
+			continue
+		}
+		results = append(results, DropResult{Path: path})
+		s.emitDropped(pending)
+	}
+	return results
+}
+
+func (s *ImportService) dropOne(path string) (PendingImport, error) {
+	if !importer.HasVideoExtension(path) {
+		return PendingImport{}, fmt.Errorf("tipo de arquivo não suportado (só .mp4)")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return PendingImport{}, fmt.Errorf("carregar configuração: %w", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return PendingImport{}, fmt.Errorf("ler arquivo: %w", err)
+	}
+
+	hash, err := importer.HashFile(path)
+	if err != nil {
+		return PendingImport{}, err
+	}
+
+	lesson, err := db.FindLessonByHash(s.conn, hash)
+	if err != nil {
+		return PendingImport{}, err
+	}
+	if lesson != nil {
+		return PendingImport{}, fmt.Errorf("esta aula já foi importada")
+	}
+	alreadyPending, err := db.FindPendingImportByHash(s.conn, hash)
+	if err != nil {
+		return PendingImport{}, err
+	}
+	if alreadyPending {
+		return PendingImport{}, fmt.Errorf("esta aula já está aguardando revisão")
+	}
+
+	relPath, fileMTime, fileSize, err := s.placeDroppedFile(path, cfg.StorageRoot)
+	if err != nil {
+		return PendingImport{}, err
+	}
+
+	suggested := importer.SuggestDate(filepath.Base(path), info.ModTime())
+	id, err := db.InsertPendingImport(s.conn, db.PendingImport{
+		Path:          relPath,
+		FileSize:      fileSize,
+		FileMTime:     fileMTime,
+		SHA256:        hash,
+		SuggestedDate: suggested,
+	})
+	if err != nil {
+		return PendingImport{}, err
+	}
+
+	return PendingImport{ID: id, Path: relPath, SuggestedDate: suggested}, nil
+}
+
+// placeDroppedFile decide onde o arquivo solto fica registrado: se path
+// já está dentro de storageRoot, registra no lugar sem copiar; senão,
+// copia pra dentro de storageRoot (sem subpasta, resolvendo colisão de
+// nome). Retorna o path relativo a storageRoot (sempre com "/"), o mtime
+// (RFC3339 UTC) e o tamanho do arquivo no destino final.
+func (s *ImportService) placeDroppedFile(path, storageRoot string) (relPath string, mtime string, size int64, err error) {
+	rel, inside, err := relativeIfInsideStorageRoot(path, storageRoot)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if !inside {
+		copiedRel, err := importer.CopyIntoStorageRoot(path, storageRoot)
+		if err != nil {
+			return "", "", 0, fmt.Errorf("copiar vídeo pra raiz de armazenamento: %w", err)
+		}
+		rel = filepath.ToSlash(copiedRel)
+	}
+
+	info, err := os.Stat(filepath.Join(storageRoot, filepath.FromSlash(rel)))
+	if err != nil {
+		return "", "", 0, fmt.Errorf("ler arquivo na raiz de armazenamento: %w", err)
+	}
+	return rel, info.ModTime().UTC().Format(time.RFC3339), info.Size(), nil
+}
+
+// relativeIfInsideStorageRoot resolve links simbólicos de path e
+// storageRoot e indica se path cai dentro de storageRoot — nesse caso
+// retorna o path relativo (sempre com "/"). inside=false (relPath="") se
+// path está fora, ou se a resolução falhar (o chamador então copia,
+// tratamento seguro por padrão).
+func relativeIfInsideStorageRoot(path, storageRoot string) (relPath string, inside bool, err error) {
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false, fmt.Errorf("resolver links simbólicos do arquivo: %w", err)
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(storageRoot)
+	if err != nil {
+		return "", false, fmt.Errorf("resolver links simbólicos da raiz de armazenamento: %w", err)
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false, nil
+	}
+	return filepath.ToSlash(rel), true, nil
+}
+
+func (s *ImportService) emitDropped(p PendingImport) {
+	app := application.Get()
+	if app == nil {
+		// Testes chamam DropImport sem application.New() ter rodado — mesmo
+		// tratamento que WailsJobNotifier.JobChanged (services/jobs_notifier.go):
+		// descartar é inofensivo, nenhum teste depende do evento em si.
+		return
+	}
+	app.Event.Emit(DroppedImportEvent, p)
+}
+
+func (s *ImportService) emitDropError(path string, err error) {
+	app := application.Get()
+	if app == nil {
+		return
+	}
+	app.Event.Emit(DropErrorEvent, DropResult{Path: path, Error: err.Error()})
 }
