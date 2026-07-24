@@ -1,6 +1,6 @@
-// Package importer — ver importer.go. Cópia de um arquivo externo (drag-
-// and-drop, História 3b) pra dentro da raiz de armazenamento. Não sabe de
-// Wails nem de banco — só I/O de arquivo (camada fina, mesmo princípio do
+// copy.go — ver importer.go pro doc do package. Cópia de um arquivo externo
+// (drag-and-drop, História 3b) pra dentro da raiz de armazenamento. Não sabe
+// de Wails nem de banco — só I/O de arquivo (camada fina, mesmo princípio do
 // resto do internal/).
 package importer
 
