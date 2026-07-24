@@ -16,6 +16,13 @@ onboarding multi-máquina · seleção de provedor STT/LLM · busca full-text (F
 edição de transcrição. O schema do banco, porém, já nasce preparado para análise e prompts
 versionados (custa pouco e evita migration dolorosa).
 
+**Exceção adicionada em 24/07/2026:** um menu de Configurações **mínimo** entra nesta fase
+(História 8) — ver/trocar (reapontar, sem mover arquivos) a raiz de armazenamento e recadastro
+da credencial do provedor STT, cobrindo o gap conhecido da História 2 (credencial de keyring
+perdida/limpa não
+tinha UI de recuperação). Seleção de provedor STT/LLM, estimativa de custo e o restante das
+Configurações completas continuam fora de escopo, previstos pra Fase 5.
+
 Ideias e melhorias menores observadas no caminho (não chegam a virar critério de história)
 ficam registradas em `docs/backlog.md`.
 
@@ -182,18 +189,48 @@ História 4.
 
 ---
 
+## História 8 — Configurações básicas (path + credencial)
+
+**Como** usuário, **quero** uma tela de Configurações onde eu veja/troque a raiz de
+armazenamento e possa recadastrar a credencial do provedor STT, **para** me recuperar sozinho
+se a credencial do keyring for perdida ou limpa, e reapontar o app quando eu mover a pasta de
+aulas por conta própria (novo disco, reorganização, etc.), sem precisar mexer no
+`config.json` manualmente.
+
+### Critérios de aceite
+- [ ] Tela/seção de Configurações acessível pela sidebar, mostra a raiz de armazenamento
+  configurada.
+- [ ] Trocar a raiz de armazenamento: o app **não move nem copia arquivos** — o usuário move a
+  pasta manualmente fora do app e só aponta o novo caminho aqui. Antes de aceitar a troca, o
+  app valida os paths relativos das `lessons` já registradas contra a pasta nova (existência
+  do arquivo de vídeo em cada path relativo); se algo não bater, recusa a troca e explica o
+  que falta, sem alterar o `storage_root` salvo.
+- [ ] Campo pra (re)cadastrar a credencial do provedor STT (ElevenLabs), gravada via
+  `go-keyring` reaproveitando a mesma lógica da História 2; cobre o gap conhecido registrado
+  no progresso da História 2 (credencial perdida/limpa não tinha UI de recuperação).
+- [ ] Sem seleção de provedor, estimativa de custo ou qualquer outra opção de configuração —
+  isso é Fase 5 (nota em "Fora de escopo desta fase").
+
+### Dependências
+História 2.
+
+---
+
 ## Marcos
 
 - **M1 — "Importa e guarda":** Histórias 1–3 (3b opcional, importação manual). O app abre, mapeia as aulas já existentes na pasta e registra.
 - **M2 — "Transcreve sozinho":** História 4 (+7 opcional). Importar à noite, transcrição pronta de manhã.
 - **M3 — MVP completo:** Histórias 5–6. Assistir com transcrição sincronizada. **A partir daqui o app entra em uso real nas suas aulas.**
+- **História 8 (Configurações básicas)** não pertence a nenhum marco acima — é independente, encaixa a qualquer momento depois da História 2.
 
 ## Incrementos seguintes (visão, sem compromisso)
 
 Fase 2: análise LLM na UI (correções inline, aba de Análise, prompts versionados ativos) ·
 Fase 3: tags automáticas + busca full-text (FTS5) + tela de Progresso ·
 Fase 4: sync pull-work-push entre máquinas + backups + onboarding de máquina nova ·
-Fase 5: Configurações completas (seleção de provedor, estimativa de custo, análise aprofundada opcional com `deepseek-v4-pro`).
+Fase 5: restante das Configurações (seleção de provedor, estimativa de custo, análise aprofundada
+opcional com `deepseek-v4-pro`) — path (leitura) e recadastro de credencial STT já saíram pra
+Fase 1 (História 8).
 
 ## Registro de progresso
 
