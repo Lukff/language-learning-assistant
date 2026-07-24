@@ -469,6 +469,53 @@ func TestMoveToExistingSameFile_KeepsDistinctHardLinkNames(t *testing.T) {
 	}
 }
 
+func TestImportService_ListPendingImports_ExcludesCandidateMissingAfterStorageRootChange(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	oldRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(oldRoot, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: oldRoot}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	svc := NewImportService(conn)
+	if _, err := svc.ScanFolder(); err != nil {
+		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+	}
+	pending, err := svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 1 {
+		t.Fatalf("setup: ListPendingImports() = %+v, esperado 1 candidato antes da troca de pasta", pending)
+	}
+
+	// Troca a storage_root pra uma pasta nova que não tem "aula.mp4" — mesma
+	// mudança que SettingsService.ChangeStorageFolder faz em config.json,
+	// sem que o candidato pendente tenha sido reconciliado.
+	newRoot := t.TempDir()
+	settingsSvc := NewSettingsService(conn, func() (string, error) { return newRoot, nil })
+	if _, err := settingsSvc.ChangeStorageFolder(newRoot); err != nil {
+		t.Fatalf("ChangeStorageFolder() erro inesperado: %v", err)
+	}
+
+	pending, err = svc.ListPendingImports()
+	if err != nil {
+		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("ListPendingImports() após troca de pasta = %+v, esperado vazio (arquivo não existe na pasta nova)", pending)
+	}
+}
+
 func TestImportService_ScanFolderTwiceDoesNotDuplicateCandidate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 

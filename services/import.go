@@ -76,14 +76,27 @@ func (s *ImportService) ScanFolder() (ScanSummary, error) {
 }
 
 // ListPendingImports lista os candidatos aguardando revisão, pra seção
-// "aguardando revisão" da Biblioteca.
+// "aguardando revisão" da Biblioteca. Um candidato cujo arquivo não existe
+// mais na storage_root atual (ex.: a pasta foi trocada nas Configurações —
+// História 8 — e o arquivo não foi encontrado lá) é excluído da lista.
+// Checagem sempre ao vivo (os.Stat), nunca persistida: mesmo princípio do
+// VideoMissing de LibraryService — se o arquivo reaparecer no path
+// esperado, o candidato volta a aparecer sozinho, sem precisar de outra
+// varredura.
 func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("carregar configuração: %w", err)
+	}
 	rows, err := db.ListPendingImports(s.conn)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]PendingImport, 0, len(rows))
 	for _, r := range rows {
+		if _, err := os.Stat(filepath.Join(cfg.StorageRoot, filepath.FromSlash(r.Path))); err != nil {
+			continue
+		}
 		out = append(out, PendingImport{ID: r.ID, Path: r.Path, SuggestedDate: r.SuggestedDate})
 	}
 	return out, nil
