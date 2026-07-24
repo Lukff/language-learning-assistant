@@ -14,6 +14,7 @@ import (
 	"assistente-idiomas/services"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -40,12 +41,14 @@ func main() {
 
 	startJobWorker(conn, storageRoot)
 
+	importService := services.NewImportService(conn)
+
 	app := application.New(application.Options{
 		Name:        "Assistente de Idiomas",
 		Description: "Arquivo e análise de aulas de inglês do Cambly",
 		Services: []application.Service{
 			application.NewService(services.NewSetupService()),
-			application.NewService(services.NewImportService(conn)),
+			application.NewService(importService),
 			application.NewService(services.NewLibraryService(conn)),
 			application.NewService(services.NewQueueService(conn)),
 		},
@@ -58,11 +61,15 @@ func main() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Assistente de Idiomas",
 		Width:            1200,
 		Height:           760,
 		BackgroundColour: application.NewRGB(20, 24, 31), // #14181F — colors.bg
+		EnableFileDrop:   true,
+	})
+	win.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		importService.DropImport(event.Context().DroppedFiles())
 	})
 
 	if err := app.Run(); err != nil {
