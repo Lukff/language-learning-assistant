@@ -5,11 +5,8 @@ package services
 
 import (
 	"fmt"
-	"os"
 
 	"assistente-idiomas/internal/config"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // SetupService cobre o wizard de primeira execução: escolher a pasta de
@@ -34,22 +31,7 @@ func (s *SetupService) IsFirstRun() bool {
 // ela é gravável. Retorna path vazio (sem erro) se o usuário cancelar o
 // dialog.
 func (s *SetupService) ChooseStorageFolder() (string, error) {
-	dir, err := application.Get().Dialog.OpenFile().
-		SetTitle("Escolha a pasta onde as aulas ficarão guardadas").
-		CanChooseFiles(false).
-		CanChooseDirectories(true).
-		CanCreateDirectories(true).
-		PromptForSingleSelection()
-	if err != nil {
-		return "", fmt.Errorf("abrir diálogo de pasta: %w", err)
-	}
-	if dir == "" {
-		return "", nil
-	}
-	if err := isDirWritable(dir); err != nil {
-		return "", err
-	}
-	return dir, nil
+	return chooseStorageFolder("Escolha a pasta onde as aulas ficarão guardadas")
 }
 
 // CompleteSetup grava a credencial da ElevenLabs (keyring) e, só se isso
@@ -64,21 +46,6 @@ func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 	}
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		return fmt.Errorf("gravar configuração: %w", err)
-	}
-	return nil
-}
-
-// isDirWritable confirma que dir aceita escrita, criando e removendo um
-// arquivo temporário nele.
-func isDirWritable(dir string) error {
-	f, err := os.CreateTemp(dir, ".assistente-idiomas-write-test-*")
-	if err != nil {
-		return fmt.Errorf("pasta sem permissão de escrita: %w", err)
-	}
-	name := f.Name()
-	f.Close()
-	if err := os.Remove(name); err != nil {
-		return fmt.Errorf("não foi possível limpar arquivo de teste na pasta: %w", err)
 	}
 	return nil
 }
