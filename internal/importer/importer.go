@@ -82,7 +82,7 @@ func Scan(root string, repo Repo) (Summary, error) {
 			sum.Errors++
 			return nil
 		}
-		if d.IsDir() || !hasVideoExtension(path) {
+		if d.IsDir() || !HasVideoExtension(path) {
 			return nil
 		}
 
@@ -110,7 +110,7 @@ func Scan(root string, repo Repo) (Summary, error) {
 			return nil
 		}
 
-		hash, err := hashFile(path)
+		hash, err := HashFile(path)
 		if err != nil {
 			sum.Errors++
 			return nil
@@ -149,7 +149,7 @@ func Scan(root string, repo Repo) (Summary, error) {
 			Size:          size,
 			MTime:         mtime,
 			SHA256:        hash,
-			SuggestedDate: suggestDate(filepath.Base(path), info.ModTime()),
+			SuggestedDate: SuggestDate(filepath.Base(path), info.ModTime()),
 		}
 		if err := repo.InsertPending(candidate); err != nil {
 			sum.Errors++
@@ -164,7 +164,11 @@ func Scan(root string, repo Repo) (Summary, error) {
 	return sum, nil
 }
 
-func hasVideoExtension(path string) bool {
+// HasVideoExtension indica se path tem uma extensão de vídeo reconhecida
+// (hoje só .mp4). Exportada porque services.ImportService.DropImport
+// (História 3b) precisa da mesma checagem pra um arquivo solto via
+// drag-and-drop, fora da varredura da pasta.
+func HasVideoExtension(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	for _, want := range videoExtensions {
 		if ext == want {
@@ -174,7 +178,10 @@ func hasVideoExtension(path string) bool {
 	return false
 }
 
-func hashFile(path string) (string, error) {
+// HashFile calcula o SHA-256 do arquivo em path. Exportada pelo mesmo
+// motivo de HasVideoExtension — DropImport hasheia um arquivo fora da
+// varredura da pasta.
+func HashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("abrir arquivo: %w", err)
@@ -190,14 +197,14 @@ func hashFile(path string) (string, error) {
 
 var isoDateInName = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})`)
 
-// suggestDate tenta achar uma data AAAA-MM-DD no nome do arquivo — nesse
+// SuggestDate tenta achar uma data AAAA-MM-DD no nome do arquivo — nesse
 // caso o horário é desconhecido, sugerido como 00:00. Na falta de data no
 // nome, usa data e horário do mtime do arquivo (aproximação razoável: o
 // arquivo normalmente é baixado logo depois da aula). Formato compatível
 // com <input type="datetime-local"> (AAAA-MM-DDTHH:MM). É só um palpite
 // pré-preenchido no modal de confirmação — o usuário sempre pode corrigir
 // data e horário.
-func suggestDate(filename string, mtime time.Time) string {
+func SuggestDate(filename string, mtime time.Time) string {
 	if m := isoDateInName.FindString(filename); m != "" {
 		return m + "T00:00"
 	}
