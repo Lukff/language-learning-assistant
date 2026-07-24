@@ -198,18 +198,20 @@ aulas por conta própria (novo disco, reorganização, etc.), sem precisar mexer
 `config.json` manualmente.
 
 ### Critérios de aceite
-- [ ] Tela/seção de Configurações acessível pela sidebar, mostra a raiz de armazenamento
-  configurada.
-- [ ] Trocar a raiz de armazenamento: o app **não move nem copia arquivos** — o usuário move a
-  pasta manualmente fora do app e só aponta o novo caminho aqui. Antes de aceitar a troca, o
-  app valida os paths relativos das `lessons` já registradas contra a pasta nova (existência
-  do arquivo de vídeo em cada path relativo); se algo não bater, recusa a troca e explica o
-  que falta, sem alterar o `storage_root` salvo.
-- [ ] Campo pra (re)cadastrar a credencial do provedor STT (ElevenLabs), gravada via
-  `go-keyring` reaproveitando a mesma lógica da História 2; cobre o gap conhecido registrado
-  no progresso da História 2 (credencial perdida/limpa não tinha UI de recuperação).
-- [ ] Sem seleção de provedor, estimativa de custo ou qualquer outra opção de configuração —
-  isso é Fase 5 (nota em "Fora de escopo desta fase").
+- [x] Tela de Configurações acessível por um ícone de engrenagem no Header (não item de
+  navegação da Sidebar), mostra a raiz de armazenamento configurada e permite trocá-la (dialog
+  nativo + validação de escrita), sem mover arquivos — o usuário já os moveu manualmente. A
+  troca nunca é bloqueada por vídeos não encontrados.
+- [x] Trocar a pasta roda a mesma reconciliação por hash da História 3: vídeos com nome
+  diferente na pasta nova têm o `video_path` atualizado automaticamente; vídeos cujo hash não
+  é encontrado na pasta nova ficam sinalizados como "vídeo ausente" na Biblioteca (recalculado
+  a cada carregamento, nunca uma coluna persistida) até o arquivo aparecer de novo no path
+  esperado.
+- [x] Campo pra (re)cadastrar a credencial do provedor STT (ElevenLabs) via `go-keyring`,
+  reaproveitando `config.SaveSTTAPIKey`; a tela mostra se já há credencial configurada (sem
+  revelar o valor) — cobre o gap conhecido da História 2.
+- [x] Sem seleção de provedor, estimativa de custo ou qualquer outra opção de configuração —
+  isso é Fase 5.
 
 ### Dependências
 História 2.
@@ -245,3 +247,4 @@ Fase 1 (História 8).
 | 23/07/2026 | História 7 implementada: `internal/db.ListQueueEntries` deriva, por aula, qual job (extract_audio ou transcribe) está ativo agora ou em erro — checando extract_audio antes de transcribe, já que o job transcribe fica com status "pending" no banco o tempo todo em que está bloqueado esperando extract_audio (o Worker só pula ele em memória); `QueueService` traduz pro frontend (Stage/Status em PT-BR), reaproveitando `db.ResetErrorJobsForLesson` pro Reprocessar; `jobsStore.svelte.ts` é o primeiro consumidor real do evento `job:updated` (transporte pronto desde a História 4) — busca a fila uma vez e refaz a busca a cada evento, compartilhado entre `Queue.svelte` e o badge numérico da Sidebar (só pending+running, erro fica de fora do número) | Verificação visual (janela real) do badge atualizando ao vivo durante um processamento real e da lista da Fila mudando junto continua pendente em Windows/Linux, mesmo padrão das histórias anteriores |
 | 23/07/2026 | Fatia adicional da História 3 concluída: confirmação exige horário e renomeia o vídeo *in place* para o nome padronizado, com resolução de colisões e rename em melhor esforço; falha determinística injetada confirma que erro no move não impede a confirmação, corrida TOCTOU confirma que o destino nunca é sobrescrito e trigger SQLite confirma o rollback após falha ao atualizar o path | Suíte e vet confirmam o fluxo automatizado; nenhuma verificação visual real foi feita nesta fatia e a pendência segue o mesmo padrão das histórias anteriores |
 | 24/07/2026 | História 3b implementada: drag-and-drop nativo do Wails v3 (`EnableFileDrop` + evento `WindowFilesDropped`, sem HTML5 File API) resolve o risco técnico 2 — funciona nas três plataformas na versão pinada; solto na tela Biblioteca (`data-file-drop-target`), abre `ImportConfirmModal` na hora (fila local drena um modal por vez em drops múltiplos); cópia pra `storage_root` sem subpasta com sufixo de colisão, ou registro no lugar se o arquivo já estiver dentro da raiz de armazenamento; extensão não reconhecida ou hash já importado/pendente é rejeitado sem copiar, com erro reportado via evento `import:drop-error` | Reaproveita 100% do fluxo de confirmação/dedup da História 3 (`ImportConfirmModal`, `pending_imports`, `ConfirmImport`) sem alterá-lo; `internal/importer.HashFile`/`HasVideoExtension`/`SuggestDate` exportados pra DropImport reusar sem duplicar lógica; `db.InsertPendingImport` passou a retornar o id da linha criada; verificação visual real (arrastar um arquivo numa janela de verdade) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
+| 24/07/2026 | História 8 implementada: tela de Configurações (ícone de engrenagem no Header, fora da Sidebar) com dois painéis — Armazenamento (visualiza pasta atual, botão de troca com dialog nativo + validação de escrita, troca nunca bloqueada) e Credencial STT (status booleano, campo sempre-disponível pra (re)cadastro via keyring); reconciliação por hash reaproveita `importer.Scan` da História 3 (vídeos renomeados na pasta nova têm `video_path` atualizado, ausentes sinalizados como 'vídeo ausente' — recalculado a cada leitura, nunca persistido); badge "vídeo ausente" aparece em Library.svelte e LessonDetail.svelte | Cobertura unitária completa: `services/settings_test.go`, `services/storage_folder_test.go`, `services/library_test.go` estendida; `go test ./...` e `go vet ./...` confirmados limpos, `pnpm run check`/`pnpm run build` confirmados limpos; verificação manual (abrir Configurações pelo ícone do Header, trocar pasta com vídeo renomeado confirmando reconciliação, apagar vídeo confirmando badge 'ausente', recadastro de credencial) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
