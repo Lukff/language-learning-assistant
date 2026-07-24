@@ -93,7 +93,11 @@
     try {
       const summary = await ImportService.ScanFolder();
       syncMessage = `${summary.new} novas, ${summary.updated} atualizadas, ${summary.errors} erros`;
-      await loadPending();
+      // A varredura pode reconciliar o video_path de aulas já confirmadas
+      // (arquivo renomeado/movido, achado por hash) — recarrega lessons
+      // também, não só pending, senão o badge de vídeo ausente (História 8)
+      // fica preso mostrando o video_path de antes da varredura.
+      await Promise.all([loadPending(), loadLessons()]);
     } catch (e) {
       error = String(e);
     } finally {
