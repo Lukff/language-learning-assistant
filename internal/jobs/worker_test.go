@@ -28,9 +28,13 @@ func newTestDB(t *testing.T) *sql.DB {
 func insertLesson(t *testing.T, conn *sql.DB, videoPath string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
+	teacherID, err := db.GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-22", "Fulano", videoPath, now, now,
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-22", teacherID, videoPath, now, now,
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)
