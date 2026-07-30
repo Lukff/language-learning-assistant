@@ -3,6 +3,7 @@
   import { colors, fonts } from "./theme";
   import * as ImportService from "../../bindings/assistente-idiomas/services/importservice";
   import type { PendingImport } from "../../bindings/assistente-idiomas/services/models";
+  import TeacherCombobox from "./TeacherCombobox.svelte";
 
   let {
     pending,
@@ -59,7 +60,7 @@
     <input id="lesson-date" type="datetime-local" bind:value={lessonDate} />
 
     <label for="tutor">Tutor</label>
-    <input id="tutor" type="text" bind:value={tutor} placeholder="Nome do tutor" />
+    <TeacherCombobox id="tutor" bind:value={tutor} />
 
     {#if error}
       <p class="error" style="color: {colors.red};">{error}</p>
