@@ -7,7 +7,7 @@ CREATE TABLE teachers (
 );
 
 INSERT INTO teachers (name, created_at, updated_at)
-SELECT DISTINCT tutor, datetime('now'), datetime('now') FROM lessons;
+SELECT DISTINCT tutor, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now') FROM lessons;
 
 ALTER TABLE lessons ADD COLUMN teacher_id INTEGER REFERENCES teachers(id);
 
