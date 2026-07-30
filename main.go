@@ -6,6 +6,7 @@ import (
 	"embed"
 	"log"
 
+	"assistente-idiomas/internal/analysis"
 	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
 	"assistente-idiomas/internal/jobs"
@@ -30,6 +31,10 @@ func main() {
 		log.Fatalf("abrir banco de dados: %v", err)
 	}
 	defer conn.Close()
+
+	if err := analysis.RegisterPrompts(conn); err != nil {
+		log.Fatalf("registrar prompts de análise: %v", err)
+	}
 
 	storageRoot := func() (string, error) {
 		cfg, err := config.Load()
