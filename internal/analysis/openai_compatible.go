@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -21,24 +22,19 @@ type openAICompatibleProvider struct {
 	baseURL         string
 	apiKey          string
 	model           string
-	systemPrompt    string
 	supportsPrefill bool
 	client          *http.Client
 }
 
-func newOpenAICompatibleProvider(name, baseURL, apiKey, model, systemPrompt string, supportsPrefill bool) (*openAICompatibleProvider, error) {
+func newOpenAICompatibleProvider(name, baseURL, apiKey, model string, supportsPrefill bool) (*openAICompatibleProvider, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("analysis: chave de API vazia para %s", name)
-	}
-	if systemPrompt == "" {
-		return nil, fmt.Errorf("analysis: prompt de sistema vazio para %s", name)
 	}
 	return &openAICompatibleProvider{
 		name:            name,
 		baseURL:         baseURL,
 		apiKey:          apiKey,
 		model:           model,
-		systemPrompt:    systemPrompt,
 		supportsPrefill: supportsPrefill,
 		client:          &http.Client{Timeout: 5 * time.Minute},
 	}, nil
@@ -48,14 +44,21 @@ func newOpenAICompatibleProvider(name, baseURL, apiKey, model, systemPrompt stri
 // deepseek-v4-flash (tier mais barato — ver "Estratégia de fatias" no design
 // doc). Usa o base URL beta, exigido pelo recurso de "Chat Prefix
 // Completion" que sustenta o prefill de ```json.
-func NewDeepSeekProvider(apiKey, systemPrompt string) (Provider, error) {
-	return newOpenAICompatibleProvider("deepseek", "https://api.deepseek.com/beta", apiKey, "deepseek-v4-flash", systemPrompt, true)
+func NewDeepSeekProvider(apiKey string) (Provider, error) {
+	return newOpenAICompatibleProvider("deepseek", "https://api.deepseek.com/beta", apiKey, "deepseek-v4-flash", true)
 }
 
 func (p *openAICompatibleProvider) Name() string { return p.name }
 
-func (p *openAICompatibleProvider) Analyze(ctx context.Context, transcript string) (*Result, error) {
-	req, err := p.buildRequest(ctx, transcript)
+// Complete envia systemPrompt + transcript e devolve o conteúdo bruto (já
+// sem envelope HTTP nem code fence) que o modelo produziu — cada TaskDef
+// (task.go) é quem sabe o schema esperado desse conteúdo.
+func (p *openAICompatibleProvider) Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) {
+	if systemPrompt == "" {
+		return nil, fmt.Errorf("analysis: prompt de sistema vazio para %s", p.name)
+	}
+
+	req, err := p.buildRequest(ctx, systemPrompt, transcript)
 	if err != nil {
 		return nil, fmt.Errorf("analysis: montar requisição %s: %w", p.name, err)
 	}
@@ -67,26 +70,21 @@ func (p *openAICompatibleProvider) Analyze(ctx context.Context, transcript strin
 
 	var envelope openAICompatibleEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		// Preserva o envelope bruto mesmo em falha de parse: a chamada já
-		// custou dinheiro, então o chamador deve conseguir salvar
-		// result.RawResponse em disco mesmo com err != nil.
-		return &Result{RawResponse: raw}, fmt.Errorf("analysis: parsear envelope %s: %w", p.name, err)
+		return nil, fmt.Errorf("analysis: parsear envelope %s: %w", p.name, err)
 	}
 	if len(envelope.Choices) == 0 {
-		return &Result{RawResponse: raw}, fmt.Errorf("analysis: %s não retornou choices", p.name)
+		return nil, fmt.Errorf("analysis: %s não retornou choices", p.name)
 	}
 
-	result, err := parseAnalysisResponse([]byte(envelope.Choices[0].Message.Content))
-	if err != nil {
-		return &Result{RawResponse: raw}, fmt.Errorf("analysis: parsear conteúdo %s: %w", p.name, err)
-	}
-	result.RawResponse = raw
-	return result, nil
+	slog.Info("analysis: chamada concluída", "provedor", p.name,
+		"prompt_tokens", envelope.Usage.PromptTokens, "completion_tokens", envelope.Usage.CompletionTokens)
+
+	return stripTrailingCodeFence([]byte(envelope.Choices[0].Message.Content)), nil
 }
 
-func (p *openAICompatibleProvider) buildRequest(ctx context.Context, transcript string) (*http.Request, error) {
+func (p *openAICompatibleProvider) buildRequest(ctx context.Context, systemPrompt, transcript string) (*http.Request, error) {
 	messages := []chatMessage{
-		{Role: "system", Content: p.systemPrompt},
+		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: transcript},
 	}
 
@@ -167,4 +165,8 @@ type openAICompatibleEnvelope struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }

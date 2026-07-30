@@ -23,9 +23,9 @@ func TestFormatTranscript(t *testing.T) {
 		t.Fatalf("FormatTranscript retornou erro: %v", err)
 	}
 
-	want := "Tutor: Hi, how was your week?\n" +
-		"Aluno: It was good, I felt a lot of saudade for my hometown though.\n" +
-		"Tutor: That's understandable.\n"
+	want := "[0] Tutor: Hi, how was your week?\n" +
+		"[1] Aluno: It was good, I felt a lot of saudade for my hometown though.\n" +
+		"[2] Tutor: That's understandable.\n"
 	if got != want {
 		t.Errorf("FormatTranscript = %q, esperava %q", got, want)
 	}

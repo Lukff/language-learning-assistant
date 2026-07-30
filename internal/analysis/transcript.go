@@ -15,7 +15,7 @@ import (
 // falha explícita, sem chute silencioso que contaminaria toda a análise.
 func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error) {
 	var b strings.Builder
-	for _, u := range utterances {
+	for i, u := range utterances {
 		role, ok := speakerRoles[u.Speaker]
 		if !ok {
 			return "", fmt.Errorf("analysis: locutor %q sem papel mapeado em speakerRoles", u.Speaker)
@@ -31,7 +31,7 @@ func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string
 			return "", fmt.Errorf("analysis: papel %q inválido para locutor %q (esperado \"aluno\" ou \"tutor\")", role, u.Speaker)
 		}
 
-		fmt.Fprintf(&b, "%s: %s\n", label, u.Text)
+		fmt.Fprintf(&b, "[%d] %s: %s\n", i, label, u.Text)
 	}
 	return b.String(), nil
 }
