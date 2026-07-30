@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { colors, fonts } from "../theme";
   import * as SettingsService from "../../../bindings/assistente-idiomas/services/settingsservice";
+  import * as TeacherService from "../../../bindings/assistente-idiomas/services/teacherservice";
+  import type { Teacher } from "../../../bindings/assistente-idiomas/services/models";
 
   let storageRoot: string = $state("");
   let loading: boolean = $state(true);
@@ -17,6 +19,12 @@
   let savingCredential: boolean = $state(false);
   let saveCredentialError: string = $state("");
   let saveCredentialSuccess: boolean = $state(false);
+
+  let teachers: Teacher[] = $state([]);
+  let teachersError: string = $state("");
+  let renameDrafts: Record<number, string> = $state({});
+  let renamingId: number | null = $state(null);
+  let renameErrors: Record<number, string> = $state({});
 
   async function loadStorageRoot() {
     storageRoot = await SettingsService.GetStorageRoot();
@@ -71,9 +79,27 @@
     }
   }
 
+  async function loadTeachers() {
+    teachers = (await TeacherService.ListTeachers()) ?? [];
+    renameDrafts = Object.fromEntries(teachers.map((t) => [t.id, t.name]));
+  }
+
+  async function renameTeacher(id: number) {
+    renameErrors = { ...renameErrors, [id]: "" };
+    renamingId = id;
+    try {
+      await TeacherService.RenameTeacher(id, renameDrafts[id]);
+      await loadTeachers();
+    } catch (e) {
+      renameErrors = { ...renameErrors, [id]: String(e) };
+    } finally {
+      renamingId = null;
+    }
+  }
+
   onMount(async () => {
     try {
-      await Promise.all([loadStorageRoot(), loadCredentialStatus()]);
+      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadTeachers()]);
     } catch (e) {
       loadError = String(e);
     } finally {
@@ -138,6 +164,37 @@
         <p class="error" style="color: {colors.red};">{saveCredentialError}</p>
       {/if}
     </section>
+
+    <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
+      <h2 style="font-family: {fonts.display};">Professores</h2>
+      {#if teachersError}
+        <p class="error" style="color: {colors.red};">{teachersError}</p>
+      {/if}
+      {#if teachers.length === 0}
+        <p class="hint" style="color: {colors.mut};">Nenhum professor cadastrado ainda.</p>
+      {:else}
+        <ul class="teacher-list">
+          {#each teachers as teacher (teacher.id)}
+            <li>
+              <input
+                type="text"
+                bind:value={renameDrafts[teacher.id]}
+                style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
+              />
+              <button
+                onclick={() => renameTeacher(teacher.id)}
+                disabled={renamingId === teacher.id || !renameDrafts[teacher.id] || renameDrafts[teacher.id] === teacher.name}
+              >
+                {renamingId === teacher.id ? "Renomeando…" : "Renomear"}
+              </button>
+              {#if renameErrors[teacher.id]}
+                <p class="error" style="color: {colors.red};">{renameErrors[teacher.id]}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
   {/if}
 </div>
 
@@ -197,6 +254,26 @@
     flex: 1;
     min-width: 12rem;
     padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+  }
+  .teacher-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .teacher-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .teacher-list input {
+    flex: 1;
+    min-width: 10rem;
+    padding: 0.4rem 0.6rem;
     border-radius: 0.5rem;
   }
 </style>
