@@ -3,6 +3,7 @@
   import { colors, fonts } from "../theme";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
   import type { Lesson, Transcript } from "../../../bindings/assistente-idiomas/services/models";
+  import EditLessonModal from "../EditLessonModal.svelte";
 
   let { lessonId, onBack }: { lessonId: number; onBack: () => void } = $props();
 
@@ -17,6 +18,17 @@
   let loadingTranscript: boolean = $state(false);
 
   let retrying: boolean = $state(false);
+
+  let editing: boolean = $state(false);
+
+  async function onLessonSaved() {
+    editing = false;
+    try {
+      lesson = await LibraryService.GetLesson(lessonId);
+    } catch (e) {
+      actionError = String(e);
+    }
+  }
 
   let videoEl: HTMLVideoElement | undefined = $state();
   let currentTime: number = $state(0);
@@ -164,6 +176,7 @@
       <span class="meta" style="color: {colors.mut}; font-family: {fonts.mono};"
         >{lesson.tutor}{formatDuration(lesson.durationSeconds) ? ` · ${formatDuration(lesson.durationSeconds)}` : ""}</span
       >
+      <button onclick={() => (editing = true)}>Editar</button>
       {#if lesson.videoMissing}
         <span
           class="video-missing-badge"
@@ -239,6 +252,16 @@
     </div>
   {/if}
 </div>
+
+{#if editing && lesson}
+  <EditLessonModal
+    lessonId={lesson.id}
+    initialLessonDate={lesson.lessonDate}
+    initialTeacherName={lesson.tutor}
+    onSaved={onLessonSaved}
+    onClose={() => (editing = false)}
+  />
+{/if}
 
 <style>
   .screen {
