@@ -35,13 +35,13 @@ var statusLabel = map[string]string{
 
 // QueueItem é uma entrada da fila, no formato exposto ao frontend.
 type QueueItem struct {
-	LessonID   int64  `json:"lessonId"`
-	LessonDate string `json:"lessonDate"`
-	Tutor      string `json:"tutor"`
-	Stage      string `json:"stage"`
-	Status     string `json:"status"`
-	Attempts   int    `json:"attempts"`
-	LastError  string `json:"lastError"`
+	LessonID    int64  `json:"lessonId"`
+	LessonDate  string `json:"lessonDate"`
+	TeacherName string `json:"tutor"`
+	Stage       string `json:"stage"`
+	Status      string `json:"status"`
+	Attempts    int    `json:"attempts"`
+	LastError   string `json:"lastError"`
 }
 
 // ListQueue lista as aulas com pipeline ativo ou em erro, uma por linha,
@@ -54,13 +54,13 @@ func (s *QueueService) ListQueue() ([]QueueItem, error) {
 	out := make([]QueueItem, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, QueueItem{
-			LessonID:   e.LessonID,
-			LessonDate: e.LessonDate,
-			Tutor:      e.Tutor,
-			Stage:      stageLabel[e.Kind],
-			Status:     statusLabel[e.Status],
-			Attempts:   e.Attempts,
-			LastError:  e.LastError,
+			LessonID:    e.LessonID,
+			LessonDate:  e.LessonDate,
+			TeacherName: e.TeacherName,
+			Stage:       stageLabel[e.Kind],
+			Status:      statusLabel[e.Status],
+			Attempts:    e.Attempts,
+			LastError:   e.LastError,
 		})
 	}
 	return out, nil

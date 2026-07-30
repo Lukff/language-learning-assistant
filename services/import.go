@@ -126,7 +126,7 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 		return err
 	}
 	s.setDurationBestEffort(lessonID)
-	s.renameVideoBestEffort(lessonID)
+	renameVideoBestEffort(s.conn, s.moveFile, lessonID)
 	return nil
 }
 
@@ -167,11 +167,12 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 	}
 }
 
-// renameVideoBestEffort renomeia o vídeo recém-confirmado pro nome
-// padronizado, sempre na mesma pasta. Falhas são logadas e não invalidam a
-// confirmação da lesson.
-func (s *ImportService) renameVideoBestEffort(lessonID int64) {
-	lesson, err := db.FindLessonByID(s.conn, lessonID)
+// renameVideoBestEffort renomeia o vídeo de uma lesson pro nome padronizado
+// atual (data/professor), sempre na mesma pasta. Falhas são logadas e não
+// invalidam quem chamou — reaproveitado tanto por ImportService.ConfirmImport
+// quanto por LibraryService.UpdateLesson (História 9).
+func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, lessonID int64) {
+	lesson, err := db.FindLessonByID(conn, lessonID)
 	if err != nil {
 		slog.Warn("importer: não foi possível carregar a lesson antes de renomear o vídeo", "lesson_id", lessonID, "erro", err)
 		return
@@ -186,7 +187,7 @@ func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 	}
 
 	relDir := filepath.Dir(filepath.FromSlash(lesson.VideoPath))
-	targetName := importer.StandardFilename(lesson.LessonDate, lesson.Tutor, filepath.Ext(lesson.VideoPath))
+	targetName := importer.StandardFilename(lesson.LessonDate, lesson.TeacherName, filepath.Ext(lesson.VideoPath))
 	targetExt := filepath.Ext(targetName)
 	targetBase := strings.TrimSuffix(targetName, targetExt)
 	currentAbsPath := filepath.Join(cfg.StorageRoot, filepath.FromSlash(lesson.VideoPath))
@@ -221,25 +222,25 @@ func (s *ImportService) renameVideoBestEffort(lessonID int64) {
 	var rollback func() error
 	if targetIsCurrent {
 		sameFileKind := classifySameFilePath(currentAbsPath, targetAbsPath, runtime.GOOS)
-		if err := moveToExistingSameFile(currentAbsPath, targetAbsPath, sameFileKind, s.moveFile); err != nil {
+		if err := moveToExistingSameFile(currentAbsPath, targetAbsPath, sameFileKind, moveFile); err != nil {
 			slog.Warn("importer: não foi possível concluir o move para o mesmo arquivo", "lesson_id", lessonID, "erro", err)
 			return
 		}
 		switch sameFileKind {
 		case sameFileCaseOnlyPath:
-			rollback = func() error { return s.moveFile(targetAbsPath, currentAbsPath) }
+			rollback = func() error { return moveFile(targetAbsPath, currentAbsPath) }
 		}
 	} else {
-		if err := s.moveFile(currentAbsPath, targetAbsPath); err != nil {
+		if err := moveFile(currentAbsPath, targetAbsPath); err != nil {
 			slog.Warn("importer: não foi possível mover o vídeo pro nome padronizado", "lesson_id", lessonID, "erro", err)
 			return
 		}
-		rollback = func() error { return s.moveFile(targetAbsPath, currentAbsPath) }
+		rollback = func() error { return moveFile(targetAbsPath, currentAbsPath) }
 	}
 
 	targetRelPath := filepath.ToSlash(filepath.Join(relDir, candidate))
 	mtime := info.ModTime().UTC().Format(time.RFC3339)
-	if err := db.UpdateLessonPath(s.conn, lessonID, targetRelPath, info.Size(), mtime); err != nil {
+	if err := db.UpdateLessonPath(conn, lessonID, targetRelPath, info.Size(), mtime); err != nil {
 		if rollback != nil {
 			rollbackErr := rollback()
 			if rollbackErr != nil {

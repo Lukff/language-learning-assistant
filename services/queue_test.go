@@ -30,7 +30,7 @@ func TestQueueService_ListQueue_TranslatesStageAndStatus(t *testing.T) {
 	if items[0].Stage != "Transcrição" || items[0].Status != "processando" {
 		t.Errorf("ListQueue()[0] = %+v, esperado Stage=Transcrição Status=processando", items[0])
 	}
-	if items[0].LessonDate != "2026-07-23" || items[0].Tutor != "Sarah M." {
+	if items[0].LessonDate != "2026-07-23" || items[0].TeacherName != "Sarah M." {
 		t.Errorf("ListQueue()[0] = %+v, esperado data/tutor da fixture", items[0])
 	}
 }

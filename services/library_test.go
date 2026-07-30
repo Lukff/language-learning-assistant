@@ -2,18 +2,24 @@ package services
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"assistente-idiomas/internal/config"
 	"assistente-idiomas/internal/db"
 )
 
-func mustInsertLesson(t *testing.T, conn *sql.DB, date, tutor, videoPath string) int64 {
+func mustInsertLesson(t *testing.T, conn *sql.DB, date, teacherName, videoPath string) int64 {
 	t.Helper()
+	teacherID, err := db.GetOrCreateTeacherByName(conn, teacherName)
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		date, tutor, videoPath, "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		date, teacherID, videoPath, "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)
@@ -55,7 +61,7 @@ func TestLibraryService_ListLessons_ReturnsConfirmedLessons(t *testing.T) {
 	if len(lessons) != 1 {
 		t.Fatalf("ListLessons() = %+v, esperado 1 aula", lessons)
 	}
-	if lessons[0].LessonDate != "2026-07-20" || lessons[0].Tutor != "Sarah M." || lessons[0].VideoPath != "aula.mp4" {
+	if lessons[0].LessonDate != "2026-07-20" || lessons[0].TeacherName != "Sarah M." || lessons[0].VideoPath != "aula.mp4" {
 		t.Errorf("ListLessons()[0] = %+v, esperado data/tutor/path da fixture", lessons[0])
 	}
 	if lessons[0].Status != "pronta" {
@@ -80,7 +86,7 @@ func TestLibraryService_ListLessons_EmptyReturnsEmptySlice(t *testing.T) {
 	}
 }
 
-func TestLibraryService_ListLessons_FiltersByTutor(t *testing.T) {
+func TestLibraryService_ListLessons_FiltersByTeacher(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("db.Open() falhou: %v", err)
@@ -94,13 +100,18 @@ func TestLibraryService_ListLessons_FiltersByTutor(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, l2, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, l2, "transcribe", "done", "")
 
+	james, err := db.GetOrCreateTeacherByName(conn, "James K.")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
+
 	svc := NewLibraryService(conn, testStorageRoot(t))
-	lessons, err := svc.ListLessons(LessonFilter{Tutor: "James K."})
+	lessons, err := svc.ListLessons(LessonFilter{TeacherID: james})
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Tutor != "James K." {
-		t.Errorf("ListLessons(Tutor=James K.) = %+v, esperado só a aula de James K.", lessons)
+	if len(lessons) != 1 || lessons[0].TeacherName != "James K." {
+		t.Errorf("ListLessons(TeacherID=James K.) = %+v, esperado só a aula de James K.", lessons)
 	}
 }
 
@@ -122,27 +133,6 @@ func TestLibraryService_ListLessons_ErrorStatusAndMessageFromExtractAudio(t *tes
 	}
 	if len(lessons) != 1 || lessons[0].Status != "erro" || lessons[0].ErrorMessage != "ffmpeg não encontrado" {
 		t.Errorf("ListLessons()[0] = %+v, esperado status=erro com a mensagem do extract_audio (causa raiz)", lessons[0])
-	}
-}
-
-func TestLibraryService_ListTutors_ReturnsDistinctTutors(t *testing.T) {
-	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
-	}
-	defer conn.Close()
-
-	mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "a.mp4")
-	mustInsertLesson(t, conn, "2026-07-21", "Sarah M.", "b.mp4")
-	mustInsertLesson(t, conn, "2026-07-22", "James K.", "c.mp4")
-
-	svc := NewLibraryService(conn, testStorageRoot(t))
-	tutors, err := svc.ListTutors()
-	if err != nil {
-		t.Fatalf("ListTutors() erro inesperado: %v", err)
-	}
-	if len(tutors) != 2 {
-		t.Fatalf("ListTutors() = %+v, esperado 2 tutores distintos", tutors)
 	}
 }
 
@@ -185,7 +175,7 @@ func TestLibraryService_GetLesson_FindsExistingAndErrorsWhenMissing(t *testing.T
 	if err != nil {
 		t.Fatalf("GetLesson() erro inesperado: %v", err)
 	}
-	if lesson.Tutor != "Sarah M." || lesson.VideoPath != "aula.mp4" {
+	if lesson.TeacherName != "Sarah M." || lesson.VideoPath != "aula.mp4" {
 		t.Errorf("GetLesson() = %+v, esperado tutor/path da fixture", lesson)
 	}
 
@@ -351,5 +341,98 @@ func TestLibraryService_GetLesson_VideoMissingWhenFileNotFound(t *testing.T) {
 	}
 	if !lesson.VideoMissing {
 		t.Errorf("GetLesson().VideoMissing = %v, esperado true (arquivo não existe)", lesson.VideoMissing)
+	}
+}
+
+func TestLibraryService_UpdateLesson_ChangesDateAndTeacher(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+
+	svc := NewLibraryService(conn, testStorageRoot(t))
+	if err := svc.UpdateLesson(lessonID, "2026-07-25T10:00", "James K."); err != nil {
+		t.Fatalf("UpdateLesson() erro inesperado: %v", err)
+	}
+
+	lesson, err := svc.GetLesson(lessonID)
+	if err != nil {
+		t.Fatalf("GetLesson() erro inesperado: %v", err)
+	}
+	if lesson.LessonDate != "2026-07-25T10:00" || lesson.TeacherName != "James K." {
+		t.Errorf("GetLesson() após UpdateLesson = %+v, esperado data/professor atualizados", lesson)
+	}
+}
+
+func TestLibraryService_UpdateLesson_RenamesVideoToNewStandardFilename(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "2026-07-20_10H00_sarah-m.mp4"), []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: root}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20T10:00", "Sarah M.", "2026-07-20_10H00_sarah-m.mp4")
+
+	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
+	if err := svc.UpdateLesson(lessonID, "2026-07-25T14:30", "James K."); err != nil {
+		t.Fatalf("UpdateLesson() erro inesperado: %v", err)
+	}
+
+	wantPath := "2026-07-25_14H30_james-k.mp4"
+	lesson, err := db.FindLessonByPath(conn, wantPath)
+	if err != nil {
+		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+	}
+	if lesson == nil {
+		t.Fatalf("lesson não encontrada no path renomeado %q", wantPath)
+	}
+	if _, err := os.Stat(filepath.Join(root, wantPath)); err != nil {
+		t.Errorf("arquivo renomeado não existe no disco em %q: %v", wantPath, err)
+	}
+}
+
+func TestLibraryService_UpdateLesson_SucceedsEvenWhenRenameFails(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
+		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20T10:00", "Sarah M.", "aula.mp4")
+
+	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
+	svc.moveFile = func(_, _ string) error { return errors.New("falha injetada") }
+
+	if err := svc.UpdateLesson(lessonID, "2026-07-25T14:30", "James K."); err != nil {
+		t.Fatalf("UpdateLesson() não deveria falhar mesmo com rename impossível: %v", err)
+	}
+
+	lesson, err := svc.GetLesson(lessonID)
+	if err != nil {
+		t.Fatalf("GetLesson() erro inesperado: %v", err)
+	}
+	if lesson.LessonDate != "2026-07-25T14:30" || lesson.TeacherName != "James K." {
+		t.Errorf("GetLesson() = %+v, esperado data/professor atualizados mesmo com rename falho", lesson)
+	}
+	if lesson.VideoPath != "aula.mp4" {
+		t.Errorf("VideoPath = %q, esperado inalterado (aula.mp4) já que o rename falhou", lesson.VideoPath)
 	}
 }

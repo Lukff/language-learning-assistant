@@ -60,11 +60,14 @@ func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
 	}
 
 	var count int
-	if err := conn.QueryRow(`SELECT COUNT(*) FROM lessons WHERE tutor = ?`, "Sarah M.").Scan(&count); err != nil {
+	if err := conn.QueryRow(
+		`SELECT COUNT(*) FROM lessons l JOIN teachers t ON t.id = l.teacher_id WHERE t.name = ?`,
+		"Sarah M.",
+	).Scan(&count); err != nil {
 		t.Fatalf("count de lessons falhou: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("lessons com tutor Sarah M. = %d, esperado 1", count)
+		t.Errorf("lessons com professor Sarah M. = %d, esperado 1", count)
 	}
 }
 

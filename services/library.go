@@ -5,22 +5,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"assistente-idiomas/internal/db"
 )
 
 // LibraryService expõe as aulas já confirmadas para a Biblioteca —
 // listagem com status derivado dos jobs e duração (História 5), filtro por
-// tutor/período, reprocessamento de aulas com erro, busca de uma aula pro
-// Detalhe e sua transcrição sincronizada (História 6), e checagem de
-// presença do arquivo de vídeo na storage_root atual (História 8).
+// professor/período, reprocessamento de aulas com erro, busca de uma aula
+// pro Detalhe e sua transcrição sincronizada (História 6), checagem de
+// presença do arquivo de vídeo na storage_root atual (História 8), e
+// edição de data/horário/professor de uma aula já confirmada (História 9).
 type LibraryService struct {
 	conn        *sql.DB
 	storageRoot func() (string, error)
+	moveFile    func(string, string) error
 }
 
 func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *LibraryService {
-	return &LibraryService{conn: conn, storageRoot: storageRoot}
+	return &LibraryService{conn: conn, storageRoot: storageRoot, moveFile: moveFileNoReplace}
 }
 
 // Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
@@ -36,7 +39,7 @@ func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *Librar
 type Lesson struct {
 	ID                  int64   `json:"id"`
 	LessonDate          string  `json:"lessonDate"`
-	Tutor               string  `json:"tutor"`
+	TeacherName         string  `json:"tutor"`
 	VideoPath           string  `json:"videoPath"`
 	DurationSeconds     *int64  `json:"durationSeconds"`
 	Status              string  `json:"status"`
@@ -45,12 +48,12 @@ type Lesson struct {
 	VideoMissing        bool    `json:"videoMissing"`
 }
 
-// LessonFilter filtra ListLessons — campos vazios são ignorados (sem
-// filtro naquele critério).
+// LessonFilter filtra ListLessons — campos zero são ignorados (sem filtro
+// naquele critério).
 type LessonFilter struct {
-	Tutor    string `json:"tutor"`
-	DateFrom string `json:"dateFrom"`
-	DateTo   string `json:"dateTo"`
+	TeacherID int64  `json:"teacherId"`
+	DateFrom  string `json:"dateFrom"`
+	DateTo    string `json:"dateTo"`
 }
 
 // Transcript é a transcrição de uma lesson, no formato exposto ao Detalhe
@@ -73,9 +76,9 @@ type Utterance struct {
 // primeiro, aplicando filter.
 func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	rows, err := db.ListLessonsWithStatus(s.conn, db.LessonFilter{
-		Tutor:    filter.Tutor,
-		DateFrom: filter.DateFrom,
-		DateTo:   filter.DateTo,
+		TeacherID: filter.TeacherID,
+		DateFrom:  filter.DateFrom,
+		DateTo:    filter.DateTo,
 	})
 	if err != nil {
 		return nil, err
@@ -85,7 +88,7 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 		out = append(out, Lesson{
 			ID:                  r.ID,
 			LessonDate:          r.LessonDate,
-			Tutor:               r.Tutor,
+			TeacherName:         r.TeacherName,
 			VideoPath:           r.VideoPath,
 			DurationSeconds:     r.DurationSeconds,
 			Status:              r.Status,
@@ -95,12 +98,6 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 		})
 	}
 	return out, nil
-}
-
-// ListTutors lista os tutores distintos já registrados, pro dropdown de
-// filtro da Biblioteca.
-func (s *LibraryService) ListTutors() ([]string, error) {
-	return db.ListTutors(s.conn)
 }
 
 // RetryLesson reseta os jobs com erro da lesson pra "pending" — o worker de
@@ -127,7 +124,7 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	return Lesson{
 		ID:                  lws.ID,
 		LessonDate:          lws.LessonDate,
-		Tutor:               lws.Tutor,
+		TeacherName:         lws.TeacherName,
 		VideoPath:           lws.VideoPath,
 		DurationSeconds:     lws.DurationSeconds,
 		Status:              lws.Status,
@@ -165,6 +162,39 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 // nesta lesson — toggle do Detalhe (História 6).
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
+}
+
+// UpdateLesson grava data/horário e professor de uma aula já confirmada
+// (História 9) — o professor pode ser um nome já cadastrado ou um nome
+// novo (mesmo combobox do formulário de importação). Depois de gravar,
+// tenta renomear o vídeo pro nome padronizado atual (melhor esforço — não
+// falha a edição se o rename não for possível, mesmo princípio da
+// confirmação de importação).
+func (s *LibraryService) UpdateLesson(lessonID int64, lessonDate string, teacherName string) error {
+	if lessonDate == "" {
+		return fmt.Errorf("data da aula não pode ser vazia")
+	}
+	if teacherName == "" {
+		return fmt.Errorf("professor não pode ser vazio")
+	}
+	if !hasTimeComponent(lessonDate) {
+		return fmt.Errorf("horário da aula é obrigatório")
+	}
+	const lessonDateLayout = "2006-01-02T15:04"
+	parsedLessonDate, err := time.Parse(lessonDateLayout, lessonDate)
+	if err != nil || parsedLessonDate.Format(lessonDateLayout) != lessonDate {
+		return fmt.Errorf("data e horário da aula devem estar no formato AAAA-MM-DDTHH:MM")
+	}
+
+	teacherID, err := db.GetOrCreateTeacherByName(s.conn, teacherName)
+	if err != nil {
+		return err
+	}
+	if err := db.UpdateLesson(s.conn, lessonID, lessonDate, teacherID); err != nil {
+		return err
+	}
+	renameVideoBestEffort(s.conn, s.moveFile, lessonID)
+	return nil
 }
 
 // videoMissing indica se o arquivo de vídeo de uma lesson não é encontrado
