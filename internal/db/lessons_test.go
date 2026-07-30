@@ -28,9 +28,13 @@ func TestFindLessonByPathAndByHash_FindExistingRow(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	_, err = conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		"2026-07-15", "Sarah", "aula-01.mp4", "hash-abc", 12345, "2026-07-15T10:00:00Z", "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"2026-07-15", teacherID, "aula-01.mp4", "hash-abc", 12345, "2026-07-15T10:00:00Z", "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("insert de fixture falhou: %v", err)
@@ -60,9 +64,13 @@ func TestUpdateLessonPath_ChangesPathSizeAndMTime(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		"2026-07-15", "Sarah", "old/aula-01.mp4", "hash-abc", 100, "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"2026-07-15", teacherID, "old/aula-01.mp4", "hash-abc", 100, "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("insert de fixture falhou: %v", err)
@@ -89,11 +97,15 @@ func TestLessons_VideoHashUniqueIndexRejectsDuplicate(t *testing.T) {
 	}
 	defer conn.Close()
 
-	insert := `INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-	if _, err := conn.Exec(insert, "2026-07-15", "Sarah", "a.mp4", "hash-dup", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z"); err != nil {
+	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
+	insert := `INSERT INTO lessons (lesson_date, teacher_id, video_path, video_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+	if _, err := conn.Exec(insert, "2026-07-15", teacherID, "a.mp4", "hash-dup", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z"); err != nil {
 		t.Fatalf("primeiro insert falhou: %v", err)
 	}
-	if _, err := conn.Exec(insert, "2026-07-16", "Sarah", "b.mp4", "hash-dup", "2026-07-16T10:00:00Z", "2026-07-16T10:00:00Z"); err == nil {
+	if _, err := conn.Exec(insert, "2026-07-16", teacherID, "b.mp4", "hash-dup", "2026-07-16T10:00:00Z", "2026-07-16T10:00:00Z"); err == nil {
 		t.Error("esperava erro de índice único em video_hash duplicado, veio nil")
 	}
 }
@@ -105,9 +117,13 @@ func TestFindLessonByID_FindsExistingAndNilWhenMissing(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-15", teacherID, "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("insert de fixture falhou: %v", err)
@@ -141,9 +157,13 @@ func TestSetLessonDuration_UpdatesDurationSeconds(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-15", teacherID, "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("insert de fixture falhou: %v", err)
@@ -163,33 +183,6 @@ func TestSetLessonDuration_UpdatesDurationSeconds(t *testing.T) {
 	}
 }
 
-func TestListTutors_ReturnsDistinctSortedTutors(t *testing.T) {
-	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
-	}
-	defer conn.Close()
-
-	insert := `INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
-	for _, row := range []struct{ date, tutor, path string }{
-		{"2026-07-10", "Sarah M.", "a.mp4"},
-		{"2026-07-11", "Sarah M.", "b.mp4"},
-		{"2026-07-12", "James K.", "c.mp4"},
-	} {
-		if _, err := conn.Exec(insert, row.date, row.tutor, row.path, row.date+"T10:00:00Z", row.date+"T10:00:00Z"); err != nil {
-			t.Fatalf("insert de fixture falhou: %v", err)
-		}
-	}
-
-	tutors, err := ListTutors(conn)
-	if err != nil {
-		t.Fatalf("ListTutors() erro inesperado: %v", err)
-	}
-	if len(tutors) != 2 || tutors[0] != "James K." || tutors[1] != "Sarah M." {
-		t.Errorf("ListTutors() = %+v, esperado [James K. Sarah M.] (distintos, ordem alfabética)", tutors)
-	}
-}
-
 func TestSetStudentSpeaker_RoundTripsThroughFindLessonByID(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
@@ -197,9 +190,13 @@ func TestSetStudentSpeaker_RoundTripsThroughFindLessonByID(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-15", teacherID, "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("insert de fixture falhou: %v", err)

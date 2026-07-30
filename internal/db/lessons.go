@@ -7,15 +7,18 @@ import (
 )
 
 // Lesson é uma linha de lessons. Além dos dados visíveis ao usuário
-// (LessonDate, Tutor, DurationSeconds), carrega a identidade (path, hash) e
-// o stat-cache (tamanho/mtime) usados pela varredura da História 3 para
-// decidir se o conteúdo precisa ser rehasheado. DurationSeconds é nil até a
-// História 5 gravá-lo (best-effort, via ffprobe, na confirmação da
-// importação) — nunca bloqueia nada por ser nil.
+// (LessonDate, TeacherName, DurationSeconds), carrega a identidade (path,
+// hash) e o stat-cache (tamanho/mtime) usados pela varredura da História 3
+// para decidir se o conteúdo precisa ser rehasheado. TeacherID é a FK
+// gravável (INSERT/UPDATE); TeacherName vem de um JOIN com teachers, só
+// leitura. DurationSeconds é nil até a História 5 gravá-lo (best-effort,
+// via ffprobe, na confirmação da importação) — nunca bloqueia nada por ser
+// nil.
 type Lesson struct {
 	ID                  int64
 	LessonDate          string
-	Tutor               string
+	TeacherID           int64
+	TeacherName         string
 	VideoPath           string
 	VideoHash           string
 	FileSize            int64
@@ -27,7 +30,9 @@ type Lesson struct {
 // lessonColumns é a lista de colunas (nesta ordem) que scanLessonRow espera
 // — compartilhada por FindLessonByPath/ByHash/ByID pra manter as três
 // consultas idênticas na forma como leem duration_seconds nullable.
-const lessonColumns = `id, lesson_date, tutor, video_path, COALESCE(video_hash, ''), COALESCE(file_size, 0), COALESCE(file_mtime, ''), duration_seconds, student_speaker_label`
+const lessonColumns = `l.id, l.lesson_date, l.teacher_id, t.name, l.video_path, COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''), l.duration_seconds, l.student_speaker_label`
+
+const lessonFromJoin = ` FROM lessons l JOIN teachers t ON t.id = l.teacher_id`
 
 // scanLessonRow faz o scan de uma linha selecionada com lessonColumns.
 // Retorna (nil, nil) se a linha não existir (sql.ErrNoRows) — path/hash/id
@@ -36,7 +41,7 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	var l Lesson
 	var duration sql.NullInt64
 	var studentSpeaker sql.NullString
-	err := row.Scan(&l.ID, &l.LessonDate, &l.Tutor, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime, &duration, &studentSpeaker)
+	err := row.Scan(&l.ID, &l.LessonDate, &l.TeacherID, &l.TeacherName, &l.VideoPath, &l.VideoHash, &l.FileSize, &l.FileMTime, &duration, &studentSpeaker)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -58,7 +63,7 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 // (nil, nil) se não houver nenhuma — path já registrado é o caso comum, não
 // um erro.
 func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
-	row := conn.QueryRow(`SELECT `+lessonColumns+` FROM lessons WHERE video_path = ?`, path)
+	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_path = ?`, path)
 	l, err := scanLessonRow(row)
 	if err != nil {
 		return nil, fmt.Errorf("buscar lesson por path: %w", err)
@@ -69,7 +74,7 @@ func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 // FindLessonByHash busca a lesson cujo video_hash é exatamente hash. Retorna
 // (nil, nil) se não houver nenhuma.
 func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
-	row := conn.QueryRow(`SELECT `+lessonColumns+` FROM lessons WHERE video_hash = ?`, hash)
+	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_hash = ?`, hash)
 	l, err := scanLessonRow(row)
 	if err != nil {
 		return nil, fmt.Errorf("buscar lesson por hash: %w", err)
@@ -79,7 +84,7 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 
 // FindLessonByID busca a lesson por id. Retorna (nil, nil) se não houver.
 func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
-	row := conn.QueryRow(`SELECT `+lessonColumns+` FROM lessons WHERE id = ?`, id)
+	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.id = ?`, id)
 	l, err := scanLessonRow(row)
 	if err != nil {
 		return nil, fmt.Errorf("buscar lesson por id: %w", err)
@@ -131,25 +136,17 @@ func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error 
 	return nil
 }
 
-// ListTutors lista os tutores distintos já registrados em lessons, em ordem
-// alfabética — alimenta o dropdown de filtro da Biblioteca (História 5).
-func ListTutors(conn *sql.DB) ([]string, error) {
-	rows, err := conn.Query(`SELECT DISTINCT tutor FROM lessons ORDER BY tutor ASC`)
+// UpdateLesson grava data/horário e professor de uma lesson já confirmada —
+// edição pós-importação (História 9). teacherID já deve existir (resolvido
+// pelo chamador via GetOrCreateTeacherByName a partir do nome livre do
+// combobox).
+func UpdateLesson(conn *sql.DB, lessonID int64, lessonDate string, teacherID int64) error {
+	_, err := conn.Exec(
+		`UPDATE lessons SET lesson_date = ?, teacher_id = ?, updated_at = ? WHERE id = ?`,
+		lessonDate, teacherID, time.Now().UTC().Format(time.RFC3339), lessonID,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("listar tutores: %w", err)
+		return fmt.Errorf("atualizar lesson %d: %w", lessonID, err)
 	}
-	defer rows.Close()
-
-	out := make([]string, 0)
-	for rows.Next() {
-		var tutor string
-		if err := rows.Scan(&tutor); err != nil {
-			return nil, fmt.Errorf("ler tutor: %w", err)
-		}
-		out = append(out, tutor)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar tutores: %w", err)
-	}
-	return out, nil
+	return nil
 }

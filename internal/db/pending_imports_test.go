@@ -80,12 +80,12 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 		t.Fatalf("lesson após confirmação = %+v, esperado video_path aula-nova.mp4", lesson)
 	}
 
-	var tutor string
-	if err := conn.QueryRow(`SELECT tutor FROM lessons WHERE id = ?`, lessonID).Scan(&tutor); err != nil {
-		t.Fatalf("select tutor falhou: %v", err)
+	var teacherName string
+	if err := conn.QueryRow(`SELECT t.name FROM lessons l JOIN teachers t ON t.id = l.teacher_id WHERE l.id = ?`, lessonID).Scan(&teacherName); err != nil {
+		t.Fatalf("select do professor falhou: %v", err)
 	}
-	if tutor != "Sarah M." {
-		t.Errorf("tutor = %q, esperado \"Sarah M.\"", tutor)
+	if teacherName != "Sarah M." {
+		t.Errorf("teacherName = %q, esperado \"Sarah M.\"", teacherName)
 	}
 
 	rows, err := conn.Query(`SELECT kind, status FROM jobs WHERE lesson_id = ? ORDER BY kind`, lessonID)

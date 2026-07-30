@@ -94,7 +94,7 @@ func TestListLessonsWithStatus_ErroQuandoSoTranscribeFalhou(t *testing.T) {
 	}
 }
 
-func TestListLessonsWithStatus_FiltraPorTutorEPeriodo(t *testing.T) {
+func TestListLessonsWithStatus_FiltraPorProfessorEPeriodo(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("Open() erro inesperado: %v", err)
@@ -102,32 +102,36 @@ func TestListLessonsWithStatus_FiltraPorTutorEPeriodo(t *testing.T) {
 	defer conn.Close()
 
 	sarah := mustInsertLessonForJobs(t, conn, "sarah.mp4")
-	if _, err := conn.Exec(`UPDATE lessons SET tutor = ?, lesson_date = ? WHERE id = ?`, "Sarah M.", "2026-07-10", sarah); err != nil {
+	if _, err := conn.Exec(`UPDATE lessons SET lesson_date = ? WHERE id = ?`, "2026-07-10", sarah); err != nil {
 		t.Fatalf("ajustar fixture sarah falhou: %v", err)
 	}
 	mustInsertJob(t, conn, sarah, "extract_audio", "done", 0, "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z")
 	mustInsertJob(t, conn, sarah, "transcribe", "done", 0, "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z")
 
+	jamesTeacherID, err := GetOrCreateTeacherByName(conn, "James K.")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	james := mustInsertLessonForJobs(t, conn, "james.mp4")
-	if _, err := conn.Exec(`UPDATE lessons SET tutor = ?, lesson_date = ? WHERE id = ?`, "James K.", "2026-07-20T14:00", james); err != nil {
+	if _, err := conn.Exec(`UPDATE lessons SET teacher_id = ?, lesson_date = ? WHERE id = ?`, jamesTeacherID, "2026-07-20T14:00", james); err != nil {
 		t.Fatalf("ajustar fixture james falhou: %v", err)
 	}
 	mustInsertJob(t, conn, james, "extract_audio", "done", 0, "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z")
 	mustInsertJob(t, conn, james, "transcribe", "done", 0, "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z")
 
-	byTutor, err := ListLessonsWithStatus(conn, LessonFilter{Tutor: "James K."})
+	byTeacher, err := ListLessonsWithStatus(conn, LessonFilter{TeacherID: jamesTeacherID})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(Tutor) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(TeacherID) erro inesperado: %v", err)
 	}
-	if len(byTutor) != 1 || byTutor[0].Tutor != "James K." {
-		t.Errorf("ListLessonsWithStatus(Tutor=James K.) = %+v, esperado só a aula de James K.", byTutor)
+	if len(byTeacher) != 1 || byTeacher[0].TeacherName != "James K." {
+		t.Errorf("ListLessonsWithStatus(TeacherID=james) = %+v, esperado só a aula de James K.", byTeacher)
 	}
 
 	byDate, err := ListLessonsWithStatus(conn, LessonFilter{DateFrom: "2026-07-15", DateTo: "2026-07-31"})
 	if err != nil {
 		t.Fatalf("ListLessonsWithStatus(DateFrom/DateTo) erro inesperado: %v", err)
 	}
-	if len(byDate) != 1 || byDate[0].Tutor != "James K." {
+	if len(byDate) != 1 || byDate[0].TeacherName != "James K." {
 		t.Errorf("ListLessonsWithStatus(2026-07-15..2026-07-31) = %+v, esperado só a aula de 20/07 (inclui horário, filtra só pela data)", byDate)
 	}
 }

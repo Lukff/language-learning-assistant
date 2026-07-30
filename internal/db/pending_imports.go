@@ -77,12 +77,13 @@ func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 }
 
 // ConfirmPendingImport transforma o candidato id numa lesson real: insere em
-// lessons (com lessonDate/tutor informados pelo usuário), cria os jobs
+// lessons (com lessonDate/teacherName informados pelo usuário, o segundo
+// resolvido para um teacher_id via GetOrCreateTeacherByName), cria os jobs
 // extract_audio e transcribe como pending, e remove o candidato de
 // pending_imports — tudo numa única transação. Se qualquer passo falhar, o
 // candidato continua intacto em pending_imports para o usuário tentar de
 // novo.
-func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor string) (int64, error) {
+func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, teacherName string) (int64, error) {
 	tx, err := conn.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("iniciar transação: %w", err)
@@ -101,10 +102,15 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor strin
 		return 0, fmt.Errorf("buscar pending_import: %w", err)
 	}
 
+	teacherID, err := getOrCreateTeacherByName(tx, teacherName)
+	if err != nil {
+		return 0, err
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := tx.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		lessonDate, tutor, p.Path, p.SHA256, p.FileSize, p.FileMTime, now, now,
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		lessonDate, teacherID, p.Path, p.SHA256, p.FileSize, p.FileMTime, now, now,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserir lesson: %w", err)

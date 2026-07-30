@@ -66,9 +66,13 @@ func TestUpsertPrompt_DivergentContentKeepsExisting(t *testing.T) {
 
 func insertLessonFixture(t *testing.T, conn *sql.DB) int64 {
 	t.Helper()
+	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-29", "Fulano", "aula.mp4", "2026-07-29T09:00:00Z", "2026-07-29T09:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-29", teacherID, "aula.mp4", "2026-07-29T09:00:00Z", "2026-07-29T09:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)

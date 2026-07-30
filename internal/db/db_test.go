@@ -33,20 +33,24 @@ func TestOpen_LessonRoundTrip(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+	}
 	_, err = conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-21", "Fulano", "aulas/2026/x.mp4", "2026-07-21T10:00:00Z", "2026-07-21T10:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-21", teacherID, "aulas/2026/x.mp4", "2026-07-21T10:00:00Z", "2026-07-21T10:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("insert em lessons falhou: %v", err)
 	}
 
-	var tutor string
-	if err := conn.QueryRow(`SELECT tutor FROM lessons WHERE video_path = ?`, "aulas/2026/x.mp4").Scan(&tutor); err != nil {
-		t.Fatalf("select em lessons falhou: %v", err)
+	lesson, err := FindLessonByPath(conn, "aulas/2026/x.mp4")
+	if err != nil {
+		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
 	}
-	if tutor != "Fulano" {
-		t.Errorf("tutor = %q, esperado \"Fulano\"", tutor)
+	if lesson == nil || lesson.TeacherName != "Fulano" {
+		t.Errorf("TeacherName = %+v, esperado \"Fulano\"", lesson)
 	}
 }
 

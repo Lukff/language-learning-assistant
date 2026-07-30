@@ -7,12 +7,12 @@ import (
 )
 
 // LessonFilter filtra ListLessonsWithStatus — todos os campos são opcionais
-// (string vazia = sem filtro), usado pelo filtro por tutor/período da
-// Biblioteca (História 5).
+// (zero value = sem filtro), usado pelo filtro por professor/período da
+// Biblioteca (História 5, TeacherID desde a História 9).
 type LessonFilter struct {
-	Tutor    string
-	DateFrom string // AAAA-MM-DD, inclusive
-	DateTo   string // AAAA-MM-DD, inclusive
+	TeacherID int64
+	DateFrom  string // AAAA-MM-DD, inclusive
+	DateTo    string // AAAA-MM-DD, inclusive
 }
 
 // LessonWithStatus é uma lesson com o status derivado dos jobs
@@ -29,7 +29,7 @@ type LessonWithStatus struct {
 // ListLessonsWithStatus (várias linhas) e FindLessonWithStatusByID (uma
 // linha, História 6) — mesma lista de colunas/JOIN, pra não divergirem.
 const lessonWithStatusColumns = `
-		l.id, l.lesson_date, l.tutor, l.video_path,
+		l.id, l.lesson_date, l.teacher_id, t.name, l.video_path,
 		COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''),
 		l.duration_seconds, l.student_speaker_label,
 		COALESCE(ea.status, ''), COALESCE(ea.last_error, ''),
@@ -37,6 +37,7 @@ const lessonWithStatusColumns = `
 
 const lessonWithStatusFromJoin = `
 	FROM lessons l
+	JOIN teachers t ON t.id = l.teacher_id
 	LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
 	LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'`
 
@@ -53,7 +54,7 @@ func scanLessonWithStatusRow(s rowScanner) (LessonWithStatus, error) {
 	var studentSpeaker sql.NullString
 	var extractStatus, extractError, transcribeStatus, transcribeError string
 	err := s.Scan(
-		&lws.ID, &lws.LessonDate, &lws.Tutor, &lws.VideoPath,
+		&lws.ID, &lws.LessonDate, &lws.TeacherID, &lws.TeacherName, &lws.VideoPath,
 		&lws.VideoHash, &lws.FileSize, &lws.FileMTime,
 		&duration, &studentSpeaker,
 		&extractStatus, &extractError,
@@ -75,16 +76,16 @@ func scanLessonWithStatusRow(s rowScanner) (LessonWithStatus, error) {
 }
 
 // ListLessonsWithStatus lista as lessons confirmadas com o status derivado
-// dos jobs, mais recentes primeiro, aplicando filter (campos vazios são
+// dos jobs, mais recentes primeiro, aplicando filter (campos zero são
 // ignorados). O filtro de data compara só a parte AAAA-MM-DD de
 // lesson_date (que pode ter horário, formato de <input type="datetime-local">),
 // pra incluir aulas com horário registrado no dia inteiro do intervalo.
 func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error) {
 	query := `SELECT` + lessonWithStatusColumns + lessonWithStatusFromJoin + ` WHERE 1=1`
 	var args []any
-	if filter.Tutor != "" {
-		query += ` AND l.tutor = ?`
-		args = append(args, filter.Tutor)
+	if filter.TeacherID != 0 {
+		query += ` AND l.teacher_id = ?`
+		args = append(args, filter.TeacherID)
 	}
 	if filter.DateFrom != "" {
 		query += ` AND substr(l.lesson_date, 1, 10) >= ?`

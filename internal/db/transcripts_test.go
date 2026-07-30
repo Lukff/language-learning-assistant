@@ -16,9 +16,13 @@ func TestHasTranscript_FalseThenTrueAfterInsert(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-22", "Fulano", "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-22", teacherID, "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)
@@ -53,9 +57,13 @@ func TestInsertTranscript_PersistsRawPathAndUtterances(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-22", "Fulano", "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-22", teacherID, "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)
@@ -86,9 +94,13 @@ func TestFindTranscriptByLessonID_NilWhenMissing(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-22", "Fulano", "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-22", teacherID, "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)
@@ -111,9 +123,13 @@ func TestFindTranscriptByLessonID_UnmarshalsUtterances(t *testing.T) {
 	}
 	defer conn.Close()
 
+	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
+	if err != nil {
+		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+	}
 	res, err := conn.Exec(
-		`INSERT INTO lessons (lesson_date, tutor, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"2026-07-22", "Fulano", "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-07-22", teacherID, "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
 		t.Fatalf("inserir lesson de fixture falhou: %v", err)

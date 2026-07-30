@@ -11,14 +11,14 @@ import (
 // no formato que a Fila (História 7) precisa: qual job está "atual" agora,
 // não só o status colapsado que LessonWithStatus usa pra Biblioteca.
 type QueueEntry struct {
-	LessonID   int64
-	LessonDate string
-	Tutor      string
-	Kind       string // "extract_audio" ou "transcribe"
-	Status     string // "pending", "running" ou "error"
-	Attempts   int
-	LastError  string
-	UpdatedAt  string
+	LessonID    int64
+	LessonDate  string
+	TeacherName string
+	Kind        string // "extract_audio" ou "transcribe"
+	Status      string // "pending", "running" ou "error"
+	Attempts    int
+	LastError   string
+	UpdatedAt   string
 }
 
 // ListQueueEntries lista as aulas com pipeline ativo ou em erro, uma linha
@@ -39,10 +39,11 @@ type QueueEntry struct {
 func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	rows, err := conn.Query(`
 		SELECT
-			l.id, l.lesson_date, l.tutor,
+			l.id, l.lesson_date, t.name,
 			COALESCE(ea.status, ''), COALESCE(ea.attempts, 0), COALESCE(ea.last_error, ''), COALESCE(ea.updated_at, ''),
 			COALESCE(tr.status, ''), COALESCE(tr.attempts, 0), COALESCE(tr.last_error, ''), COALESCE(tr.updated_at, '')
 		FROM lessons l
+		JOIN teachers t ON t.id = l.teacher_id
 		LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
 		LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'
 	`)
@@ -54,20 +55,20 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	out := make([]QueueEntry, 0)
 	for rows.Next() {
 		var lessonID int64
-		var lessonDate, tutor string
+		var lessonDate, teacherName string
 		var extractStatus, extractError, extractUpdatedAt string
 		var extractAttempts int
 		var transcribeStatus, transcribeError, transcribeUpdatedAt string
 		var transcribeAttempts int
 		if err := rows.Scan(
-			&lessonID, &lessonDate, &tutor,
+			&lessonID, &lessonDate, &teacherName,
 			&extractStatus, &extractAttempts, &extractError, &extractUpdatedAt,
 			&transcribeStatus, &transcribeAttempts, &transcribeError, &transcribeUpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("ler linha da fila: %w", err)
 		}
 
-		entry := QueueEntry{LessonID: lessonID, LessonDate: lessonDate, Tutor: tutor}
+		entry := QueueEntry{LessonID: lessonID, LessonDate: lessonDate, TeacherName: teacherName}
 		switch {
 		case extractStatus == "error":
 			entry.Kind, entry.Status = "extract_audio", "error"
