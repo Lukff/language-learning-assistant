@@ -405,9 +405,14 @@ func TestLibraryService_UpdateLesson_RenamesVideoToNewStandardFilename(t *testin
 }
 
 func TestLibraryService_UpdateLesson_SucceedsEvenWhenRenameFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
 		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	}
+	if err := config.Save(&config.AppConfig{StorageRoot: root}); err != nil {
+		t.Fatalf("config.Save() falhou: %v", err)
 	}
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
