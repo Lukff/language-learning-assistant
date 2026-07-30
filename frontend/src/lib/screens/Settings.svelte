@@ -79,9 +79,28 @@
     }
   }
 
-  async function loadTeachers() {
-    teachers = (await TeacherService.ListTeachers()) ?? [];
-    renameDrafts = Object.fromEntries(teachers.map((t) => [t.id, t.name]));
+  async function loadTeachers(justRenamedId?: number) {
+    const previousTeachers = teachers;
+    const previousDrafts = renameDrafts;
+    const fresh = (await TeacherService.ListTeachers()) ?? [];
+
+    // Merge instead of blindly rebuilding: a row the user is actively editing
+    // (draft differs from the name it had before this reload) must survive a
+    // reload triggered by renaming a *different* teacher. The just-renamed
+    // row is always reset to its fresh (now-saved) name. Teachers no longer
+    // present in `fresh` are dropped; teachers new to `fresh` get a draft
+    // seeded from their current name.
+    const nextDrafts: Record<number, string> = {};
+    for (const t of fresh) {
+      const existingDraft = previousDrafts[t.id];
+      const oldTeacher = previousTeachers.find((p) => p.id === t.id);
+      const isDirty =
+        existingDraft !== undefined && oldTeacher !== undefined && existingDraft !== oldTeacher.name;
+      nextDrafts[t.id] = isDirty && t.id !== justRenamedId ? existingDraft : t.name;
+    }
+
+    teachers = fresh;
+    renameDrafts = nextDrafts;
   }
 
   async function renameTeacher(id: number) {
@@ -89,7 +108,7 @@
     renamingId = id;
     try {
       await TeacherService.RenameTeacher(id, renameDrafts[id]);
-      await loadTeachers();
+      await loadTeachers(id);
     } catch (e) {
       renameErrors = { ...renameErrors, [id]: String(e) };
     } finally {
