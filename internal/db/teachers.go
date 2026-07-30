@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	sqlite "modernc.org/sqlite"
@@ -54,8 +55,14 @@ type execer interface {
 }
 
 // getOrCreateTeacherByName é a implementação compartilhada por
-// GetOrCreateTeacherByName e por ConfirmPendingImport (via tx).
+// GetOrCreateTeacherByName e por ConfirmPendingImport (via tx). name é
+// aparado (TrimSpace) antes de qualquer busca/gravação — evita que espaço
+// em branco perdido no combobox (ex.: "Sarah M. " vs "Sarah M.") vire um
+// professor duplicado, exatamente o problema de grafia divergente que a
+// entidade teachers existe para evitar (ver Contexto do design da
+// História 9).
 func getOrCreateTeacherByName(q execer, name string) (int64, error) {
+	name = strings.TrimSpace(name)
 	var id int64
 	err := q.QueryRow(`SELECT id FROM teachers WHERE name = ?`, name).Scan(&id)
 	if err == nil {
@@ -92,6 +99,7 @@ func GetOrCreateTeacherByName(conn *sql.DB, name string) (int64, error) {
 // nome já usado por outro professor (UNIQUE) vira um erro legível, sem
 // mesclar registros (fora de escopo da História 9).
 func RenameTeacher(conn *sql.DB, id int64, newName string) error {
+	newName = strings.TrimSpace(newName)
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := conn.Exec(`UPDATE teachers SET name = ?, updated_at = ? WHERE id = ?`, newName, now, id)
 	if err != nil {
