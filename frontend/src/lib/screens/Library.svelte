@@ -4,14 +4,15 @@
   import { colors, fonts } from "../theme";
   import * as ImportService from "../../../bindings/assistente-idiomas/services/importservice";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
-  import type { PendingImport, Lesson, LessonFilter } from "../../../bindings/assistente-idiomas/services/models";
+  import * as TeacherService from "../../../bindings/assistente-idiomas/services/teacherservice";
+  import type { PendingImport, Lesson, LessonFilter, Teacher } from "../../../bindings/assistente-idiomas/services/models";
   import ImportConfirmModal from "../ImportConfirmModal.svelte";
 
   let { onOpenLesson }: { onOpenLesson: (lessonId: number) => void } = $props();
 
   let pending: PendingImport[] = $state([]);
   let lessons: Lesson[] = $state([]);
-  let tutors: string[] = $state([]);
+  let teachers: Teacher[] = $state([]);
   let loading: boolean = $state(true);
   let syncing: boolean = $state(false);
   let syncMessage: string = $state("");
@@ -26,7 +27,7 @@
     error: string;
   }
 
-  let filterTutor: string = $state("");
+  let filterTeacherId: number = $state(0);
   let filterDateFrom: string = $state("");
   let filterDateTo: string = $state("");
 
@@ -41,12 +42,12 @@
   }
 
   async function loadLessons() {
-    const filter: LessonFilter = { tutor: filterTutor, dateFrom: filterDateFrom, dateTo: filterDateTo };
+    const filter: LessonFilter = { teacherId: filterTeacherId, dateFrom: filterDateFrom, dateTo: filterDateTo };
     lessons = (await LibraryService.ListLessons(filter)) ?? [];
   }
 
-  async function loadTutors() {
-    tutors = (await LibraryService.ListTutors()) ?? [];
+  async function loadTeachers() {
+    teachers = (await TeacherService.ListTeachers()) ?? [];
   }
 
   // lessonDate é gravado como "AAAA-MM-DD" ou "AAAA-MM-DDTHH:MM" (formato de
@@ -69,7 +70,7 @@
 
   async function loadAll() {
     try {
-      await Promise.all([loadPending(), loadLessons(), loadTutors()]);
+      await Promise.all([loadPending(), loadLessons(), loadTeachers()]);
     } catch (e) {
       error = String(e);
     } finally {
@@ -120,7 +121,7 @@
   async function onConfirmed() {
     reviewing = null;
     try {
-      await Promise.all([loadPending(), loadLessons(), loadTutors()]);
+      await Promise.all([loadPending(), loadLessons(), loadTeachers()]);
     } catch (e) {
       error = String(e);
     }
@@ -209,10 +210,10 @@
     <section class="filters" style="background: {colors.surface}; border: 1px solid {colors.line};">
       <label>
         Tutor
-        <select bind:value={filterTutor} onchange={applyFilter}>
-          <option value="">Todos</option>
-          {#each tutors as tutor (tutor)}
-            <option value={tutor}>{tutor}</option>
+        <select bind:value={filterTeacherId} onchange={applyFilter}>
+          <option value={0}>Todos</option>
+          {#each teachers as teacher (teacher.id)}
+            <option value={teacher.id}>{teacher.name}</option>
           {/each}
         </select>
       </label>

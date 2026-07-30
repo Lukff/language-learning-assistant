@@ -24,10 +24,3 @@
   diretamente na UI (ex.: palavras em outra língua que o STT não reconheceu
   corretamente, gírias, trechos truncados). Considerar se a correção atualiza apenas
   o texto exibido ou também a entrada no banco.
-
-## UX — Importação
-
-- **Tutores já cadastrados no formulário:** ao preencher os dados do vídeo (nome do
-  tutor, data, etc.), tutores que já apareceram em aulas anteriores devem ser
-  sugeridos em um autocomplete/dropdown, evitando digitação repetida e garantindo
-  consistência nos registros.

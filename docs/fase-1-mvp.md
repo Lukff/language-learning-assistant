@@ -218,6 +218,27 @@ História 2.
 
 ---
 
+## História 9 — Gestão de professores e edição de aula
+
+**Como** usuário, **quero** escolher o professor de uma lista já cadastrada (ou digitar um nome
+novo), renomear um professor como entidade, e editar data/horário/professor de uma aula já
+confirmada, **para** manter os dados corretos sem retipar nomes e sem depender de acertar tudo na
+confirmação da importação.
+
+### Critérios de aceite
+- [x] Professor vira entidade (`teachers`), não mais coluna livre em `lessons` — renomear reflete em
+  todas as aulas do professor automaticamente; nome é único (colisão ao renomear vira erro
+  legível).
+- [x] Formulário de importação (Histórias 3 e 3b) mostra professores já cadastrados num combobox
+  (`<input list>`/`<datalist>`), com opção de digitar um nome novo.
+- [x] Painel "Professores" em Configurações lista os professores cadastrados com ação de renomear.
+- [x] Botão "Editar" no Detalhe da aula abre um formulário de data/horário/professor; salvar
+  também tenta renomear o vídeo pro nome padronizado atual (melhor esforço, mesma lógica da
+  História 3 — falha no rename não impede salvar a edição).
+
+### Dependências
+História 3 (única consumidora da antiga coluna `tutor`).
+
 ## Marcos
 
 - **M1 — "Importa e guarda":** Histórias 1–3 (3b opcional, importação manual). O app abre, mapeia as aulas já existentes na pasta e registra.
@@ -248,3 +269,4 @@ Fase 1 (História 8).
 | 23/07/2026 | Fatia adicional da História 3 concluída: confirmação exige horário e renomeia o vídeo *in place* para o nome padronizado, com resolução de colisões e rename em melhor esforço; falha determinística injetada confirma que erro no move não impede a confirmação, corrida TOCTOU confirma que o destino nunca é sobrescrito e trigger SQLite confirma o rollback após falha ao atualizar o path | Suíte e vet confirmam o fluxo automatizado; nenhuma verificação visual real foi feita nesta fatia e a pendência segue o mesmo padrão das histórias anteriores |
 | 24/07/2026 | História 3b implementada: drag-and-drop nativo do Wails v3 (`EnableFileDrop` + evento `WindowFilesDropped`, sem HTML5 File API) resolve o risco técnico 2 — funciona nas três plataformas na versão pinada; solto na tela Biblioteca (`data-file-drop-target`), abre `ImportConfirmModal` na hora (fila local drena um modal por vez em drops múltiplos); cópia pra `storage_root` sem subpasta com sufixo de colisão, ou registro no lugar se o arquivo já estiver dentro da raiz de armazenamento; extensão não reconhecida ou hash já importado/pendente é rejeitado sem copiar, com erro reportado via evento `import:drop-error` | Reaproveita 100% do fluxo de confirmação/dedup da História 3 (`ImportConfirmModal`, `pending_imports`, `ConfirmImport`) sem alterá-lo; `internal/importer.HashFile`/`HasVideoExtension`/`SuggestDate` exportados pra DropImport reusar sem duplicar lógica; `db.InsertPendingImport` passou a retornar o id da linha criada; verificação visual real (arrastar um arquivo numa janela de verdade) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
 | 24/07/2026 | História 8 implementada: tela de Configurações (ícone de engrenagem no Header, fora da Sidebar) com dois painéis — Armazenamento (visualiza pasta atual, botão de troca com dialog nativo + validação de escrita, troca nunca bloqueada) e Credencial STT (status booleano, campo sempre-disponível pra (re)cadastro via keyring); reconciliação por hash reaproveita `importer.Scan` da História 3 (vídeos renomeados na pasta nova têm `video_path` atualizado, ausentes sinalizados como 'vídeo ausente' — recalculado a cada leitura, nunca persistido); badge "vídeo ausente" aparece em Library.svelte e LessonDetail.svelte | Cobertura unitária completa: `services/settings_test.go`, `services/storage_folder_test.go`, `services/library_test.go` estendida; `go test ./...` e `go vet ./...` confirmados limpos, `pnpm run check`/`pnpm run build` confirmados limpos; verificação manual (abrir Configurações pelo ícone do Header, trocar pasta com vídeo renomeado confirmando reconciliação, apagar vídeo confirmando badge 'ausente', recadastro de credencial) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
+| 30/07/2026 | História 9 implementada: professor vira entidade `teachers` (migration com backfill da coluna `tutor`), combobox de professores no formulário de importação, painel "Professores" em Configurações (renomear reflete em todas as aulas via JOIN), edição de data/horário/professor no Detalhe da aula (renomeia o vídeo in-place, melhor esforço) | `go test ./...`, `go vet ./...`, `pnpm run check`/`pnpm run build` confirmados limpos; verificação visual real (combobox, renomear professor, editar aula numa janela de verdade) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
