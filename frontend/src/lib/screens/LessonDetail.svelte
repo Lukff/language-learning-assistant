@@ -266,7 +266,7 @@
 <style>
   .screen {
     padding: 2rem;
-    max-width: 72rem;
+    max-width: 100rem;
     margin: 0 auto;
     width: 100%;
   }
@@ -304,7 +304,8 @@
   }
   @media (min-width: 960px) {
     .grid {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 2fr 1fr;
+      align-items: start;
     }
   }
   video {
@@ -312,6 +313,7 @@
     border-radius: 0.75rem;
     background: black;
     aspect-ratio: 16 / 9;
+    max-height: calc(100vh - 14rem);
   }
   .hint {
     font-size: 0.75rem;
@@ -321,7 +323,7 @@
   .panel {
     border-radius: 0.75rem;
     padding: 1rem;
-    max-height: 26rem;
+    max-height: calc(100vh - 14rem);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
