@@ -8,12 +8,18 @@
     lessonId,
     initialLessonDate,
     initialTeacherName,
+    speakerOptions,
+    currentStudentSpeaker,
+    hasAnalysisResults,
     onSaved,
     onClose,
   }: {
     lessonId: number;
     initialLessonDate: string;
     initialTeacherName: string;
+    speakerOptions: string[];
+    currentStudentSpeaker: string | null;
+    hasAnalysisResults: boolean;
     onSaved: () => void;
     onClose: () => void;
   } = $props();
@@ -22,6 +28,36 @@
   let teacherName: string = $state(untrack(() => initialTeacherName));
   let error: string = $state("");
   let saving: boolean = $state(false);
+
+  let studentSpeaker: string | null = $state(untrack(() => currentStudentSpeaker));
+  let speakerError: string = $state("");
+  let savingSpeaker: boolean = $state(false);
+
+  function speakerLabel(speaker: string): string {
+    const idx = speakerOptions.indexOf(speaker);
+    return `Speaker ${String.fromCharCode(65 + (idx < 0 ? 0 : idx))}`;
+  }
+
+  async function chooseSpeaker(newSpeaker: string) {
+    if (newSpeaker === studentSpeaker) return;
+    if (currentStudentSpeaker !== null && hasAnalysisResults) {
+      const confirmed = confirm(
+        "Trocar quem é você descarta as análises já feitas dessa aula — você vai precisar reprocessar. Continuar?",
+      );
+      if (!confirmed) return;
+    }
+    speakerError = "";
+    savingSpeaker = true;
+    try {
+      await LibraryService.SetStudentSpeaker(lessonId, newSpeaker);
+      studentSpeaker = newSpeaker;
+      onSaved();
+    } catch (e) {
+      speakerError = String(e);
+    } finally {
+      savingSpeaker = false;
+    }
+  }
 
   async function save() {
     error = "";
@@ -59,6 +95,40 @@
 
     <label for="edit-tutor">Tutor</label>
     <TeacherCombobox id="edit-tutor" bind:value={teacherName} />
+
+    {#if speakerOptions.length > 0}
+      <span class="speaker-section-title">Quem é você</span>
+      {#if speakerOptions.length === 2 && studentSpeaker !== null}
+        <button
+          type="button"
+          class="secondary"
+          onclick={() => chooseSpeaker(speakerOptions.find((s) => s !== studentSpeaker) ?? speakerOptions[0])}
+          disabled={savingSpeaker}
+        >
+          {savingSpeaker ? "Salvando…" : "Inverter falantes"}
+        </button>
+      {:else}
+        <div class="speaker-buttons">
+          {#each speakerOptions as speaker (speaker)}
+            <button
+              type="button"
+              class="secondary"
+              class:active={studentSpeaker === speaker}
+              onclick={() => chooseSpeaker(speaker)}
+              disabled={savingSpeaker}
+            >
+              {speakerLabel(speaker)} é você
+            </button>
+          {/each}
+        </div>
+      {/if}
+      {#if studentSpeaker}
+        <p class="hint">Atualmente: {speakerLabel(studentSpeaker)}</p>
+      {/if}
+      {#if speakerError}
+        <p class="error" style="color: {colors.red};">{speakerError}</p>
+      {/if}
+    {/if}
 
     {#if error}
       <p class="error" style="color: {colors.red};">{error}</p>
@@ -98,6 +168,24 @@
     display: block;
     font-size: 0.8rem;
     margin-bottom: 0.25rem;
+  }
+  .speaker-section-title {
+    display: block;
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+  }
+  .speaker-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .speaker-buttons button.active {
+    font-weight: 600;
+  }
+  .hint {
+    font-size: 0.75rem;
+    margin: 0 0 0.75rem;
   }
   input {
     width: 100%;

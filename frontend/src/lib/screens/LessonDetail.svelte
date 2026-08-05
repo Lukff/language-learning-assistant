@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { colors, fonts } from "../theme";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
-  import type { Lesson, Transcript } from "../../../bindings/assistente-idiomas/services/models";
+  import * as AnalysisService from "../../../bindings/assistente-idiomas/services/analysisservice";
+  import type { Lesson, Transcript, CorrectionsResult } from "../../../bindings/assistente-idiomas/services/models";
   import EditLessonModal from "../EditLessonModal.svelte";
 
   let { lessonId, onBack }: { lessonId: number; onBack: () => void } = $props();
@@ -19,12 +20,17 @@
 
   let retrying: boolean = $state(false);
 
+  let corrections: CorrectionsResult | null = $state(null);
+  let analyzingCorrections: boolean = $state(false);
+  let correctionsError: string = $state("");
+
   let editing: boolean = $state(false);
 
   async function onLessonSaved() {
     editing = false;
     try {
       lesson = await LibraryService.GetLesson(lessonId);
+      await fetchCorrectionsIfReady();
     } catch (e) {
       actionError = String(e);
     }
@@ -120,16 +126,41 @@
     }
   }
 
-  async function chooseStudentSpeaker(speaker: string) {
-    if (!lesson) return;
-    actionError = "";
-    const previous = lesson.studentSpeakerLabel;
-    lesson = { ...lesson, studentSpeakerLabel: speaker };
+  async function fetchCorrectionsIfReady() {
+    if (!lesson || lesson.status !== "pronta" || !lesson.studentSpeakerLabel) {
+      corrections = null;
+      return;
+    }
     try {
-      await LibraryService.SetStudentSpeaker(lessonId, speaker);
+      corrections = await AnalysisService.GetCorrections(lessonId);
+    } catch {
+      corrections = null;
+    }
+  }
+
+  async function analyzeCorrections() {
+    correctionsError = "";
+    analyzingCorrections = true;
+    try {
+      corrections = await AnalysisService.AnalyzeCorrections(lessonId);
     } catch (e) {
-      lesson = { ...lesson, studentSpeakerLabel: previous };
-      actionError = String(e);
+      correctionsError = String(e);
+    } finally {
+      analyzingCorrections = false;
+    }
+  }
+
+  async function reprocessCorrections() {
+    const confirmed = confirm("Isso sobrescreve a análise atual e gera uma nova chamada à API. Continuar?");
+    if (!confirmed) return;
+    correctionsError = "";
+    analyzingCorrections = true;
+    try {
+      corrections = await AnalysisService.ReprocessCorrections(lessonId);
+    } catch (e) {
+      correctionsError = String(e);
+    } finally {
+      analyzingCorrections = false;
     }
   }
 
@@ -151,6 +182,7 @@
     try {
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchTranscriptIfReady();
+      await fetchCorrectionsIfReady();
     } catch (e) {
       lessonError = String(e);
     } finally {
@@ -217,20 +249,31 @@
         {:else if !transcript || !transcript.utterances || transcript.utterances.length === 0}
           <p class="panel-message" style="color: {colors.mut};">Transcrição em processamento…</p>
         {:else}
-          <div class="speaker-toggle">
-            {#each speakerOrder as speaker, i (speaker)}
-              <button
-                class:active={lesson.studentSpeakerLabel === speaker}
-                onclick={() => chooseStudentSpeaker(speaker)}
-              >
-                {`Speaker ${String.fromCharCode(65 + i)} é você`}
-              </button>
-            {/each}
-          </div>
+          {#if !lesson.studentSpeakerLabel}
+            <p class="hint" style="color: {colors.mut};">
+              Escolha quem é você em "Editar" para habilitar a análise de correções.
+            </p>
+          {:else}
+            <div class="corrections-actions">
+              {#if corrections?.analyzed}
+                <button onclick={reprocessCorrections} disabled={analyzingCorrections}>
+                  {analyzingCorrections ? "Reprocessando…" : "Reprocessar correções"}
+                </button>
+              {:else}
+                <button onclick={analyzeCorrections} disabled={analyzingCorrections}>
+                  {analyzingCorrections ? "Analisando…" : "Analisar correções"}
+                </button>
+              {/if}
+              {#if correctionsError}
+                <p class="error" style="color: {colors.red};">{correctionsError}</p>
+              {/if}
+            </div>
+          {/if}
 
           <div class="transcript">
             {#each transcript.utterances as utterance, i (i)}
               {@const role = roleFor(utterance.speaker)}
+              {@const correctionForRow = role === "aluno" ? corrections?.items?.find((c) => c.utteranceIndex === i) : undefined}
               <button
                 bind:this={rowRefs[i]}
                 class="row"
@@ -243,7 +286,21 @@
                 >
                   {labelFor(utterance.speaker, role)}
                 </span>
-                <p class="text" style="color: {colors.text};">{utterance.text}</p>
+                {#if correctionForRow && correctionForRow.wrong}
+                  <p class="text" style="color: {colors.text};">{correctionForRow.before}<span
+                      class="corrected-original"
+                      style="color: {colors.mut};">{correctionForRow.wrong}</span
+                    > <span class="corrected-fix" style="color: {colors.amber};" title={correctionForRow.explanation}
+                      >{correctionForRow.correction}</span
+                    >{correctionForRow.after}</p>
+                {:else if correctionForRow}
+                  <p class="text" style="color: {colors.text};">{utterance.text}</p>
+                  <p class="correction-fallback" style="color: {colors.mut};">
+                    ⚠ correção não localizada: "{correctionForRow.original}" → "{correctionForRow.correction}" — {correctionForRow.explanation}
+                  </p>
+                {:else}
+                  <p class="text" style="color: {colors.text};">{utterance.text}</p>
+                {/if}
               </button>
             {/each}
           </div>
@@ -258,6 +315,9 @@
     lessonId={lesson.id}
     initialLessonDate={lesson.lessonDate}
     initialTeacherName={lesson.tutor}
+    speakerOptions={speakerOrder}
+    currentStudentSpeaker={lesson.studentSpeakerLabel}
+    hasAnalysisResults={corrections?.analyzed ?? false}
     onSaved={onLessonSaved}
     onClose={() => (editing = false)}
   />
@@ -332,19 +392,18 @@
   .panel-message {
     font-size: 0.9rem;
   }
-  .speaker-toggle {
+  .corrections-actions {
     display: flex;
+    align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+    margin-bottom: 0.5rem;
   }
-  .speaker-toggle button {
-    font-size: 0.75rem;
-    padding: 0.35rem 0.7rem;
-    border-radius: 999px;
+  .corrections-actions button {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.5rem;
     cursor: pointer;
-  }
-  .speaker-toggle button.active {
-    font-weight: 600;
   }
   .transcript {
     display: flex;
@@ -374,6 +433,17 @@
     font-size: 0.9rem;
     line-height: 1.5;
     margin: 0;
+  }
+  .corrected-original {
+    text-decoration: line-through;
+  }
+  .corrected-fix {
+    font-weight: 600;
+  }
+  .correction-fallback {
+    font-size: 0.75rem;
+    font-style: italic;
+    margin: 0 0.75rem 0.25rem;
   }
   .error {
     font-size: 0.85rem;
