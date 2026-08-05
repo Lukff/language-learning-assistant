@@ -50,6 +50,8 @@ func NewDeepSeekProvider(apiKey string) (Provider, error) {
 
 func (p *openAICompatibleProvider) Name() string { return p.name }
 
+func (p *openAICompatibleProvider) Model() string { return p.model }
+
 // Complete envia systemPrompt + transcript e devolve o conteúdo bruto (já
 // sem envelope HTTP nem code fence) que o modelo produziu — cada TaskDef
 // (task.go) é quem sabe o schema esperado desse conteúdo.

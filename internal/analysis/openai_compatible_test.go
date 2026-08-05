@@ -59,3 +59,13 @@ func TestOpenAICompatibleProvider_Complete_EmptySystemPrompt(t *testing.T) {
 		t.Fatal("esperava erro para systemPrompt vazio, obteve nil")
 	}
 }
+
+func TestOpenAICompatibleProvider_Model_ReturnsConfiguredModel(t *testing.T) {
+	p, err := newOpenAICompatibleProvider("fake", "http://example.invalid", "key", "fake-model", false)
+	if err != nil {
+		t.Fatalf("newOpenAICompatibleProvider erro: %v", err)
+	}
+	if got := p.Model(); got != "fake-model" {
+		t.Errorf("Model() = %q, esperado %q", got, "fake-model")
+	}
+}

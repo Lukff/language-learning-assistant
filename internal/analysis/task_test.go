@@ -51,6 +51,7 @@ type fakeProvider struct {
 }
 
 func (f fakeProvider) Name() string { return "fake" }
+func (f fakeProvider) Model() string { return "fake-model" }
 func (f fakeProvider) Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) {
 	return f.content, f.err
 }

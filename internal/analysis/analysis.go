@@ -14,5 +14,6 @@ import (
 // TaskDef (ver task.go) é quem sabe interpretar esse JSON.
 type Provider interface {
 	Name() string
+	Model() string
 	Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error)
 }
