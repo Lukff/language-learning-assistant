@@ -79,3 +79,23 @@ func (s *SettingsService) HasSTTCredential() (bool, error) {
 func (s *SettingsService) SaveSTTAPIKey(apiKey string) error {
 	return config.SaveSTTAPIKey(apiKey)
 }
+
+// HasAnalysisCredential indica se há uma credencial do provedor de análise
+// (DeepSeek) gravada no keyring, sem revelar o valor. Mesmo comportamento
+// de HasSTTCredential: false (sem erro) se não configurada ainda; erro só
+// em falha real de acesso ao keyring.
+func (s *SettingsService) HasAnalysisCredential() (bool, error) {
+	_, err := config.GetAnalysisAPIKey()
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, keyring.ErrNotFound) {
+		return false, nil
+	}
+	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
+}
+
+// SaveAnalysisAPIKey grava/sobrescreve a credencial do provedor de análise.
+func (s *SettingsService) SaveAnalysisAPIKey(apiKey string) error {
+	return config.SaveAnalysisAPIKey(apiKey)
+}

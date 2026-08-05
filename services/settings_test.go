@@ -174,3 +174,48 @@ func TestSettingsService_HasSTTCredential_KeyringUnavailablePropagatesError(t *t
 		t.Errorf("erro não menciona gnome-keyring/kwallet: %v", err)
 	}
 }
+
+func TestSettingsService_HasAnalysisCredential_FalseWhenNotConfigured(t *testing.T) {
+	keyring.MockInit()
+
+	svc := NewSettingsService(nil, configStorageRoot)
+	has, err := svc.HasAnalysisCredential()
+	if err != nil {
+		t.Fatalf("HasAnalysisCredential() erro inesperado: %v", err)
+	}
+	if has {
+		t.Error("HasAnalysisCredential() = true, esperado false (nenhuma credencial gravada ainda)")
+	}
+}
+
+func TestSettingsService_HasAnalysisCredential_TrueAfterSave(t *testing.T) {
+	keyring.MockInit()
+
+	svc := NewSettingsService(nil, configStorageRoot)
+	if err := svc.SaveAnalysisAPIKey("sk-deepseek-test"); err != nil {
+		t.Fatalf("SaveAnalysisAPIKey() erro inesperado: %v", err)
+	}
+
+	has, err := svc.HasAnalysisCredential()
+	if err != nil {
+		t.Fatalf("HasAnalysisCredential() erro inesperado: %v", err)
+	}
+	if !has {
+		t.Error("HasAnalysisCredential() = false, esperado true após SaveAnalysisAPIKey")
+	}
+}
+
+func TestSettingsService_HasAnalysisCredential_KeyringUnavailablePropagatesError(t *testing.T) {
+	sentinel := errors.New("secret service indisponível")
+	keyring.MockInitWithError(sentinel)
+	t.Cleanup(keyring.MockInit)
+
+	svc := NewSettingsService(nil, configStorageRoot)
+	_, err := svc.HasAnalysisCredential()
+	if !errors.Is(err, sentinel) {
+		t.Errorf("HasAnalysisCredential() erro = %v, esperado envolver %v", err, sentinel)
+	}
+	if !strings.Contains(err.Error(), "gnome-keyring") {
+		t.Errorf("erro não menciona gnome-keyring/kwallet: %v", err)
+	}
+}
