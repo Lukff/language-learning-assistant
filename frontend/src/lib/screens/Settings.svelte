@@ -20,6 +20,13 @@
   let saveCredentialError: string = $state("");
   let saveCredentialSuccess: boolean = $state(false);
 
+  let hasAnalysisCredential: boolean = $state(false);
+  let analysisCredentialError: string = $state("");
+  let analysisApiKeyInput: string = $state("");
+  let savingAnalysisCredential: boolean = $state(false);
+  let saveAnalysisCredentialError: string = $state("");
+  let saveAnalysisCredentialSuccess: boolean = $state(false);
+
   let teachers: Teacher[] = $state([]);
   let teachersError: string = $state("");
   let renameDrafts: Record<number, string> = $state({});
@@ -36,6 +43,15 @@
       credentialError = "";
     } catch (e) {
       credentialError = String(e);
+    }
+  }
+
+  async function loadAnalysisCredentialStatus() {
+    try {
+      hasAnalysisCredential = await SettingsService.HasAnalysisCredential();
+      analysisCredentialError = "";
+    } catch (e) {
+      analysisCredentialError = String(e);
     }
   }
 
@@ -79,6 +95,22 @@
     }
   }
 
+  async function saveAnalysisCredential() {
+    saveAnalysisCredentialError = "";
+    saveAnalysisCredentialSuccess = false;
+    savingAnalysisCredential = true;
+    try {
+      await SettingsService.SaveAnalysisAPIKey(analysisApiKeyInput);
+      analysisApiKeyInput = "";
+      saveAnalysisCredentialSuccess = true;
+      await loadAnalysisCredentialStatus();
+    } catch (e) {
+      saveAnalysisCredentialError = String(e);
+    } finally {
+      savingAnalysisCredential = false;
+    }
+  }
+
   async function loadTeachers(justRenamedId?: number) {
     const previousTeachers = teachers;
     const previousDrafts = renameDrafts;
@@ -118,7 +150,7 @@
 
   onMount(async () => {
     try {
-      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadTeachers()]);
+      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadAnalysisCredentialStatus(), loadTeachers()]);
     } catch (e) {
       loadError = String(e);
     } finally {
@@ -181,6 +213,35 @@
       {/if}
       {#if saveCredentialError}
         <p class="error" style="color: {colors.red};">{saveCredentialError}</p>
+      {/if}
+    </section>
+
+    <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
+      <h2 style="font-family: {fonts.display};">Credencial do provedor de análise</h2>
+      {#if analysisCredentialError}
+        <p class="error" style="color: {colors.red};">{analysisCredentialError}</p>
+      {:else}
+        <p class="status" style="color: {hasAnalysisCredential ? colors.green : colors.mut};">
+          {hasAnalysisCredential ? "Credencial configurada" : "Nenhuma credencial configurada"}
+        </p>
+      {/if}
+      <div class="credential-form">
+        <input
+          type="password"
+          bind:value={analysisApiKeyInput}
+          placeholder="Nova API key da DeepSeek"
+          autocomplete="off"
+          style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
+        />
+        <button onclick={saveAnalysisCredential} disabled={savingAnalysisCredential || !analysisApiKeyInput}>
+          {savingAnalysisCredential ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+      {#if saveAnalysisCredentialSuccess}
+        <p class="hint" style="color: {colors.green};">Credencial salva.</p>
+      {/if}
+      {#if saveAnalysisCredentialError}
+        <p class="error" style="color: {colors.red};">{saveAnalysisCredentialError}</p>
       {/if}
     </section>
 
