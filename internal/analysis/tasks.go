@@ -5,7 +5,7 @@ package analysis
 // execução (independentes entre si), só pra leitura humana e pra
 // RegisterPrompts (prompts.go).
 var Tasks = []TaskDef{
-	newCorrectionsTask(),
+	NewCorrectionsTask(),
 	newVocabularyTask(),
 	newTutorExpressionsTask(),
 	newTutorTaughtTermsTask(),

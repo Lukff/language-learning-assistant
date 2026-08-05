@@ -35,11 +35,28 @@ func TestParseCorrections_InvalidJSON(t *testing.T) {
 }
 
 func TestNewCorrectionsTask_HasNameAndPrompt(t *testing.T) {
-	tk := newCorrectionsTask()
+	tk := NewCorrectionsTask()
 	if tk.Name() != "analyze_corrections" {
 		t.Errorf("Name() = %q, esperado analyze_corrections", tk.Name())
 	}
 	if tk.Prompt() == "" {
 		t.Error("Prompt() vazio, esperado conteúdo carregado do .md")
+	}
+}
+
+func TestParseCorrectionsResult_Valid(t *testing.T) {
+	resultJSON := json.RawMessage(`[{"utterance_index":0,"original":"I go","correction":"I went","explanation":"passado"}]`)
+	got, err := ParseCorrectionsResult(resultJSON)
+	if err != nil {
+		t.Fatalf("ParseCorrectionsResult erro inesperado: %v", err)
+	}
+	if len(got) != 1 || got[0].Original != "I go" || got[0].CorrectionTx != "I went" {
+		t.Errorf("got = %+v, inesperado", got)
+	}
+}
+
+func TestParseCorrectionsResult_InvalidJSON(t *testing.T) {
+	if _, err := ParseCorrectionsResult(json.RawMessage("not json")); err == nil {
+		t.Fatal("esperava erro para JSON inválido, obteve nil")
 	}
 }

@@ -3,6 +3,7 @@ package analysis
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 )
 
@@ -31,6 +32,19 @@ func parseCorrections(raw json.RawMessage, utteranceCount int) ([]Correction, er
 	return kept, nil
 }
 
-func newCorrectionsTask() TaskDef {
+func NewCorrectionsTask() TaskDef {
 	return task[[]Correction]{name: "analyze_corrections", version: 1, prompt: mustLoadPrompt("analyze-corrections-v1.md"), parse: parseCorrections}
+}
+
+// ParseCorrectionsResult decodifica um result_json já persistido (gravado
+// por Execute a partir desta mesma tarefa — um array JSON de Correction,
+// sem envelope) de volta em []Correction. Reaproveitado por quem precisa
+// reconstituir o resultado salvo sem chamar o provedor de novo
+// (services.AnalysisService).
+func ParseCorrectionsResult(resultJSON json.RawMessage) ([]Correction, error) {
+	var out []Correction
+	if err := json.Unmarshal(resultJSON, &out); err != nil {
+		return nil, fmt.Errorf("analysis: desserializar resultado de analyze_corrections: %w", err)
+	}
+	return out, nil
 }
