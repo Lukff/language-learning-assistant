@@ -441,3 +441,99 @@ func TestLibraryService_UpdateLesson_SucceedsEvenWhenRenameFails(t *testing.T) {
 		t.Errorf("VideoPath = %q, esperado inalterado (aula.mp4) já que o rename falhou", lesson.VideoPath)
 	}
 }
+
+func TestLibraryService_SetStudentSpeaker_DeletesAnalysisResultsOnChange(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("db.SetStudentSpeaker() de fixture falhou: %v", err)
+	}
+	promptID, err := db.UpsertPrompt(conn, "analyze_corrections", 1, "conteúdo")
+	if err != nil {
+		t.Fatalf("UpsertPrompt() falhou: %v", err)
+	}
+	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]", "aula.analysis.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() falhou: %v", err)
+	}
+
+	svc := NewLibraryService(conn, testStorageRoot(t))
+	if err := svc.SetStudentSpeaker(lessonID, "speaker_1"); err != nil {
+		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+	}
+
+	result, err := db.FindAnalysisResult(conn, lessonID, "analyze_corrections")
+	if err != nil {
+		t.Fatalf("FindAnalysisResult() erro inesperado: %v", err)
+	}
+	if result != nil {
+		t.Errorf("FindAnalysisResult() = %+v, esperado nil (análise descartada pela troca de falante)", result)
+	}
+}
+
+func TestLibraryService_SetStudentSpeaker_FirstChoiceKeepsAnalysisResults(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	promptID, err := db.UpsertPrompt(conn, "analyze_corrections", 1, "conteúdo")
+	if err != nil {
+		t.Fatalf("UpsertPrompt() falhou: %v", err)
+	}
+	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]", "aula.analysis.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() falhou: %v", err)
+	}
+
+	svc := NewLibraryService(conn, testStorageRoot(t))
+	if err := svc.SetStudentSpeaker(lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+	}
+
+	result, err := db.FindAnalysisResult(conn, lessonID, "analyze_corrections")
+	if err != nil {
+		t.Fatalf("FindAnalysisResult() erro inesperado: %v", err)
+	}
+	if result == nil {
+		t.Error("FindAnalysisResult() = nil, esperado preservado (primeira escolha de falante não descarta nada)")
+	}
+}
+
+func TestLibraryService_SetStudentSpeaker_SameLabelKeepsAnalysisResults(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("db.SetStudentSpeaker() de fixture falhou: %v", err)
+	}
+	promptID, err := db.UpsertPrompt(conn, "analyze_corrections", 1, "conteúdo")
+	if err != nil {
+		t.Fatalf("UpsertPrompt() falhou: %v", err)
+	}
+	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]", "aula.analysis.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() falhou: %v", err)
+	}
+
+	svc := NewLibraryService(conn, testStorageRoot(t))
+	if err := svc.SetStudentSpeaker(lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+	}
+
+	result, err := db.FindAnalysisResult(conn, lessonID, "analyze_corrections")
+	if err != nil {
+		t.Fatalf("FindAnalysisResult() erro inesperado: %v", err)
+	}
+	if result == nil {
+		t.Error("FindAnalysisResult() = nil, esperado preservado (mesmo label não descarta nada)")
+	}
+}

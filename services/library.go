@@ -159,8 +159,27 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 }
 
 // SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — toggle do Detalhe (História 6).
+// nesta lesson — escolha que vive dentro do EditLessonModal (Fase 2,
+// História 2; antes um toggle solto no Detalhe, Fase 1/História 6). Trocar
+// um label já definido por um diferente apaga qualquer análise já feita da
+// lesson: qualquer resultado ancorado em utterance_index passa a apontar
+// pro papel errado assim que os rótulos Aluno/Tutor mudam de falante —
+// trocar de novo exige reprocessar. Definir o label pela primeira vez
+// (StudentSpeakerLabel ainda nil) ou repetir o label já atual não descarta
+// nada.
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
+	lesson, err := db.FindLessonByID(s.conn, lessonID)
+	if err != nil {
+		return fmt.Errorf("buscar lesson %d: %w", lessonID, err)
+	}
+	if lesson == nil {
+		return fmt.Errorf("aula %d não encontrada", lessonID)
+	}
+	if lesson.StudentSpeakerLabel != nil && *lesson.StudentSpeakerLabel != speakerLabel {
+		if err := db.DeleteAnalysisResultsForLesson(s.conn, lessonID); err != nil {
+			return fmt.Errorf("descartar análises antigas da lesson %d: %w", lessonID, err)
+		}
+	}
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
 }
 
