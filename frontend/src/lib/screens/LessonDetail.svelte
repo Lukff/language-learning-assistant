@@ -282,7 +282,7 @@
             {#each transcript.utterances as utterance, i (i)}
               {@const role = roleFor(utterance.speaker)}
               {@const correctionsForRow = corrections?.items?.filter((c) => c.utteranceIndex === i) ?? []}
-              {@const inlineCorrection = correctionsForRow.find((c) => c.wrong)}
+              {@const inlineCorrection = role === "aluno" ? correctionsForRow.find((c) => c.wrong) : undefined}
               {@const fallbackCorrections = correctionsForRow.filter((c) => c !== inlineCorrection)}
               <button
                 bind:this={rowRefs[i]}
