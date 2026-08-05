@@ -44,6 +44,14 @@ func main() {
 		return cfg.StorageRoot, nil
 	}
 
+	analysisProviderFactory := func() (analysis.Provider, error) {
+		apiKey, err := config.GetAnalysisAPIKey()
+		if err != nil {
+			return nil, err
+		}
+		return analysis.NewDeepSeekProvider(apiKey)
+	}
+
 	startJobWorker(conn, storageRoot)
 
 	importService := services.NewImportService(conn)
@@ -57,6 +65,7 @@ func main() {
 			application.NewService(services.NewLibraryService(conn, storageRoot)),
 			application.NewService(services.NewQueueService(conn)),
 			application.NewService(services.NewSettingsService(conn, storageRoot)),
+			application.NewService(services.NewAnalysisService(conn, storageRoot, analysisProviderFactory)),
 			application.NewService(services.NewTeacherService(conn)),
 		},
 		Assets: application.AssetOptions{
