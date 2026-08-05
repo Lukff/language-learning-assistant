@@ -11,7 +11,7 @@
   let lesson: Lesson | null = $state(null);
   let loading: boolean = $state(true);
   let lessonError: string = $state("");
-  // Erro de uma ação pontual (toggle de speaker, reprocessar) — não deve
+  // Erro de uma ação pontual (reprocessar transcrição) — não deve
   // derrubar o vídeo/painel, por isso fica separado de lessonError.
   let actionError: string = $state("");
 
@@ -28,6 +28,14 @@
 
   async function onLessonSaved() {
     editing = false;
+    await refreshAfterSpeakerChange();
+  }
+
+  // Re-busca lesson e corrections sem fechar o modal — usada depois de
+  // trocar o falante do aluno (chooseSpeaker no EditLessonModal), pra não
+  // descartar edições de data/professor ainda não salvas nessa mesma sessão
+  // do modal.
+  async function refreshAfterSpeakerChange() {
     try {
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchCorrectionsIfReady();
@@ -273,7 +281,9 @@
           <div class="transcript">
             {#each transcript.utterances as utterance, i (i)}
               {@const role = roleFor(utterance.speaker)}
-              {@const correctionForRow = role === "aluno" ? corrections?.items?.find((c) => c.utteranceIndex === i) : undefined}
+              {@const correctionsForRow = corrections?.items?.filter((c) => c.utteranceIndex === i) ?? []}
+              {@const inlineCorrection = correctionsForRow.find((c) => c.wrong)}
+              {@const fallbackCorrections = correctionsForRow.filter((c) => c !== inlineCorrection)}
               <button
                 bind:this={rowRefs[i]}
                 class="row"
@@ -286,21 +296,21 @@
                 >
                   {labelFor(utterance.speaker, role)}
                 </span>
-                {#if correctionForRow && correctionForRow.wrong}
-                  <p class="text" style="color: {colors.text};">{correctionForRow.before}<span
+                {#if inlineCorrection}
+                  <p class="text" style="color: {colors.text};">{inlineCorrection.before}<span
                       class="corrected-original"
-                      style="color: {colors.mut};">{correctionForRow.wrong}</span
-                    > <span class="corrected-fix" style="color: {colors.amber};" title={correctionForRow.explanation}
-                      >{correctionForRow.correction}</span
-                    >{correctionForRow.after}</p>
-                {:else if correctionForRow}
-                  <p class="text" style="color: {colors.text};">{utterance.text}</p>
-                  <p class="correction-fallback" style="color: {colors.mut};">
-                    ⚠ correção não localizada: "{correctionForRow.original}" → "{correctionForRow.correction}" — {correctionForRow.explanation}
-                  </p>
+                      style="color: {colors.mut};">{inlineCorrection.wrong}</span
+                    > <span class="corrected-fix" style="color: {colors.amber};" title={inlineCorrection.explanation}
+                      >{inlineCorrection.correction}</span
+                    >{inlineCorrection.after}</p>
                 {:else}
                   <p class="text" style="color: {colors.text};">{utterance.text}</p>
                 {/if}
+                {#each fallbackCorrections as fallback}
+                  <p class="correction-fallback" style="color: {colors.mut};">
+                    ⚠ correção não localizada: "{fallback.original}" → "{fallback.correction}" — {fallback.explanation}
+                  </p>
+                {/each}
               </button>
             {/each}
           </div>
@@ -319,6 +329,7 @@
     currentStudentSpeaker={lesson.studentSpeakerLabel}
     hasAnalysisResults={corrections?.analyzed ?? false}
     onSaved={onLessonSaved}
+    onSpeakerChanged={refreshAfterSpeakerChange}
     onClose={() => (editing = false)}
   />
 {/if}

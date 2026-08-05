@@ -5,12 +5,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/zalando/go-keyring"
 
 	"assistente-idiomas/internal/analysis"
 	"assistente-idiomas/internal/db"
@@ -167,6 +170,9 @@ func (s *AnalysisService) runCorrections(lessonID int64, overwrite bool) (Correc
 
 	provider, err := s.providerFactory()
 	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return CorrectionsResult{}, fmt.Errorf("configure a credencial do provedor de análise em Configurações")
+		}
 		return CorrectionsResult{}, fmt.Errorf("obter provedor de análise: %w", err)
 	}
 

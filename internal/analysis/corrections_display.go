@@ -33,11 +33,15 @@ type CorrectionDisplay struct {
 // Before/Wrong/After ficam vazios — o chamador mostra a correção como nota
 // avulsa nesse caso, nunca a descarta. utterances e corrections já vieram
 // com utterance_index validado (filterAnchored, História 1); um índice fora
-// do range aqui seria bug de chamador, não um caminho a tratar
-// graciosamente de novo.
+// do range aqui seria bug de chamador (ou um resultado persistido antigo
+// dessincronizado de uma transcrição diferente), e é simplesmente
+// descartado silenciosamente — defesa extra, não um caminho esperado.
 func MatchCorrections(utterances []stt.Utterance, corrections []Correction) []CorrectionDisplay {
 	out := make([]CorrectionDisplay, 0, len(corrections))
 	for _, c := range corrections {
+		if c.UtteranceIdx < 0 || c.UtteranceIdx >= len(utterances) {
+			continue
+		}
 		text := utterances[c.UtteranceIdx].Text
 		before, wrong, after := splitByOriginal(text, c.Original)
 		out = append(out, CorrectionDisplay{

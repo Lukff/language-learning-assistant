@@ -12,6 +12,7 @@
     currentStudentSpeaker,
     hasAnalysisResults,
     onSaved,
+    onSpeakerChanged,
     onClose,
   }: {
     lessonId: number;
@@ -21,6 +22,7 @@
     currentStudentSpeaker: string | null;
     hasAnalysisResults: boolean;
     onSaved: () => void;
+    onSpeakerChanged: () => void;
     onClose: () => void;
   } = $props();
 
@@ -51,7 +53,7 @@
     try {
       await LibraryService.SetStudentSpeaker(lessonId, newSpeaker);
       studentSpeaker = newSpeaker;
-      onSaved();
+      onSpeakerChanged();
     } catch (e) {
       speakerError = String(e);
     } finally {
