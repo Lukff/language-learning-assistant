@@ -111,3 +111,15 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error {
 	}
 	return nil
 }
+
+// DeleteAnalysisResultsForLesson apaga toda análise já feita pra lessonID
+// (todas as tasks) — chamado quando o mapeamento aluno/tutor muda (ver
+// services.LibraryService.SetStudentSpeaker), já que qualquer análise
+// ancorada em utterance_index passa a apontar pro papel errado assim que os
+// rótulos Aluno/Tutor trocam de falante.
+func DeleteAnalysisResultsForLesson(conn *sql.DB, lessonID int64) error {
+	if _, err := conn.Exec(`DELETE FROM analysis_results WHERE lesson_id = ?`, lessonID); err != nil {
+		return fmt.Errorf("apagar analysis_results da lesson %d: %w", lessonID, err)
+	}
+	return nil
+}

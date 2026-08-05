@@ -175,3 +175,47 @@ func TestReplaceLessonTopics_ReplacesEntirely(t *testing.T) {
 		t.Errorf("topics = %+v, esperado apenas [\"receitas de família\"]", topics)
 	}
 }
+
+func TestDeleteAnalysisResultsForLesson_DeletesAllTasksForLessonOnly(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	lessonA := insertLessonFixture(t, conn)
+	lessonB := insertLessonFixture(t, conn)
+	promptID, err := UpsertPrompt(conn, "analyze_corrections", 1, "conteúdo")
+	if err != nil {
+		t.Fatalf("UpsertPrompt() erro inesperado: %v", err)
+	}
+	if err := UpsertAnalysisResult(conn, lessonA, "analyze_corrections", promptID, "deepseek", "[]", "a.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() lessonA erro inesperado: %v", err)
+	}
+	if err := UpsertAnalysisResult(conn, lessonA, "analyze_vocabulary", promptID, "deepseek", "[]", "a2.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() lessonA (segunda task) erro inesperado: %v", err)
+	}
+	if err := UpsertAnalysisResult(conn, lessonB, "analyze_corrections", promptID, "deepseek", "[]", "b.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() lessonB erro inesperado: %v", err)
+	}
+
+	if err := DeleteAnalysisResultsForLesson(conn, lessonA); err != nil {
+		t.Fatalf("DeleteAnalysisResultsForLesson() erro inesperado: %v", err)
+	}
+
+	var countA int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ?`, lessonA).Scan(&countA); err != nil {
+		t.Fatalf("contar analysis_results de lessonA falhou: %v", err)
+	}
+	if countA != 0 {
+		t.Errorf("countA = %d, esperado 0 (todas as tasks apagadas)", countA)
+	}
+
+	var countB int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ?`, lessonB).Scan(&countB); err != nil {
+		t.Fatalf("contar analysis_results de lessonB falhou: %v", err)
+	}
+	if countB != 1 {
+		t.Errorf("countB = %d, esperado 1 (não deve ser afetada)", countB)
+	}
+}
