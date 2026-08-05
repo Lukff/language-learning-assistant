@@ -42,23 +42,29 @@ continua uma ação explícita, mesmo padrão da Fila da Fase 1).
 análise, **para** que as tarefas de análise possam rodar e guardar resultado de forma confiável.
 
 ### Critérios de aceite
-- [ ] 7 prompts versionados e focados numa saída só cada: `analyze_corrections`,
+- [x] 7 prompts versionados e focados numa saída só cada: `analyze_corrections`,
   `analyze_vocabulary`, `analyze_tutor_expressions`, `analyze_tutor_taught_terms`,
   `analyze_tutor_feedback`, `analyze_tutor_corrections`, `analyze_topics` — registrados na tabela
   `prompts` existente (nome + versão), cada um podendo evoluir independentemente dos outros.
-- [ ] `FormatTranscript` numera as falas (`utterance_index`) na transcrição enviada ao modelo, para
+- [x] `FormatTranscript` numera as falas (`utterance_index`) na transcrição enviada ao modelo, para
   permitir que correções e feedback referenciem a fala exata.
-- [ ] `analysis.Provider` vira agnóstico de tarefa: `Complete(ctx, systemPrompt, transcript)
+- [x] `analysis.Provider` vira agnóstico de tarefa: `Complete(ctx, systemPrompt, transcript)
   (json.RawMessage, error)` — deixa de conhecer `Correction`/`VocabularyItem`/etc. Cada tarefa
   define seu próprio tipo de saída e faz o parse a partir do JSON bruto, reaproveitando validação
   genérica comum.
-- [ ] Migration nova: tabela `analysis_results` (uma linha por `lesson_id` + `task`, com
+- [x] Migration nova: tabela `analysis_results` (uma linha por `lesson_id` + `task`, com
   `prompt_id`, `model`, `result_json`, `raw_response_path`, `UNIQUE(lesson_id, task)`) e
   `lesson_topics` (`lesson_id`, `topic`) para o filtro da Biblioteca (História 5).
-- [ ] Comportamento definido e testado para `utterance_index` fora do range ou ausente (risco 2).
+- [x] Comportamento definido e testado para `utterance_index` fora do range ou ausente (risco 2):
+  índice negativo (JSON sem o campo) ou fora de `[0, utteranceCount)` descarta o item
+  silenciosamente (com `slog.Warn`), nunca quebra a tarefa inteira — mesmo tratamento nas 3 tarefas
+  que ancoram em falas (`analyze_corrections`, `analyze_tutor_feedback`,
+  `analyze_tutor_corrections`).
 - [ ] Validação numa aula real: as 7 tarefas rodadas manualmente contra a mesma aula, resultado
   observado e registrado em `docs/notas-analise-llm.md` (qualidade por tarefa + custo real em
-  tokens/USD, comparado à medição da Fase 0).
+  tokens/USD, comparado à medição da Fase 0). **Pendente** — infraestrutura pronta
+  (`cmd/validate-analysis`, CLI temporário) mas a execução em si (Task 7 do plano de
+  implementação) ainda não rodou; ver registro de progresso abaixo.
 
 ### Dependências
 Nenhuma (usa os packages `internal/analysis`/`internal/db` já existentes da Fase 0/1).
@@ -170,3 +176,4 @@ análise mais aprofundada com `deepseek-v4-pro` por tarefa (ver `docs/notas-anal
 
 | Data | O que foi feito | Observações |
 |------|-----------------|-------------|
+| 30/07/2026 | História 1 (Tasks 1–6 do plano) implementada: migration `analysis_results`/`lesson_topics`, pacote `prompts/` com os 7 arquivos versionados, `internal/analysis` reescrito (`Provider` agnóstico de tarefa, framework `TaskDef`, `FormatTranscript` numerando falas), as 7 tarefas concretas com descarte de item por `utterance_index` inválido (risco 2), `RegisterPrompts` ligado no `main.go`, CLI temporário `cmd/validate-analysis` criado | Trabalho pausado antes da Task 7 (validação manual numa aula real) pra fechar a História 9 da Fase 1 (gestão de professores), que estava em aberto; `docs/notas-analise-llm.md` segue só com as notas da Fase 0 (prompt único) — as 7 tarefas novas ainda não foram rodadas contra uma aula real, `cmd/validate-analysis` ainda não foi removido |
