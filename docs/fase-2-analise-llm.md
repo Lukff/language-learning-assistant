@@ -86,23 +86,23 @@ facilidade (é a mais complexa de exibir, por depender de ancoragem por fala). D
 detalhado em spec própria, escrita antes da implementação.
 
 ### Critérios de aceite
-- [ ] Credencial do provedor de análise (DeepSeek) via `go-keyring` (`SaveAnalysisAPIKey`/
+- [x] Credencial do provedor de análise (DeepSeek) via `go-keyring` (`SaveAnalysisAPIKey`/
   `GetAnalysisAPIKey`, mesmo padrão de `SaveSTTAPIKey`/`GetSTTAPIKey`) + campo na tela de
   Configurações, ao lado do campo STT — mostra se já há credencial configurada, sem revelar o valor.
-- [ ] Ação manual na aula (ex.: botão "Analisar correções") dispara `analyze_corrections` sob
+- [x] Ação manual na aula (ex.: botão "Analisar correções") dispara `analyze_corrections` sob
   demanda — sem job em background nesta fatia.
-- [ ] Resultado salvo em `analysis_results` (idempotente: já existindo `(lesson_id,
+- [x] Resultado salvo em `analysis_results` (idempotente: já existindo `(lesson_id,
   analyze_corrections)`, mostra direto sem rechamar a API; reprocessar é ação explícita que
   sobrescreve).
-- [ ] Falha (rede/API, parsing) não quebra a aula — mesmo princípio de resiliência já usado no
+- [x] Falha (rede/API, parsing) não quebra a aula — mesmo princípio de resiliência já usado no
   pipeline de transcrição; erro fica visível e recuperável, nunca impede assistir ao vídeo.
-- [ ] Fala do aluno com item em `corrections` mostra o trecho original riscado + a correção em
+- [x] Fala do aluno com item em `corrections` mostra o trecho original riscado + a correção em
   destaque (visual do protótipo: riscado em cinza, correção em âmbar), inline na transcrição do
   Detalhe da aula.
-- [ ] Aula sem a tarefa concluída (não disparada, pendente ou erro) mostra a transcrição
+- [x] Aula sem a tarefa concluída (não disparada, pendente ou erro) mostra a transcrição
   normalmente, sem marcação — mesmo princípio de resiliência já estabelecido na História 6 da
   Fase 1.
-- [ ] **Decisão registrada:** depois de observar o resultado em algumas aulas reais, registrar em
+- [x] **Decisão registrada:** depois de observar o resultado em algumas aulas reais, registrar em
   `docs/notas-analise-llm.md` se a tarefa vale manter como está, precisa de refinamento de prompt,
   ou deve ser descartada — não há número fixo de aulas, a decisão é o que fecha a história.
 - [ ] `cmd/validate-analysis` removido do repositório (função assumida por esta validação visual).
@@ -156,3 +156,4 @@ tarefa (ver `docs/notas-analise-llm.md`).
 |------|-----------------|-------------|
 | 30/07/2026 | História 1 (Tasks 1–6 do plano) implementada: migration `analysis_results`/`lesson_topics`, pacote `prompts/` com os 7 arquivos versionados, `internal/analysis` reescrito (`Provider` agnóstico de tarefa, framework `TaskDef`, `FormatTranscript` numerando falas), as 7 tarefas concretas com descarte de item por `utterance_index` inválido (risco 2), `RegisterPrompts` ligado no `main.go`, CLI temporário `cmd/validate-analysis` criado | Trabalho pausado antes da Task 7 (validação manual numa aula real) pra fechar a História 9 da Fase 1 (gestão de professores), que estava em aberto; `docs/notas-analise-llm.md` segue só com as notas da Fase 0 (prompt único) — as 7 tarefas novas ainda não foram rodadas contra uma aula real, `cmd/validate-analysis` ainda não foi removido |
 | 05/08/2026 | Replanejamento da Fase 2 pra abordagem iterativa: em vez de automatizar e construir UI pras 7 tarefas de uma vez (antigas Histórias 2–5), cada tarefa passa por um ciclo próprio (sob demanda → UI → observar em aulas reais → decidir manter/refinar/descartar), e só então ganha automação em background. História 1 fecha com o último critério reescrito (validação passa a ser por tarefa, não em bloco via CLI). História 2 vira o piloto de Correções do aluno, a primeira tarefa a ser implementada | Spec em `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md`; nenhum código mudou nesta entrada — só o planejamento |
+| 06/08/2026 | História 2 (Piloto: Correções do aluno) implementada e fechada: credencial DeepSeek via keyring, `AnalysisService` (`GetCorrections`/`AnalyzeCorrections`/`ReprocessCorrections`), correção inline no Detalhe (riscado cinza + destaque âmbar), escolha de falante no `EditLessonModal` com descarte de análise ao trocar quem é o aluno, `cmd/validate-analysis` removido | Verificação manual numa aula real: fluxo completo (credencial → escolha de falante → análise → correção inline → reprocessar → descarte) funcionou como desenhado; decisão registrada em `docs/notas-analise-llm.md` — **manter a tarefa como está**, com refinamento de prompt (`prompts/analyze-corrections-v1.md`) registrado como trabalho futuro: ignorar repetição/hesitação da fala como não-erro, e reduzir o fallback de correção "não localizada" no matching por texto |

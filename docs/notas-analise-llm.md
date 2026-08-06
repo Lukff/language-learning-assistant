@@ -46,6 +46,30 @@ trocado manualmente e revertido logo em seguida.
   refinamento do prompt do que do modelo em si. Não convenceu o suficiente pra justificar o custo
   maior agora, mas fica **como backup** para uma futura opção de análise mais aprofundada.
 
+## História 2 da Fase 2 — Piloto: Correções do aluno (`analyze-corrections-v1`)
+
+Verificação manual do fluxo completo (credencial → escolha de falante → "Analisar correções" →
+correção inline no Detalhe → "Reprocessar correções" → descarte ao trocar falante), rodando
+`wails3 dev` numa aula real.
+
+- **Aulas observadas:** 1.
+- **Fluxo/UI:** funcionou como desenhado em todos os passos do roteiro de verificação (dica antes
+  de escolher o falante, botão de análise, estados "Analisando…"/"Reprocessar correções",
+  confirmação ao reprocessar, descarte com aviso ao trocar de falante).
+- **Qualidade das correções:** boa o suficiente pra essa etapa (piloto), mas com uma inconsistência
+  clara no prompt: o modelo aponta como erro repetições de palavra que fazem parte do processo de
+  pensar em voz alta do aluno (hesitação, autocorreção natural em fala) — não é útil marcar isso
+  como correção de inglês nessa funcionalidade. É ajuste de prompt (`prompts/analyze-corrections-v1.md`),
+  não de modelo.
+- **Fallback de correção não localizada:** ocorreu — algumas correções vieram na resposta do
+  modelo mas não bateram com o texto real da fala (matching por texto/índice não encontrou o
+  trecho). Não quantificado aula a aula ainda; a UI já trata esse caso sem quebrar a tela.
+- **Decisão:** **manter a tarefa como está** — a infraestrutura (credencial, disparo sob demanda,
+  persistência idempotente, exibição inline, resiliência a erro) está validada e correta. O
+  refinamento do prompt (ignorar repetição/hesitação como não-erro, reduzir fallback de
+  "não localizada") fica registrado como trabalho futuro, esperado nesta etapa de piloto — não
+  bloqueia o fechamento da História 2.
+
 ## Candidatos não testados (on hold)
 
 Qwen, GLM, Anthropic (Claude) e OpenAI (GPT) não foram executados — a qualidade do DeepSeek já
