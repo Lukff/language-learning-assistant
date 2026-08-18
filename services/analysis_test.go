@@ -372,16 +372,20 @@ func TestAnalysisService_AnalyzeTopics_RequiresStudentSpeakerChosen(t *testing.T
 
 func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T) {
 	conn := openTestDB(t)
-	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+	storageRoot := t.TempDir()
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aulas/2026/aula.mp4")
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, "aulas/2026/aula.transcript.json", []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
-	fake := &fakeAnalysisProvider{err: fmt.Errorf("erro de rede simulado")}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	fake := &fakeAnalysisProvider{
+		raw: json.RawMessage(`{"topics":["viagens"]}`),
+		err: fmt.Errorf("erro de rede simulado"),
+	}
+	svc := NewAnalysisService(conn, func() (string, error) { return storageRoot, nil }, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeTopics(lessonID); err == nil {
 		t.Fatal("AnalyzeTopics() esperava erro do provider, veio nil")
@@ -399,5 +403,10 @@ func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T)
 	}
 	if len(topics) != 0 {
 		t.Errorf("lesson_topics = %+v, esperado vazio (não persistir em falha)", topics)
+	}
+
+	rawAbsPath := filepath.Join(storageRoot, "aulas", "2026", "aula.analysis.analyze_topics.json")
+	if _, err := os.Stat(rawAbsPath); err != nil {
+		t.Errorf("raw response não foi gravado em %s mesmo com erro do provider (auditoria): %v", rawAbsPath, err)
 	}
 }
