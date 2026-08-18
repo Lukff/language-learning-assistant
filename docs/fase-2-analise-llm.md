@@ -105,25 +105,54 @@ detalhado em spec própria, escrita antes da implementação.
 - [x] **Decisão registrada:** depois de observar o resultado em algumas aulas reais, registrar em
   `docs/notas-analise-llm.md` se a tarefa vale manter como está, precisa de refinamento de prompt,
   ou deve ser descartada — não há número fixo de aulas, a decisão é o que fecha a história.
-- [ ] `cmd/validate-analysis` removido do repositório (função assumida por esta validação visual).
+- [x] `cmd/validate-analysis` removido do repositório (função assumida por esta validação visual).
 
 ### Dependências
 História 1.
 
 ---
 
+## História 3 — Tópicos da aula
+
+**Como** usuário, **quero** ver os principais assuntos da aula como tópicos curtos (e poder
+corrigi-los), **para** ter uma etiqueta do que foi discutido sem reler a transcrição inteira.
+
+Terceira tarefa candidata a virar história — escolhida pelo usuário. Primeira tarefa **não
+ancorada em fala** (resultado é lista de rótulos, não marcação na transcrição), o que muda a UI
+(chips no cabeçalho) e o modelo de dados (tópicos viram entidade editável, como professores).
+Design técnico em spec própria.
+
+### Critérios de aceite
+- [ ] Tópicos gerados sob demanda (sem job em background), exigindo `StudentSpeakerLabel` (como
+      correções).
+- [ ] Resultado persistido em `analysis_results` (idempotente) **e** `lesson_topics` (por
+      `topic_id`); tópicos viram entidade `topics`.
+- [ ] Tópicos exibidos como chips no cabeçalho do Detalhe; aula sem a tarefa mostra a transcrição
+      normalmente.
+- [ ] Adicionar/remover tópico por aula (chips) e renomear tópico globalmente (Configurações).
+- [ ] Falha não quebra a aula — erro visível e recuperável.
+- [ ] Troca de falante preserva `analyze_topics` e `lesson_topics` (só tarefas que dependem de
+      quem é aluno/tutor são descartadas).
+- [ ] Prompt v2 com granularidade geral + reaproveitamento dos tópicos já existentes.
+- [ ] Decisão registrada em `docs/notas-analise-llm.md` após observar em aulas reais — primeira
+      tarefa sem validação da Fase 0, observação com peso redobrado.
+
+### Dependências
+História 2.
+
+---
+
 ## Tarefas candidatas (sem história detalhada ainda)
 
-As 6 tarefas restantes viram uma história de verdade (mesmo formato da História 2: credencial já
+As 5 tarefas restantes viram uma história de verdade (mesmo formato da História 2: credencial já
 resolvida, sob demanda, UI mínima, decisão explícita registrada em `docs/notas-analise-llm.md`) só
 quando for a vez de implementá-las. Ordem não é comprometida agora; localização na UI (inline vs.
 aba própria) é decidida tarefa a tarefa.
 
 - `analyze_vocabulary` (vocabulário novo) e `analyze_tutor_expressions` (expressões do tutor) têm
-  sinal positivo da validação da Fase 0 (prompt único) — candidatas naturais a vir logo depois de
-  Correções, mas isso é observação, não compromisso de ordem.
-- `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections`,
-  `analyze_topics` seguem sem validação própria ainda.
+  sinal positivo da validação da Fase 0 (prompt único) — candidatas naturais a vir logo depois.
+- `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections` seguem
+  sem validação própria ainda.
 
 ## Promoção a job em background (critério à parte)
 
