@@ -2,13 +2,12 @@
   import { colors, fonts } from "./theme";
   import { jobsStore } from "./jobsStore.svelte";
 
-  type Screen = "library" | "progress" | "queue";
+  type Screen = "library" | "queue";
 
   let { active, onNavigate }: { active: Screen; onNavigate: (screen: Screen) => void } = $props();
 
   const NAV: { key: Screen; label: string; icon: string }[] = [
     { key: "library", label: "Biblioteca", icon: "▤" },
-    { key: "progress", label: "Progresso", icon: "◔" },
     { key: "queue", label: "Fila", icon: "≡" },
   ];
 </script>

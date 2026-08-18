@@ -4,7 +4,6 @@
   import Header from "./lib/Header.svelte";
   import Library from "./lib/screens/Library.svelte";
   import LessonDetail from "./lib/screens/LessonDetail.svelte";
-  import Progress from "./lib/screens/Progress.svelte";
   import Queue from "./lib/screens/Queue.svelte";
   import Settings from "./lib/screens/Settings.svelte";
   import Teachers from "./lib/screens/Teachers.svelte";
@@ -14,11 +13,10 @@
   import { initJobsStore } from "./lib/jobsStore.svelte";
   import * as SetupService from "../bindings/assistente-idiomas/services/setupservice";
 
-  type NavScreen = "library" | "progress" | "queue";
+  type NavScreen = "library" | "queue";
   type Route =
     | { screen: "library" }
     | { screen: "lesson-detail"; lessonId: number }
-    | { screen: "progress" }
     | { screen: "queue" }
     | { screen: "settings" }
     | { screen: "teachers" }
@@ -76,8 +74,6 @@
           <Library onOpenLesson={openLesson} onOpenTeachers={openTeachers} onOpenTopics={openTopics} />
         {:else if route.screen === "lesson-detail"}
           <LessonDetail lessonId={route.lessonId} onBack={() => navigate("library")} />
-        {:else if route.screen === "progress"}
-          <Progress />
         {:else if route.screen === "settings"}
           <Settings />
         {:else if route.screen === "teachers"}
