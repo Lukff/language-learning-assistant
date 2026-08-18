@@ -67,6 +67,7 @@ func main() {
 			application.NewService(services.NewSettingsService(conn, storageRoot)),
 			application.NewService(services.NewAnalysisService(conn, storageRoot, analysisProviderFactory)),
 			application.NewService(services.NewTeacherService(conn)),
+			application.NewService(services.NewTopicsService(conn)),
 		},
 		Assets: application.AssetOptions{
 			Handler:    application.AssetFileServerFS(assets),
