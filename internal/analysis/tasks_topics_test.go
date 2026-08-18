@@ -22,3 +22,53 @@ func TestParseTopics_InvalidJSON(t *testing.T) {
 		t.Fatal("esperava erro para JSON inválido, obteve nil")
 	}
 }
+
+func TestNewTopicsTask_HasNameVersionAndPrompt(t *testing.T) {
+	tk := NewTopicsTask()
+	if tk.Name() != "analyze_topics" {
+		t.Errorf("Name() = %q, esperado analyze_topics", tk.Name())
+	}
+	if tk.Version() != 2 {
+		t.Errorf("Version() = %d, esperado 2", tk.Version())
+	}
+	if tk.Prompt() == "" {
+		t.Error("Prompt() vazio, esperado conteúdo do v2")
+	}
+}
+
+func TestParseTopicsResult_Valid(t *testing.T) {
+	resultJSON := json.RawMessage(`["viagens","trabalho remoto"]`)
+	got, err := ParseTopicsResult(resultJSON)
+	if err != nil {
+		t.Fatalf("ParseTopicsResult erro inesperado: %v", err)
+	}
+	if len(got) != 2 || got[0] != "viagens" || got[1] != "trabalho remoto" {
+		t.Errorf("got = %+v, inesperado", got)
+	}
+}
+
+func TestParseTopicsResult_InvalidJSON(t *testing.T) {
+	if _, err := ParseTopicsResult(json.RawMessage("not json")); err == nil {
+		t.Fatal("esperava erro para JSON inválido, obteve nil")
+	}
+}
+
+func TestAppendExistingTopics_EmptyLeavesTranscriptUnchanged(t *testing.T) {
+	got := AppendExistingTopics("linha", nil)
+	if got != "linha" {
+		t.Errorf("got = %q, esperado transcript inalterado", got)
+	}
+}
+
+func TestAppendExistingTopics_AppendsBlock(t *testing.T) {
+	got := AppendExistingTopics("linha", []string{"viagens", "trabalho remoto"})
+	want := `linha
+
+Tópicos já utilizados em outras aulas (reutilize quando fizer sentido):
+- viagens
+- trabalho remoto
+`
+	if got != want {
+		t.Errorf("got = %q, esperado %q", got, want)
+	}
+}

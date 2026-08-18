@@ -11,5 +11,5 @@ var Tasks = []TaskDef{
 	newTutorTaughtTermsTask(),
 	newTutorFeedbackTask(),
 	newTutorCorrectionsTask(),
-	newTopicsTask(),
+	NewTopicsTask(),
 }
