@@ -3,7 +3,8 @@
   import { colors, fonts } from "../theme";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
   import * as AnalysisService from "../../../bindings/assistente-idiomas/services/analysisservice";
-  import type { Lesson, Transcript, CorrectionsResult } from "../../../bindings/assistente-idiomas/services/models";
+  import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
+  import type { Lesson, Transcript, CorrectionsResult, TopicsResult } from "../../../bindings/assistente-idiomas/services/models";
   import EditLessonModal from "../EditLessonModal.svelte";
 
   let { lessonId, onBack }: { lessonId: number; onBack: () => void } = $props();
@@ -26,6 +27,11 @@
 
   let editing: boolean = $state(false);
 
+  let topics: TopicsResult | null = $state(null);
+  let analyzingTopics: boolean = $state(false);
+  let topicsError: string = $state("");
+  let newTopicName: string = $state("");
+
   async function onLessonSaved() {
     editing = false;
     await refreshAfterSpeakerChange();
@@ -39,6 +45,7 @@
     try {
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchCorrectionsIfReady();
+      await fetchTopicsIfReady();
     } catch (e) {
       actionError = String(e);
     }
@@ -172,6 +179,71 @@
     }
   }
 
+  async function fetchTopicsIfReady() {
+    if (!lesson || lesson.status !== "pronta") {
+      topics = null;
+      return;
+    }
+    try {
+      topics = await AnalysisService.GetTopics(lessonId);
+    } catch {
+      topics = null;
+    }
+  }
+
+  async function analyzeTopics() {
+    if ((topics?.items?.length ?? 0) > 0) {
+      const confirmed = confirm("Isso substitui os tópicos atuais e gera uma nova chamada à API. Continuar?");
+      if (!confirmed) return;
+    }
+    topicsError = "";
+    analyzingTopics = true;
+    try {
+      topics = await AnalysisService.AnalyzeTopics(lessonId);
+    } catch (e) {
+      topicsError = String(e);
+    } finally {
+      analyzingTopics = false;
+    }
+  }
+
+  async function reprocessTopics() {
+    const confirmed = confirm("Isso substitui os tópicos atuais e gera uma nova chamada à API. Continuar?");
+    if (!confirmed) return;
+    topicsError = "";
+    analyzingTopics = true;
+    try {
+      topics = await AnalysisService.ReprocessTopics(lessonId);
+    } catch (e) {
+      topicsError = String(e);
+    } finally {
+      analyzingTopics = false;
+    }
+  }
+
+  async function addTopic() {
+    const name = newTopicName.trim();
+    if (!name) return;
+    topicsError = "";
+    try {
+      await TopicsService.AddTopic(lessonId, name);
+      newTopicName = "";
+      topics = await AnalysisService.GetTopics(lessonId);
+    } catch (e) {
+      topicsError = String(e);
+    }
+  }
+
+  async function removeTopic(topicId: number) {
+    topicsError = "";
+    try {
+      await TopicsService.RemoveTopic(lessonId, topicId);
+      topics = await AnalysisService.GetTopics(lessonId);
+    } catch (e) {
+      topicsError = String(e);
+    }
+  }
+
   async function retry() {
     actionError = "";
     retrying = true;
@@ -191,6 +263,7 @@
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchTranscriptIfReady();
       await fetchCorrectionsIfReady();
+      await fetchTopicsIfReady();
     } catch (e) {
       lessonError = String(e);
     } finally {
@@ -226,6 +299,39 @@
         </span>
       {/if}
     </div>
+
+    <div class="topics-row">
+      {#each topics?.items ?? [] as topic (topic.id)}
+        <span class="chip" style="background: {colors.surface2}; border: 1px solid {colors.line};">
+          {topic.name}
+          <button class="chip-remove" onclick={() => removeTopic(topic.id)} style="color: {colors.mut};">✕</button>
+        </span>
+      {/each}
+      <input
+        class="topic-input"
+        bind:value={newTopicName}
+        placeholder="+ adicionar tópico"
+        onkeydown={(e) => { if (e.key === "Enter") addTopic(); }}
+        style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
+      />
+      {#if lesson.studentSpeakerLabel}
+        {#if topics?.analyzed}
+          <button onclick={reprocessTopics} disabled={analyzingTopics}>
+            {analyzingTopics ? "Reprocessando…" : "Reprocessar tópicos"}
+          </button>
+        {:else}
+          <button onclick={analyzeTopics} disabled={analyzingTopics}>
+            {analyzingTopics ? "Analisando…" : "Analisar tópicos"}
+          </button>
+        {/if}
+      {/if}
+    </div>
+    {#if topics?.analyzed && (topics.items?.length ?? 0) === 0}
+      <p class="hint" style="color: {colors.mut};">sem tópicos identificados</p>
+    {/if}
+    {#if topicsError}
+      <p class="error" style="color: {colors.red};">{topicsError}</p>
+    {/if}
 
     <div class="grid">
       <div>
@@ -367,6 +473,33 @@
     font-size: 0.75rem;
     padding: 0.25rem 0.6rem;
     border-radius: 999px;
+  }
+  .topics-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+  }
+  .chip-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0;
+  }
+  .topic-input {
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
   }
   .grid {
     display: grid;

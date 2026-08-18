@@ -3,7 +3,8 @@
   import { colors, fonts } from "../theme";
   import * as SettingsService from "../../../bindings/assistente-idiomas/services/settingsservice";
   import * as TeacherService from "../../../bindings/assistente-idiomas/services/teacherservice";
-  import type { Teacher } from "../../../bindings/assistente-idiomas/services/models";
+  import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
+  import type { Teacher, Topic } from "../../../bindings/assistente-idiomas/services/models";
 
   let storageRoot: string = $state("");
   let loading: boolean = $state(true);
@@ -32,6 +33,12 @@
   let renameDrafts: Record<number, string> = $state({});
   let renamingId: number | null = $state(null);
   let renameErrors: Record<number, string> = $state({});
+
+  let topics: Topic[] = $state([]);
+  let topicsError: string = $state("");
+  let topicRenameDrafts: Record<number, string> = $state({});
+  let renamingTopicId: number | null = $state(null);
+  let topicRenameErrors: Record<number, string> = $state({});
 
   async function loadStorageRoot() {
     storageRoot = await SettingsService.GetStorageRoot();
@@ -148,9 +155,37 @@
     }
   }
 
+  async function loadTopics(justRenamedId?: number) {
+    const previousTopics = topics;
+    const previousDrafts = topicRenameDrafts;
+    const fresh = (await TopicsService.ListTopics()) ?? [];
+    const nextDrafts: Record<number, string> = {};
+    for (const tp of fresh) {
+      const existingDraft = previousDrafts[tp.id];
+      const oldTopic = previousTopics.find((p) => p.id === tp.id);
+      const isDirty = existingDraft !== undefined && oldTopic !== undefined && existingDraft !== oldTopic.name;
+      nextDrafts[tp.id] = isDirty && tp.id !== justRenamedId ? existingDraft : tp.name;
+    }
+    topics = fresh;
+    topicRenameDrafts = nextDrafts;
+  }
+
+  async function renameTopic(id: number) {
+    topicRenameErrors = { ...topicRenameErrors, [id]: "" };
+    renamingTopicId = id;
+    try {
+      await TopicsService.RenameTopic(id, topicRenameDrafts[id]);
+      await loadTopics(id);
+    } catch (e) {
+      topicRenameErrors = { ...topicRenameErrors, [id]: String(e) };
+    } finally {
+      renamingTopicId = null;
+    }
+  }
+
   onMount(async () => {
     try {
-      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadAnalysisCredentialStatus(), loadTeachers()]);
+      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadAnalysisCredentialStatus(), loadTeachers(), loadTopics()]);
     } catch (e) {
       loadError = String(e);
     } finally {
@@ -269,6 +304,37 @@
               </button>
               {#if renameErrors[teacher.id]}
                 <p class="error" style="color: {colors.red};">{renameErrors[teacher.id]}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+
+    <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
+      <h2 style="font-family: {fonts.display};">Tópicos</h2>
+      {#if topicsError}
+        <p class="error" style="color: {colors.red};">{topicsError}</p>
+      {/if}
+      {#if topics.length === 0}
+        <p class="hint" style="color: {colors.mut};">Nenhum tópico cadastrado ainda.</p>
+      {:else}
+        <ul class="teacher-list">
+          {#each topics as topic (topic.id)}
+            <li>
+              <input
+                type="text"
+                bind:value={topicRenameDrafts[topic.id]}
+                style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
+              />
+              <button
+                onclick={() => renameTopic(topic.id)}
+                disabled={renamingTopicId === topic.id || !topicRenameDrafts[topic.id] || topicRenameDrafts[topic.id] === topic.name}
+              >
+                {renamingTopicId === topic.id ? "Renomeando…" : "Renomear"}
+              </button>
+              {#if topicRenameErrors[topic.id]}
+                <p class="error" style="color: {colors.red};">{topicRenameErrors[topic.id]}</p>
               {/if}
             </li>
           {/each}
