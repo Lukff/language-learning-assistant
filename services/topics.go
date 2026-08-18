@@ -44,8 +44,12 @@ func (s *TopicsService) RenameTopic(id int64, newName string) error {
 }
 
 // AddTopic resolve o nome para uma entidade (criando se necessário) e vincula
-// à lessonID. Devolve o tópico resolvido; o frontend re-busca GetTopics depois
-// para reconciliar nomes canônicos.
+// à lessonID. lessonID <= 0 cria/reutiliza a entidade sem vincular a nenhuma
+// aula — usado pelo painel de Configurações; qualquer chamador real (ex.: uma
+// futura chamada do frontend passando um 0 acidental/não definido) precisa
+// estar ciente de que esse é um no-op silencioso de vínculo, não um erro.
+// Devolve o tópico resolvido; o frontend re-busca GetTopics depois para
+// reconciliar nomes canônicos.
 func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
