@@ -351,7 +351,57 @@ func TestAnalysisService_ReprocessTopics_Overwrites(t *testing.T) {
 	if len(topics) != 1 || topics[0].Name != "trabalho remoto" {
 		t.Errorf("lesson_topics = %+v, esperado [trabalho remoto] (substituído)", topics)
 	}
-	_ = got
+	if len(got.Items) != 1 || got.Items[0].Name != "trabalho remoto" {
+		t.Errorf("ReprocessTopics() got.Items = %+v, esperado [trabalho remoto]", got.Items)
+	}
+}
+
+func TestAnalysisService_AnalyzeTopics_SkipsEmptyAndWhitespaceNames(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
+	}
+	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
+	})
+
+	fake := &fakeAnalysisProvider{
+		model: "deepseek-v4-flash",
+		raw:   json.RawMessage(`{"topics":["viagens","","  ","trabalho remoto"]}`),
+	}
+	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+
+	got, err := svc.AnalyzeTopics(lessonID)
+	if err != nil {
+		t.Fatalf("AnalyzeTopics() erro inesperado: %v", err)
+	}
+	if len(got.Items) != 2 {
+		t.Errorf("AnalyzeTopics() got.Items = %+v, esperado 2 itens (sem vazios)", got.Items)
+	}
+
+	topics, err := db.ListLessonTopics(conn, lessonID)
+	if err != nil {
+		t.Fatalf("ListLessonTopics() erro: %v", err)
+	}
+	if len(topics) != 2 {
+		t.Errorf("lesson_topics = %+v, esperado 2 vínculos (não 4)", topics)
+	}
+	for _, tp := range topics {
+		if strings.TrimSpace(tp.Name) == "" {
+			t.Errorf("lesson_topics contém tópico com nome vazio: %+v", topics)
+		}
+	}
+
+	allTopics, err := db.ListTopics(conn)
+	if err != nil {
+		t.Fatalf("ListTopics() erro: %v", err)
+	}
+	for _, tp := range allTopics {
+		if strings.TrimSpace(tp.Name) == "" {
+			t.Errorf("ListTopics() contém tópico com nome vazio: %+v", allTopics)
+		}
+	}
 }
 
 func TestAnalysisService_AnalyzeTopics_RequiresStudentSpeakerChosen(t *testing.T) {

@@ -11,7 +11,7 @@ func TestFS_ContainsAllTaskPrompts(t *testing.T) {
 		"analyze-tutor-taught-terms-v1.md",
 		"analyze-tutor-feedback-v1.md",
 		"analyze-tutor-corrections-v1.md",
-		"analyze-topics-v1.md",
+		"analyze-topics-v2.md",
 	}
 	for _, f := range files {
 		data, err := FS.ReadFile(f)

@@ -347,6 +347,9 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 	}
 	ids := make([]int64, 0, len(topics))
 	for _, name := range topics {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
 		id, err := db.GetOrCreateTopicByName(s.conn, name)
 		if err != nil {
 			return TopicsResult{}, fmt.Errorf("registrar tópico %q: %w", name, err)
