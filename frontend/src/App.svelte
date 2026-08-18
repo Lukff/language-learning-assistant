@@ -7,6 +7,8 @@
   import Progress from "./lib/screens/Progress.svelte";
   import Queue from "./lib/screens/Queue.svelte";
   import Settings from "./lib/screens/Settings.svelte";
+  import Teachers from "./lib/screens/Teachers.svelte";
+  import Topics from "./lib/screens/Topics.svelte";
   import SetupWizard from "./lib/SetupWizard.svelte";
   import { colors, fonts } from "./lib/theme";
   import { initJobsStore } from "./lib/jobsStore.svelte";
@@ -18,7 +20,9 @@
     | { screen: "lesson-detail"; lessonId: number }
     | { screen: "progress" }
     | { screen: "queue" }
-    | { screen: "settings" };
+    | { screen: "settings" }
+    | { screen: "teachers" }
+    | { screen: "topics" };
 
   let route: Route = $state({ screen: "library" });
   let checkingFirstRun = $state(true);
@@ -30,6 +34,14 @@
 
   function openLesson(lessonId: number) {
     route = { screen: "lesson-detail", lessonId };
+  }
+
+  function openTeachers() {
+    route = { screen: "teachers" };
+  }
+
+  function openTopics() {
+    route = { screen: "topics" };
   }
 
   onMount(async () => {
@@ -49,20 +61,29 @@
 {:else}
   <div class="shell" style="background: {colors.bg}; font-family: {fonts.body};">
     <Sidebar
-      active={route.screen === "lesson-detail" || route.screen === "settings" ? "library" : route.screen}
+      active={route.screen === "lesson-detail" ||
+      route.screen === "settings" ||
+      route.screen === "teachers" ||
+      route.screen === "topics"
+        ? "library"
+        : route.screen}
       onNavigate={navigate}
     />
     <main class="main">
       <Header onOpenSettings={() => (route = { screen: "settings" })} />
       <div class="content">
         {#if route.screen === "library"}
-          <Library onOpenLesson={openLesson} />
+          <Library onOpenLesson={openLesson} onOpenTeachers={openTeachers} onOpenTopics={openTopics} />
         {:else if route.screen === "lesson-detail"}
           <LessonDetail lessonId={route.lessonId} onBack={() => navigate("library")} />
         {:else if route.screen === "progress"}
           <Progress />
         {:else if route.screen === "settings"}
           <Settings />
+        {:else if route.screen === "teachers"}
+          <Teachers onBack={() => navigate("library")} />
+        {:else if route.screen === "topics"}
+          <Topics onBack={() => navigate("library")} />
         {:else}
           <Queue />
         {/if}

@@ -231,7 +231,9 @@ confirmação da importação.
   legível).
 - [x] Formulário de importação (Histórias 3 e 3b) mostra professores já cadastrados num combobox
   (`<input list>`/`<datalist>`), com opção de digitar um nome novo.
-- [x] Painel "Professores" em Configurações lista os professores cadastrados com ação de renomear.
+- [x] Painel "Professores" lista os professores cadastrados com ação de renomear (inicialmente em
+  Configurações; movido para tela própria acessível pela Biblioteca em 18/08/2026 — ver Registro
+  de progresso da Fase 2).
 - [x] Botão "Editar" no Detalhe da aula abre um formulário de data/horário/professor; salvar
   também tenta renomear o vídeo pro nome padronizado atual (melhor esforço, mesma lógica da
   História 3 — falha no rename não impede salvar a edição).

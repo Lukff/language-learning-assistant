@@ -2,9 +2,6 @@
   import { onMount } from "svelte";
   import { colors, fonts } from "../theme";
   import * as SettingsService from "../../../bindings/assistente-idiomas/services/settingsservice";
-  import * as TeacherService from "../../../bindings/assistente-idiomas/services/teacherservice";
-  import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
-  import type { Teacher, Topic } from "../../../bindings/assistente-idiomas/services/models";
 
   let storageRoot: string = $state("");
   let loading: boolean = $state(true);
@@ -27,18 +24,6 @@
   let savingAnalysisCredential: boolean = $state(false);
   let saveAnalysisCredentialError: string = $state("");
   let saveAnalysisCredentialSuccess: boolean = $state(false);
-
-  let teachers: Teacher[] = $state([]);
-  let teachersError: string = $state("");
-  let renameDrafts: Record<number, string> = $state({});
-  let renamingId: number | null = $state(null);
-  let renameErrors: Record<number, string> = $state({});
-
-  let topics: Topic[] = $state([]);
-  let topicsError: string = $state("");
-  let topicRenameDrafts: Record<number, string> = $state({});
-  let renamingTopicId: number | null = $state(null);
-  let topicRenameErrors: Record<number, string> = $state({});
 
   async function loadStorageRoot() {
     storageRoot = await SettingsService.GetStorageRoot();
@@ -118,74 +103,9 @@
     }
   }
 
-  async function loadTeachers(justRenamedId?: number) {
-    const previousTeachers = teachers;
-    const previousDrafts = renameDrafts;
-    const fresh = (await TeacherService.ListTeachers()) ?? [];
-
-    // Merge instead of blindly rebuilding: a row the user is actively editing
-    // (draft differs from the name it had before this reload) must survive a
-    // reload triggered by renaming a *different* teacher. The just-renamed
-    // row is always reset to its fresh (now-saved) name. Teachers no longer
-    // present in `fresh` are dropped; teachers new to `fresh` get a draft
-    // seeded from their current name.
-    const nextDrafts: Record<number, string> = {};
-    for (const t of fresh) {
-      const existingDraft = previousDrafts[t.id];
-      const oldTeacher = previousTeachers.find((p) => p.id === t.id);
-      const isDirty =
-        existingDraft !== undefined && oldTeacher !== undefined && existingDraft !== oldTeacher.name;
-      nextDrafts[t.id] = isDirty && t.id !== justRenamedId ? existingDraft : t.name;
-    }
-
-    teachers = fresh;
-    renameDrafts = nextDrafts;
-  }
-
-  async function renameTeacher(id: number) {
-    renameErrors = { ...renameErrors, [id]: "" };
-    renamingId = id;
-    try {
-      await TeacherService.RenameTeacher(id, renameDrafts[id]);
-      await loadTeachers(id);
-    } catch (e) {
-      renameErrors = { ...renameErrors, [id]: String(e) };
-    } finally {
-      renamingId = null;
-    }
-  }
-
-  async function loadTopics(justRenamedId?: number) {
-    const previousTopics = topics;
-    const previousDrafts = topicRenameDrafts;
-    const fresh = (await TopicsService.ListTopics()) ?? [];
-    const nextDrafts: Record<number, string> = {};
-    for (const tp of fresh) {
-      const existingDraft = previousDrafts[tp.id];
-      const oldTopic = previousTopics.find((p) => p.id === tp.id);
-      const isDirty = existingDraft !== undefined && oldTopic !== undefined && existingDraft !== oldTopic.name;
-      nextDrafts[tp.id] = isDirty && tp.id !== justRenamedId ? existingDraft : tp.name;
-    }
-    topics = fresh;
-    topicRenameDrafts = nextDrafts;
-  }
-
-  async function renameTopic(id: number) {
-    topicRenameErrors = { ...topicRenameErrors, [id]: "" };
-    renamingTopicId = id;
-    try {
-      await TopicsService.RenameTopic(id, topicRenameDrafts[id]);
-      await loadTopics(id);
-    } catch (e) {
-      topicRenameErrors = { ...topicRenameErrors, [id]: String(e) };
-    } finally {
-      renamingTopicId = null;
-    }
-  }
-
   onMount(async () => {
     try {
-      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadAnalysisCredentialStatus(), loadTeachers(), loadTopics()]);
+      await Promise.all([loadStorageRoot(), loadCredentialStatus(), loadAnalysisCredentialStatus()]);
     } catch (e) {
       loadError = String(e);
     } finally {
@@ -279,68 +199,6 @@
         <p class="error" style="color: {colors.red};">{saveAnalysisCredentialError}</p>
       {/if}
     </section>
-
-    <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
-      <h2 style="font-family: {fonts.display};">Professores</h2>
-      {#if teachersError}
-        <p class="error" style="color: {colors.red};">{teachersError}</p>
-      {/if}
-      {#if teachers.length === 0}
-        <p class="hint" style="color: {colors.mut};">Nenhum professor cadastrado ainda.</p>
-      {:else}
-        <ul class="teacher-list">
-          {#each teachers as teacher (teacher.id)}
-            <li>
-              <input
-                type="text"
-                bind:value={renameDrafts[teacher.id]}
-                style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
-              />
-              <button
-                onclick={() => renameTeacher(teacher.id)}
-                disabled={renamingId === teacher.id || !renameDrafts[teacher.id] || renameDrafts[teacher.id] === teacher.name}
-              >
-                {renamingId === teacher.id ? "Renomeando…" : "Renomear"}
-              </button>
-              {#if renameErrors[teacher.id]}
-                <p class="error" style="color: {colors.red};">{renameErrors[teacher.id]}</p>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-
-    <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
-      <h2 style="font-family: {fonts.display};">Tópicos</h2>
-      {#if topicsError}
-        <p class="error" style="color: {colors.red};">{topicsError}</p>
-      {/if}
-      {#if topics.length === 0}
-        <p class="hint" style="color: {colors.mut};">Nenhum tópico cadastrado ainda.</p>
-      {:else}
-        <ul class="teacher-list">
-          {#each topics as topic (topic.id)}
-            <li>
-              <input
-                type="text"
-                bind:value={topicRenameDrafts[topic.id]}
-                style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
-              />
-              <button
-                onclick={() => renameTopic(topic.id)}
-                disabled={renamingTopicId === topic.id || !topicRenameDrafts[topic.id] || topicRenameDrafts[topic.id] === topic.name}
-              >
-                {renamingTopicId === topic.id ? "Renomeando…" : "Renomear"}
-              </button>
-              {#if topicRenameErrors[topic.id]}
-                <p class="error" style="color: {colors.red};">{topicRenameErrors[topic.id]}</p>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
   {/if}
 </div>
 
@@ -400,26 +258,6 @@
     flex: 1;
     min-width: 12rem;
     padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-  }
-  .teacher-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .teacher-list li {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .teacher-list input {
-    flex: 1;
-    min-width: 10rem;
-    padding: 0.4rem 0.6rem;
     border-radius: 0.5rem;
   }
 </style>

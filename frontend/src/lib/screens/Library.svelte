@@ -8,7 +8,11 @@
   import type { PendingImport, Lesson, LessonFilter, Teacher } from "../../../bindings/assistente-idiomas/services/models";
   import ImportConfirmModal from "../ImportConfirmModal.svelte";
 
-  let { onOpenLesson }: { onOpenLesson: (lessonId: number) => void } = $props();
+  let {
+    onOpenLesson,
+    onOpenTeachers,
+    onOpenTopics,
+  }: { onOpenLesson: (lessonId: number) => void; onOpenTeachers: () => void; onOpenTopics: () => void } = $props();
 
   let pending: PendingImport[] = $state([]);
   let lessons: Lesson[] = $state([]);
@@ -171,9 +175,13 @@
 >
   <div class="header-row">
     <h1 style="font-family: {fonts.display};">Biblioteca</h1>
-    <button onclick={syncFolder} disabled={syncing}>
-      {syncing ? "Sincronizando…" : "Sincronizar pasta"}
-    </button>
+    <div class="header-actions">
+      <button onclick={onOpenTeachers}>Professores</button>
+      <button onclick={onOpenTopics}>Tópicos</button>
+      <button onclick={syncFolder} disabled={syncing}>
+        {syncing ? "Sincronizando…" : "Sincronizar pasta"}
+      </button>
+    </div>
   </div>
 
   {#if syncMessage}
@@ -293,7 +301,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
     margin-bottom: 1rem;
+  }
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
   h1 {
     font-size: 1.4rem;
