@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"assistente-idiomas/internal/analysis"
@@ -15,16 +16,18 @@ import (
 )
 
 type fakeAnalysisProvider struct {
-	model string
-	raw   json.RawMessage
-	err   error
-	calls int
+	model     string
+	raw       json.RawMessage
+	err       error
+	calls     int
+	lastInput string
 }
 
 func (p *fakeAnalysisProvider) Name() string  { return "fake" }
 func (p *fakeAnalysisProvider) Model() string { return p.model }
 func (p *fakeAnalysisProvider) Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) {
 	p.calls++
+	p.lastInput = transcript
 	return p.raw, p.err
 }
 
@@ -219,5 +222,182 @@ func TestAnalysisService_AnalyzeCorrections_ProviderErrorDoesNotPersist(t *testi
 	}
 	if persisted != nil {
 		t.Errorf("FindAnalysisResult() = %+v, esperado nil (falha do provider não deve persistir)", persisted)
+	}
+}
+
+func TestAnalysisService_GetTopics_NotAnalyzedYet(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+
+	svc := NewAnalysisService(conn, testStorageRoot(t), nil)
+	got, err := svc.GetTopics(lessonID)
+	if err != nil {
+		t.Fatalf("GetTopics() erro inesperado: %v", err)
+	}
+	if got.Analyzed {
+		t.Error("GetTopics().Analyzed = true, esperado false")
+	}
+	if len(got.Items) != 0 {
+		t.Errorf("GetTopics().Items = %+v, esperado vazio", got.Items)
+	}
+}
+
+func TestAnalysisService_AnalyzeTopics_PersistsBothAndAppendsExisting(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aulas/2026/aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() de fixture falhou: %v", err)
+	}
+	insertTranscriptFixture(t, conn, lessonID, "aulas/2026/aula.transcript.json", []map[string]any{
+		{"Speaker": "speaker_0", "Text": "I want to travel", "Start": 0, "End": 2000000000},
+		{"Speaker": "speaker_1", "Text": "Where to?", "Start": 2000000000, "End": 4000000000},
+	})
+	if _, err := db.GetOrCreateTopicByName(conn, "viagens"); err != nil {
+		t.Fatalf("GetOrCreateTopicByName() de fixture falhou: %v", err)
+	}
+
+	fake := &fakeAnalysisProvider{
+		model: "deepseek-v4-flash",
+		raw:   json.RawMessage(`{"topics":["viagens","trabalho remoto"]}`),
+	}
+	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+
+	got, err := svc.AnalyzeTopics(lessonID)
+	if err != nil {
+		t.Fatalf("AnalyzeTopics() erro inesperado: %v", err)
+	}
+	if !got.Analyzed || len(got.Items) != 2 {
+		t.Fatalf("AnalyzeTopics() = %+v, esperado Analyzed=true e 2 itens", got)
+	}
+	if fake.calls != 1 {
+		t.Errorf("provider chamado %d vezes, esperado 1", fake.calls)
+	}
+	if !strings.Contains(fake.lastInput, "Tópicos já utilizados") || !strings.Contains(fake.lastInput, "viagens") {
+		t.Errorf("lastInput não contém a lista de reaproveitamento: %q", fake.lastInput)
+	}
+
+	topics, err := db.ListLessonTopics(conn, lessonID)
+	if err != nil {
+		t.Fatalf("ListLessonTopics() erro inesperado: %v", err)
+	}
+	if len(topics) != 2 {
+		t.Errorf("lesson_topics = %+v, esperado 2 vínculos persistidos", topics)
+	}
+	persisted, err := db.FindAnalysisResult(conn, lessonID, "analyze_topics")
+	if err != nil {
+		t.Fatalf("FindAnalysisResult() erro inesperado: %v", err)
+	}
+	if persisted == nil {
+		t.Fatal("FindAnalysisResult() = nil, esperado persistido")
+	}
+}
+
+func TestAnalysisService_AnalyzeTopics_IsIdempotent(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
+	}
+	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
+	})
+
+	fake := &fakeAnalysisProvider{model: "deepseek-v4-flash", raw: json.RawMessage(`{"topics":["viagens"]}`)}
+	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+
+	if _, err := svc.AnalyzeTopics(lessonID); err != nil {
+		t.Fatalf("primeira AnalyzeTopics() erro: %v", err)
+	}
+	got, err := svc.AnalyzeTopics(lessonID)
+	if err != nil {
+		t.Fatalf("segunda AnalyzeTopics() erro: %v", err)
+	}
+	if fake.calls != 1 {
+		t.Errorf("provider chamado %d vezes, esperado 1 (idempotente)", fake.calls)
+	}
+	if !got.Analyzed || len(got.Items) != 1 {
+		t.Errorf("segunda AnalyzeTopics() = %+v, esperado resultado persistido", got)
+	}
+}
+
+func TestAnalysisService_ReprocessTopics_Overwrites(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
+	}
+	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
+	})
+
+	fake := &fakeAnalysisProvider{model: "deepseek-v4-flash", raw: json.RawMessage(`{"topics":["viagens"]}`)}
+	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+
+	if _, err := svc.AnalyzeTopics(lessonID); err != nil {
+		t.Fatalf("AnalyzeTopics() erro: %v", err)
+	}
+	fake.raw = json.RawMessage(`{"topics":["trabalho remoto"]}`)
+	got, err := svc.ReprocessTopics(lessonID)
+	if err != nil {
+		t.Fatalf("ReprocessTopics() erro: %v", err)
+	}
+	if fake.calls != 2 {
+		t.Errorf("provider chamado %d vezes, esperado 2", fake.calls)
+	}
+	topics, err := db.ListLessonTopics(conn, lessonID)
+	if err != nil {
+		t.Fatalf("ListLessonTopics() erro: %v", err)
+	}
+	if len(topics) != 1 || topics[0].Name != "trabalho remoto" {
+		t.Errorf("lesson_topics = %+v, esperado [trabalho remoto] (substituído)", topics)
+	}
+	_ = got
+}
+
+func TestAnalysisService_AnalyzeTopics_RequiresStudentSpeakerChosen(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
+	})
+
+	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) {
+		t.Fatal("providerFactory não deveria ser chamado sem student_speaker_label")
+		return nil, nil
+	})
+	if _, err := svc.AnalyzeTopics(lessonID); err == nil {
+		t.Fatal("AnalyzeTopics() esperava erro sem student_speaker_label, veio nil")
+	}
+}
+
+func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T) {
+	conn := openTestDB(t)
+	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
+	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
+		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
+	}
+	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
+	})
+
+	fake := &fakeAnalysisProvider{err: fmt.Errorf("erro de rede simulado")}
+	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+
+	if _, err := svc.AnalyzeTopics(lessonID); err == nil {
+		t.Fatal("AnalyzeTopics() esperava erro do provider, veio nil")
+	}
+	persisted, err := db.FindAnalysisResult(conn, lessonID, "analyze_topics")
+	if err != nil {
+		t.Fatalf("FindAnalysisResult() erro inesperado: %v", err)
+	}
+	if persisted != nil {
+		t.Errorf("FindAnalysisResult() = %+v, esperado nil (não persistir em falha)", persisted)
+	}
+	topics, err := db.ListLessonTopics(conn, lessonID)
+	if err != nil {
+		t.Fatalf("ListLessonTopics() erro inesperado: %v", err)
+	}
+	if len(topics) != 0 {
+		t.Errorf("lesson_topics = %+v, esperado vazio (não persistir em falha)", topics)
 	}
 }

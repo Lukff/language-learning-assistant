@@ -224,3 +224,147 @@ func (s *AnalysisService) writeRawResponse(videoRelPath, task string, raw json.R
 	}
 	return os.WriteFile(absPath, raw, 0o644)
 }
+
+const topicsTaskName = "analyze_topics"
+
+// TopicsResult é o resultado de analyze_topics exposto ao frontend. Items
+// vem de lesson_topics (fonte da verdade, editável); Analyzed indica se a
+// tarefa já rodou (linha em analysis_results).
+type TopicsResult struct {
+	Analyzed bool    `json:"analyzed"`
+	Items    []Topic `json:"items"`
+}
+
+// GetTopics devolve os tópicos atuais da lesson (de lesson_topics) sem chamar
+// a API — Analyzed == false se a tarefa nunca rodou.
+func (s *AnalysisService) GetTopics(lessonID int64) (TopicsResult, error) {
+	return s.currentTopics(lessonID)
+}
+
+func (s *AnalysisService) AnalyzeTopics(lessonID int64) (TopicsResult, error) {
+	return s.runTopics(lessonID, false)
+}
+
+func (s *AnalysisService) ReprocessTopics(lessonID int64) (TopicsResult, error) {
+	return s.runTopics(lessonID, true)
+}
+
+func (s *AnalysisService) currentTopics(lessonID int64) (TopicsResult, error) {
+	items, err := db.ListLessonTopics(s.conn, lessonID)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("buscar tópicos da lesson %d: %w", lessonID, err)
+	}
+	result, err := db.FindAnalysisResult(s.conn, lessonID, topicsTaskName)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("buscar análise de tópicos da lesson %d: %w", lessonID, err)
+	}
+	return TopicsResult{Analyzed: result != nil, Items: toTopics(items)}, nil
+}
+
+func toTopics(items []db.Topic) []Topic {
+	out := make([]Topic, 0, len(items))
+	for _, it := range items {
+		out = append(out, Topic{ID: it.ID, Name: it.Name})
+	}
+	return out
+}
+
+func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResult, error) {
+	lesson, err := db.FindLessonByID(s.conn, lessonID)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("buscar lesson %d: %w", lessonID, err)
+	}
+	if lesson == nil {
+		return TopicsResult{}, fmt.Errorf("aula %d não encontrada", lessonID)
+	}
+	if lesson.StudentSpeakerLabel == nil {
+		return TopicsResult{}, fmt.Errorf("escolha quem é você na aula antes de analisar tópicos")
+	}
+
+	transcript, err := db.FindTranscriptByLessonID(s.conn, lessonID)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("buscar transcrição da lesson %d: %w", lessonID, err)
+	}
+	if transcript == nil {
+		return TopicsResult{}, fmt.Errorf("aula %d ainda não tem transcrição", lessonID)
+	}
+
+	if !overwrite {
+		existing, err := db.FindAnalysisResult(s.conn, lessonID, topicsTaskName)
+		if err != nil {
+			return TopicsResult{}, fmt.Errorf("buscar análise de tópicos da lesson %d: %w", lessonID, err)
+		}
+		if existing != nil {
+			return s.currentTopics(lessonID)
+		}
+	}
+
+	speakerRoles := make(map[string]string, len(transcript.Utterances))
+	for _, u := range transcript.Utterances {
+		if u.Speaker == *lesson.StudentSpeakerLabel {
+			speakerRoles[u.Speaker] = "aluno"
+		} else {
+			speakerRoles[u.Speaker] = "tutor"
+		}
+	}
+	formatted, err := analysis.FormatTranscript(transcript.Utterances, speakerRoles)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("formatar transcrição da lesson %d: %w", lessonID, err)
+	}
+
+	existingTopics, err := db.ListTopics(s.conn)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("listar tópicos existentes: %w", err)
+	}
+	names := make([]string, 0, len(existingTopics))
+	for _, t := range existingTopics {
+		names = append(names, t.Name)
+	}
+	input := analysis.AppendExistingTopics(formatted, names)
+
+	provider, err := s.providerFactory()
+	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return TopicsResult{}, fmt.Errorf("configure a credencial do provedor de análise em Configurações")
+		}
+		return TopicsResult{}, fmt.Errorf("obter provedor de análise: %w", err)
+	}
+
+	task := analysis.NewTopicsTask()
+	resultJSON, raw, err := task.Execute(context.Background(), provider, input, len(transcript.Utterances))
+	if raw != nil {
+		if writeErr := s.writeRawResponse(lesson.VideoPath, task.Name(), raw); writeErr != nil {
+			slog.Warn("analysis: falha ao gravar resposta bruta em disco", "lesson_id", lessonID, "task", task.Name(), "erro", writeErr)
+		}
+	}
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("analisar tópicos da lesson %d: %w", lessonID, err)
+	}
+
+	topics, err := analysis.ParseTopicsResult(resultJSON)
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("desserializar tópicos: %w", err)
+	}
+	ids := make([]int64, 0, len(topics))
+	for _, name := range topics {
+		id, err := db.GetOrCreateTopicByName(s.conn, name)
+		if err != nil {
+			return TopicsResult{}, fmt.Errorf("registrar tópico %q: %w", name, err)
+		}
+		ids = append(ids, id)
+	}
+	if err := db.ReplaceLessonTopics(s.conn, lessonID, ids); err != nil {
+		return TopicsResult{}, fmt.Errorf("gravar tópicos da lesson %d: %w", lessonID, err)
+	}
+
+	promptID, err := db.UpsertPrompt(s.conn, task.Name(), task.Version(), task.Prompt())
+	if err != nil {
+		return TopicsResult{}, fmt.Errorf("registrar prompt %s: %w", task.Name(), err)
+	}
+	rawRelPath := analysisRawRelPath(lesson.VideoPath, task.Name())
+	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON), rawRelPath); err != nil {
+		return TopicsResult{}, fmt.Errorf("gravar resultado da análise: %w", err)
+	}
+
+	return s.currentTopics(lessonID)
+}
