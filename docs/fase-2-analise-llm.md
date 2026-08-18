@@ -123,17 +123,17 @@ ancorada em fala** (resultado é lista de rótulos, não marcação na transcri�
 Design técnico em spec própria.
 
 ### Critérios de aceite
-- [ ] Tópicos gerados sob demanda (sem job em background), exigindo `StudentSpeakerLabel` (como
+- [x] Tópicos gerados sob demanda (sem job em background), exigindo `StudentSpeakerLabel` (como
       correções).
-- [ ] Resultado persistido em `analysis_results` (idempotente) **e** `lesson_topics` (por
+- [x] Resultado persistido em `analysis_results` (idempotente) **e** `lesson_topics` (por
       `topic_id`); tópicos viram entidade `topics`.
-- [ ] Tópicos exibidos como chips no cabeçalho do Detalhe; aula sem a tarefa mostra a transcrição
+- [x] Tópicos exibidos como chips no cabeçalho do Detalhe; aula sem a tarefa mostra a transcrição
       normalmente.
-- [ ] Adicionar/remover tópico por aula (chips) e renomear tópico globalmente (Configurações).
-- [ ] Falha não quebra a aula — erro visível e recuperável.
-- [ ] Troca de falante preserva `analyze_topics` e `lesson_topics` (só tarefas que dependem de
+- [x] Adicionar/remover tópico por aula (chips) e renomear tópico globalmente (Configurações).
+- [x] Falha não quebra a aula — erro visível e recuperável.
+- [x] Troca de falante preserva `analyze_topics` e `lesson_topics` (só tarefas que dependem de
       quem é aluno/tutor são descartadas).
-- [ ] Prompt v2 com granularidade geral + reaproveitamento dos tópicos já existentes.
+- [x] Prompt v2 com granularidade geral + reaproveitamento dos tópicos já existentes.
 - [ ] Decisão registrada em `docs/notas-analise-llm.md` após observar em aulas reais — primeira
       tarefa sem validação da Fase 0, observação com peso redobrado.
 
@@ -186,3 +186,4 @@ tarefa (ver `docs/notas-analise-llm.md`).
 | 30/07/2026 | História 1 (Tasks 1–6 do plano) implementada: migration `analysis_results`/`lesson_topics`, pacote `prompts/` com os 7 arquivos versionados, `internal/analysis` reescrito (`Provider` agnóstico de tarefa, framework `TaskDef`, `FormatTranscript` numerando falas), as 7 tarefas concretas com descarte de item por `utterance_index` inválido (risco 2), `RegisterPrompts` ligado no `main.go`, CLI temporário `cmd/validate-analysis` criado | Trabalho pausado antes da Task 7 (validação manual numa aula real) pra fechar a História 9 da Fase 1 (gestão de professores), que estava em aberto; `docs/notas-analise-llm.md` segue só com as notas da Fase 0 (prompt único) — as 7 tarefas novas ainda não foram rodadas contra uma aula real, `cmd/validate-analysis` ainda não foi removido |
 | 05/08/2026 | Replanejamento da Fase 2 pra abordagem iterativa: em vez de automatizar e construir UI pras 7 tarefas de uma vez (antigas Histórias 2–5), cada tarefa passa por um ciclo próprio (sob demanda → UI → observar em aulas reais → decidir manter/refinar/descartar), e só então ganha automação em background. História 1 fecha com o último critério reescrito (validação passa a ser por tarefa, não em bloco via CLI). História 2 vira o piloto de Correções do aluno, a primeira tarefa a ser implementada | Spec em `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md`; nenhum código mudou nesta entrada — só o planejamento |
 | 06/08/2026 | História 2 (Piloto: Correções do aluno) implementada e fechada: credencial DeepSeek via keyring, `AnalysisService` (`GetCorrections`/`AnalyzeCorrections`/`ReprocessCorrections`), correção inline no Detalhe (riscado cinza + destaque âmbar), escolha de falante no `EditLessonModal` com descarte de análise ao trocar quem é o aluno, `cmd/validate-analysis` removido | Verificação manual numa aula real: fluxo completo (credencial → escolha de falante → análise → correção inline → reprocessar → descarte) funcionou como desenhado; decisão registrada em `docs/notas-analise-llm.md` — **manter a tarefa como está**, com refinamento de prompt (`prompts/analyze-corrections-v1.md`) registrado como trabalho futuro: ignorar repetição/hesitação da fala como não-erro, e reduzir o fallback de correção "não localizada" no matching por texto |
+| 18/08/2026 | História 3 implementada: tópicos viram entidade `topics` (migration 00006 com backfill), `lesson_topics` por `topic_id` vira a fonte da verdade da UI; `AnalysisService` ganha Get/Analyze/ReprocessTopics (sob demanda, idempotente, grava em `analysis_results` + `lesson_topics`); `TopicsService` cobre adicionar/remover por aula e renomear global; prompt v2 com granularidade geral + reaproveitamento dos tópicos existentes (anexados à mensagem); chips no Detalhe + painel "Tópicos" em Configurações; troca de falante passa a preservar tópicos (deleção seletiva por dependência de falante) | `go test ./...`, `go vet ./...`, `pnpm run check`/`build` confirmados limpos; verificação manual em aula real (granularidade, reaproveitamento, edição de chips, renome global) e a decisão em `docs/notas-analise-llm.md` seguem pendentes — mesmo padrão das histórias anteriores |
