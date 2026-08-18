@@ -180,7 +180,7 @@
   }
 
   async function fetchTopicsIfReady() {
-    if (!lesson || lesson.status !== "pronta") {
+    if (!lesson) {
       topics = null;
       return;
     }
@@ -251,6 +251,7 @@
       await LibraryService.RetryLesson(lessonId);
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchTranscriptIfReady();
+      await fetchTopicsIfReady();
     } catch (e) {
       actionError = String(e);
     } finally {
