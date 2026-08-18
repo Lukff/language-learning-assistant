@@ -111,14 +111,15 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 	return nil
 }
 
-// DeleteAnalysisResultsForLesson apaga toda análise já feita pra lessonID
-// (todas as tasks) — chamado quando o mapeamento aluno/tutor muda (ver
-// services.LibraryService.SetStudentSpeaker), já que qualquer análise
-// ancorada em utterance_index passa a apontar pro papel errado assim que os
-// rótulos Aluno/Tutor trocam de falante.
-func DeleteAnalysisResultsForLesson(conn *sql.DB, lessonID int64) error {
-	if _, err := conn.Exec(`DELETE FROM analysis_results WHERE lesson_id = ?`, lessonID); err != nil {
-		return fmt.Errorf("apagar analysis_results da lesson %d: %w", lessonID, err)
+// DeleteSpeakerDependentAnalysisResults apaga as análises que dependem de
+// quem é aluno/tutor na aula (tudo exceto analyze_topics) — chamada quando o
+// mapeamento aluno/tutor muda (services.LibraryService.SetStudentSpeaker).
+// analyze_topics não menciona Aluno/Tutor no prompt e sobrevive; lesson_topics
+// também fica intacto (a tabela é a fonte da verdade dos chips, independente
+// da análise).
+func DeleteSpeakerDependentAnalysisResults(conn *sql.DB, lessonID int64) error {
+	if _, err := conn.Exec(`DELETE FROM analysis_results WHERE lesson_id = ? AND task != 'analyze_topics'`, lessonID); err != nil {
+		return fmt.Errorf("apagar análises dependentes de falante da lesson %d: %w", lessonID, err)
 	}
 	return nil
 }

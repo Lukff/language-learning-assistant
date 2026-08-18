@@ -176,7 +176,7 @@ func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) 
 		return fmt.Errorf("aula %d não encontrada", lessonID)
 	}
 	if lesson.StudentSpeakerLabel != nil && *lesson.StudentSpeakerLabel != speakerLabel {
-		if err := db.DeleteAnalysisResultsForLesson(s.conn, lessonID); err != nil {
+		if err := db.DeleteSpeakerDependentAnalysisResults(s.conn, lessonID); err != nil {
 			return fmt.Errorf("descartar análises antigas da lesson %d: %w", lessonID, err)
 		}
 	}

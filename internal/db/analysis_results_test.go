@@ -192,7 +192,7 @@ func TestReplaceLessonTopics_ReplacesEntirely(t *testing.T) {
 	}
 }
 
-func TestDeleteAnalysisResultsForLesson_DeletesAllTasksForLessonOnly(t *testing.T) {
+func TestDeleteSpeakerDependentAnalysisResults_PreservesTopicsAndOtherLessons(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("Open() erro inesperado: %v", err)
@@ -206,32 +206,55 @@ func TestDeleteAnalysisResultsForLesson_DeletesAllTasksForLessonOnly(t *testing.
 		t.Fatalf("UpsertPrompt() erro inesperado: %v", err)
 	}
 	if err := UpsertAnalysisResult(conn, lessonA, "analyze_corrections", promptID, "deepseek", "[]", "a.json"); err != nil {
-		t.Fatalf("UpsertAnalysisResult() lessonA erro inesperado: %v", err)
+		t.Fatalf("UpsertAnalysisResult() corrections lessonA erro: %v", err)
 	}
-	if err := UpsertAnalysisResult(conn, lessonA, "analyze_vocabulary", promptID, "deepseek", "[]", "a2.json"); err != nil {
-		t.Fatalf("UpsertAnalysisResult() lessonA (segunda task) erro inesperado: %v", err)
+	if err := UpsertAnalysisResult(conn, lessonA, "analyze_topics", promptID, "deepseek", "[]", "a.topics.json"); err != nil {
+		t.Fatalf("UpsertAnalysisResult() topics lessonA erro: %v", err)
 	}
 	if err := UpsertAnalysisResult(conn, lessonB, "analyze_corrections", promptID, "deepseek", "[]", "b.json"); err != nil {
-		t.Fatalf("UpsertAnalysisResult() lessonB erro inesperado: %v", err)
+		t.Fatalf("UpsertAnalysisResult() lessonB erro: %v", err)
 	}
 
-	if err := DeleteAnalysisResultsForLesson(conn, lessonA); err != nil {
-		t.Fatalf("DeleteAnalysisResultsForLesson() erro inesperado: %v", err)
+	// lesson_topics de lessonA deve sobreviver à troca de falante.
+	topicID, err := GetOrCreateTopicByName(conn, "viagens")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName() erro inesperado: %v", err)
+	}
+	if err := AddLessonTopic(conn, lessonA, topicID); err != nil {
+		t.Fatalf("AddLessonTopic() erro inesperado: %v", err)
 	}
 
-	var countA int
-	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ?`, lessonA).Scan(&countA); err != nil {
-		t.Fatalf("contar analysis_results de lessonA falhou: %v", err)
-	}
-	if countA != 0 {
-		t.Errorf("countA = %d, esperado 0 (todas as tasks apagadas)", countA)
+	if err := DeleteSpeakerDependentAnalysisResults(conn, lessonA); err != nil {
+		t.Fatalf("DeleteSpeakerDependentAnalysisResults() erro inesperado: %v", err)
 	}
 
-	var countB int
-	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ?`, lessonB).Scan(&countB); err != nil {
+	var topicsCount, correctionsCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ? AND task = 'analyze_topics'`, lessonA).Scan(&topicsCount); err != nil {
+		t.Fatalf("contar topics de lessonA falhou: %v", err)
+	}
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ? AND task = 'analyze_corrections'`, lessonA).Scan(&correctionsCount); err != nil {
+		t.Fatalf("contar corrections de lessonA falhou: %v", err)
+	}
+	if topicsCount != 1 {
+		t.Errorf("topicsCount = %d, esperado 1 (preservado)", topicsCount)
+	}
+	if correctionsCount != 0 {
+		t.Errorf("correctionsCount = %d, esperado 0 (apagado)", correctionsCount)
+	}
+
+	var lessonTopicsCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM lesson_topics WHERE lesson_id = ?`, lessonA).Scan(&lessonTopicsCount); err != nil {
+		t.Fatalf("contar lesson_topics de lessonA falhou: %v", err)
+	}
+	if lessonTopicsCount != 1 {
+		t.Errorf("lessonTopicsCount = %d, esperado 1 (preservado)", lessonTopicsCount)
+	}
+
+	var lessonBCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM analysis_results WHERE lesson_id = ?`, lessonB).Scan(&lessonBCount); err != nil {
 		t.Fatalf("contar analysis_results de lessonB falhou: %v", err)
 	}
-	if countB != 1 {
-		t.Errorf("countB = %d, esperado 1 (não deve ser afetada)", countB)
+	if lessonBCount != 1 {
+		t.Errorf("lessonBCount = %d, esperado 1 (não afetada)", lessonBCount)
 	}
 }
