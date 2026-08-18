@@ -81,6 +81,19 @@ func insertLessonFixture(t *testing.T, conn *sql.DB) int64 {
 	return id
 }
 
+func insertTopicFixture(t *testing.T, conn *sql.DB, name string) int64 {
+	t.Helper()
+	res, err := conn.Exec(
+		`INSERT INTO topics (name, created_at, updated_at) VALUES (?, ?, ?)`,
+		name, "2026-08-18T10:00:00Z", "2026-08-18T10:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert topic de fixture (%q) falhou: %v", name, err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
 func TestUpsertAnalysisResult_InsertThenReplace(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
@@ -150,15 +163,18 @@ func TestReplaceLessonTopics_ReplacesEntirely(t *testing.T) {
 	defer conn.Close()
 
 	lessonID := insertLessonFixture(t, conn)
+	viagens := insertTopicFixture(t, conn, "viagens")
+	trabalho := insertTopicFixture(t, conn, "trabalho remoto")
+	receitas := insertTopicFixture(t, conn, "receitas de família")
 
-	if err := ReplaceLessonTopics(conn, lessonID, []string{"viagens", "trabalho remoto"}); err != nil {
+	if err := ReplaceLessonTopics(conn, lessonID, []int64{viagens, trabalho}); err != nil {
 		t.Fatalf("ReplaceLessonTopics() erro inesperado: %v", err)
 	}
-	if err := ReplaceLessonTopics(conn, lessonID, []string{"receitas de família"}); err != nil {
+	if err := ReplaceLessonTopics(conn, lessonID, []int64{receitas}); err != nil {
 		t.Fatalf("segunda ReplaceLessonTopics() erro inesperado: %v", err)
 	}
 
-	rows, err := conn.Query(`SELECT topic FROM lesson_topics WHERE lesson_id = ? ORDER BY topic`, lessonID)
+	rows, err := conn.Query(`SELECT t.name FROM lesson_topics lt JOIN topics t ON t.id = lt.topic_id WHERE lt.lesson_id = ? ORDER BY t.name`, lessonID)
 	if err != nil {
 		t.Fatalf("query em lesson_topics falhou: %v", err)
 	}

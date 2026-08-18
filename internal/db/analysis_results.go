@@ -86,12 +86,11 @@ func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisRes
 	return &r, nil
 }
 
-// ReplaceLessonTopics apaga os tópicos existentes de lessonID e insere os
-// novos — a lista é sempre derivada por inteiro do resultado mais recente
-// de analyze_topics, nunca um merge incremental. INSERT OR IGNORE absorve
-// um tópico duplicado que o próprio modelo eventualmente repita na mesma
-// resposta, sem falhar a transação inteira por causa do UNIQUE(lesson_id, topic).
-func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error {
+// ReplaceLessonTopics apaga os vínculos existentes e insere os novos (por
+// topic_id) — a lista é sempre derivada por inteiro do resultado mais
+// recente de analyze_topics, nunca um merge incremental. INSERT OR IGNORE
+// absorve um tópico duplicado que o chamador eventualmente repita.
+func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 	tx, err := conn.Begin()
 	if err != nil {
 		return fmt.Errorf("iniciar transação de lesson_topics da lesson %d: %w", lessonID, err)
@@ -101,9 +100,9 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error {
 	if _, err := tx.Exec(`DELETE FROM lesson_topics WHERE lesson_id = ?`, lessonID); err != nil {
 		return fmt.Errorf("apagar lesson_topics antigos da lesson %d: %w", lessonID, err)
 	}
-	for _, topic := range topics {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO lesson_topics (lesson_id, topic) VALUES (?, ?)`, lessonID, topic); err != nil {
-			return fmt.Errorf("inserir tópico %q da lesson %d: %w", topic, lessonID, err)
+	for _, topicID := range topicIDs {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO lesson_topics (lesson_id, topic_id) VALUES (?, ?)`, lessonID, topicID); err != nil {
+			return fmt.Errorf("inserir tópico %d da lesson %d: %w", topicID, lessonID, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {

@@ -104,3 +104,85 @@ func TestMigration00005_BackfillsTeachersFromExistingLessonsData(t *testing.T) {
 		t.Errorf("coluna tutor ainda existe em lessons após migration 00005, esperado removida")
 	}
 }
+
+// TestMigration00006_BackfillsTopicsFromExistingLessonTopics exercita a
+// migration 00006 contra um banco que já tem dados legados em lesson_topics.topic
+// (schema anterior, sem topics/topic_id) — o cenário real de "sem perda
+// de dados no backfill" que os testes em analysis_results_test.go não cobrem.
+func TestMigration00006_BackfillsTopicsFromExistingLessonTopics(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	conn, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	goose.SetBaseFS(migrationsFS)
+	defer goose.SetBaseFS(nil)
+	if err := goose.SetDialect("sqlite"); err != nil {
+		t.Fatalf("SetDialect() erro inesperado: %v", err)
+	}
+
+	if err := goose.UpTo(conn, "migrations", 5); err != nil {
+		t.Fatalf("UpTo(5) erro inesperado: %v", err)
+	}
+
+	// Schema pré-migration 6: lesson_topics(topic TEXT). Precisa de teacher e
+	// lesson (lessons já aponta por teacher_id desde a migration 5).
+	now := "2026-08-18T10:00:00Z"
+	resT, err := conn.Exec(`INSERT INTO teachers (name, created_at, updated_at) VALUES ('Sarah M.', ?, ?)`, now, now)
+	if err != nil {
+		t.Fatalf("insert teacher legado falhou: %v", err)
+	}
+	teacherID, _ := resT.LastInsertId()
+	resL, err := conn.Exec(
+		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"2026-08-18", teacherID, "aulas/2026/a.mp4", now, now,
+	)
+	if err != nil {
+		t.Fatalf("insert lesson legada falhou: %v", err)
+	}
+	lessonID, _ := resL.LastInsertId()
+	for _, topic := range []string{"viagens", "trabalho remoto"} {
+		if _, err := conn.Exec(`INSERT INTO lesson_topics (lesson_id, topic) VALUES (?, ?)`, lessonID, topic); err != nil {
+			t.Fatalf("insert lesson_topics legado (%q) falhou: %v", topic, err)
+		}
+	}
+
+	if err := goose.UpTo(conn, "migrations", 6); err != nil {
+		t.Fatalf("UpTo(6) erro inesperado: %v", err)
+	}
+
+	var topicCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM topics`).Scan(&topicCount); err != nil {
+		t.Fatalf("contar topics falhou: %v", err)
+	}
+	if topicCount != 2 {
+		t.Errorf("topicCount = %d, esperado 2 (dedup por nome)", topicCount)
+	}
+
+	rows, err := conn.Query(`SELECT t.name FROM lesson_topics lt JOIN topics t ON t.id = lt.topic_id WHERE lt.lesson_id = ? ORDER BY t.name`, lessonID)
+	if err != nil {
+		t.Fatalf("query em lesson_topics pós-migration falhou: %v", err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatalf("scan de topic pós-migration falhou: %v", err)
+		}
+		names = append(names, n)
+	}
+	if len(names) != 2 || names[0] != "trabalho remoto" || names[1] != "viagens" {
+		t.Errorf("names = %+v, esperado [trabalho remoto viagens]", names)
+	}
+
+	var topicCol int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('lesson_topics') WHERE name = 'topic'`).Scan(&topicCol); err != nil {
+		t.Fatalf("pragma_table_info(lesson_topics) falhou: %v", err)
+	}
+	if topicCol != 0 {
+		t.Errorf("coluna topic ainda existe em lesson_topics, esperado removida")
+	}
+}
