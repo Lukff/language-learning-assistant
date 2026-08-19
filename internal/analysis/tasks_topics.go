@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+// maxTopicsPerLesson limita a quantidade de tópicos aceitos por aula. O
+// prompt já instrui o LLM a devolver no máximo 4, mas aplicamos o corte
+// aqui também como rede de segurança contra respostas fora da instrução.
+const maxTopicsPerLesson = 4
+
 func parseTopics(raw json.RawMessage, utteranceCount int) ([]string, error) {
 	var parsed struct {
 		Topics []string `json:"topics"`
@@ -14,13 +19,17 @@ func parseTopics(raw json.RawMessage, utteranceCount int) ([]string, error) {
 	if err := unmarshalJSON(raw, &parsed); err != nil {
 		return nil, err
 	}
+	if len(parsed.Topics) > maxTopicsPerLesson {
+		parsed.Topics = parsed.Topics[:maxTopicsPerLesson]
+	}
 	return parsed.Topics, nil
 }
 
-// NewTopicsTask devolve a tarefa de tópicos na versão 2 do prompt
-// (granularidade geral + reaproveitamento de tópicos existentes).
+// NewTopicsTask devolve a tarefa de tópicos na versão 4 do prompt
+// (granularidade geral + reaproveitamento de tópicos existentes + máximo de
+// 4 tópicos por aula + tópicos em inglês).
 func NewTopicsTask() TaskDef {
-	return task[[]string]{name: "analyze_topics", version: 2, prompt: mustLoadPrompt("analyze-topics-v2.md"), parse: parseTopics}
+	return task[[]string]{name: "analyze_topics", version: 4, prompt: mustLoadPrompt("analyze-topics-v4.md"), parse: parseTopics}
 }
 
 // ParseTopicsResult decodifica um result_json persistido (array JSON de
@@ -35,7 +44,7 @@ func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error) {
 }
 
 // AppendExistingTopics anexa a lista de tópicos já existentes ao conteúdo da
-// transcrição, num bloco final que o prompt v2 reconhece. Devolve transcript
+// transcrição, num bloco final que o prompt reconhece. Devolve transcript
 // inalterado quando não há tópicos existentes.
 func AppendExistingTopics(transcript string, existing []string) string {
 	if len(existing) == 0 {

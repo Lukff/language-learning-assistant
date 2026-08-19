@@ -23,16 +23,33 @@ func TestParseTopics_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseTopics_TruncatesToMax(t *testing.T) {
+	raw := json.RawMessage(`{"topics":["a","b","c","d","e","f"]}`)
+	got, err := parseTopics(raw, 3)
+	if err != nil {
+		t.Fatalf("parseTopics erro inesperado: %v", err)
+	}
+	want := []string{"a", "b", "c", "d"}
+	if len(got) != len(want) {
+		t.Fatalf("got = %+v, esperado %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, esperado %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestNewTopicsTask_HasNameVersionAndPrompt(t *testing.T) {
 	tk := NewTopicsTask()
 	if tk.Name() != "analyze_topics" {
 		t.Errorf("Name() = %q, esperado analyze_topics", tk.Name())
 	}
-	if tk.Version() != 2 {
-		t.Errorf("Version() = %d, esperado 2", tk.Version())
+	if tk.Version() != 4 {
+		t.Errorf("Version() = %d, esperado 4", tk.Version())
 	}
 	if tk.Prompt() == "" {
-		t.Error("Prompt() vazio, esperado conteúdo do v2")
+		t.Error("Prompt() vazio, esperado conteúdo do v4")
 	}
 }
 
