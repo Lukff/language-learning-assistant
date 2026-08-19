@@ -146,6 +146,28 @@ História 2.
 
 ---
 
+## História 4 — Filtragem por tópicos na Biblioteca
+
+**Como** usuário, **quero** filtrar a lista de aulas por tópico, **para** achar rapidamente
+aulas sobre um assunto específico sem precisar abrir cada uma.
+
+Adiantada da Fase 3 (onde só a busca full-text/tags cruzadas continuam) — filtro simples sobre
+dados que já existem (`topics`/`lesson_topics` da História 3), sem depender de FTS5.
+
+### Critérios de aceite
+- [x] Filtro por tópico na Biblioteca, junto aos filtros já existentes de professor e período
+  (História 5 da Fase 1); aula aparece se tiver **qualquer um** dos tópicos selecionados (OR).
+  UI: caixa de texto com autocomplete (`datalist`) que adiciona chips removíveis, não uma lista
+  de checkboxes — ajustado após feedback visual (ver Registro de progresso).
+- [x] Query combina o filtro de tópicos com os filtros de professor/período já existentes, sem
+  mudança de schema.
+- [x] Aula sem nenhum tópico gerado não aparece quando algum filtro de tópico está ativo.
+
+### Dependências
+História 3 (tópicos precisam existir pra filtrar).
+
+---
+
 ## Tarefas candidatas (sem história detalhada ainda)
 
 As 5 tarefas restantes viram uma história de verdade (mesmo formato da História 2: credencial já
@@ -179,7 +201,8 @@ desenho da fila de background já usado na Fase 1, aplicado por tarefa confirmad
 ## Incrementos seguintes (visão, sem compromisso)
 
 Fase 3: tags automáticas + busca full-text (FTS5, com tópicos como um dos insumos, se
-`analyze_topics` for confirmada) + tela de Progresso · Fase 5: seleção de provedor/modelo de
+`analyze_topics` for confirmada) + tela de Progresso — a filtragem simples por tópico saiu daqui
+pra Fase 2 (História 4) · Fase 5: seleção de provedor/modelo de
 análise, estimativa de custo, possível opção de análise mais aprofundada com `deepseek-v4-pro` por
 tarefa (ver `docs/notas-analise-llm.md`).
 
@@ -196,3 +219,5 @@ tarefa (ver `docs/notas-analise-llm.md`).
 | 19/08/2026 | Ajuste de prompt (fora de história formal): tarefa `analyze_topics` ganha `prompts/analyze-topics-v3.md` (limite de 4 tópicos por aula, também aplicado como corte em `parseTopics` independente do que o LLM devolver) e, em seguida, `prompts/analyze-topics-v4.md` (saída em inglês em vez de português) | Desvio deliberado, a pedido do usuário, da convenção geral de "textos de análise em PT-BR" do `CLAUDE.md` — só os tópicos passam a sair em inglês; `go build`/`go vet`/`go test ./...` confirmados limpos |
 | 19/08/2026 | Ajuste de UI (fora de história formal): tela "Tópicos" ganha exclusão global de tópico — `internal/db.DeleteTopic` apaga a entidade numa transação (desvincula `lesson_topics` antes, já que a FK não tem `ON DELETE CASCADE` e o banco roda com `foreign_keys=ON`), `TopicsService.DeleteTopic` expõe pro frontend, botão "Excluir" com `confirm()` (mesmo padrão de `LessonDetail.svelte`) some o tópico de todas as aulas que o usavam | `go test ./...`, `go vet ./...`, `pnpm run check` confirmados limpos; verificação visual real do fluxo (excluir tópico em uso → some dos chips da aula) segue pendente, mesmo padrão das entradas anteriores |
 | 19/08/2026 | Ajuste de UI (fora de história formal, atalho pra teste manual): botão "Excluir todos" na tela "Tópicos", ao lado do título, só visível com a lista não vazia — `internal/db.DeleteAllTopics`/`TopicsService.DeleteAllTopics` apagam `lesson_topics` e `topics` inteiros numa transação | Não é fluxo de uso normal, existe só pra facilitar reset de dados durante testes; `go test ./...`, `go vet ./...`, `pnpm run check` confirmados limpos |
+| 19/08/2026 | História 4 implementada: `db.LessonFilter`/`services.LessonFilter` ganham `TopicIDs []int64` (semântica OR via `l.id IN (SELECT lesson_id FROM lesson_topics WHERE topic_id IN (...))`, sem mudança de schema); Biblioteca ganha filtro de tópicos ao lado dos filtros de professor/período já existentes, populado por `TopicsService.ListTopics()` | `go test ./...`, `go vet ./...`, `svelte-check` e `vite build` confirmados limpos; verificação visual real numa janela de verdade segue pendente em Windows/Linux, mesmo padrão das entradas anteriores |
+| 19/08/2026 | Ajuste de UI (fora de história formal, feedback do usuário após ver a tela): filtro de tópicos trocado de lista de checkboxes (ocupava muito espaço) pra caixa de texto com autocomplete (`datalist`, mesmo padrão do `TeacherCombobox`) — digitar/selecionar um tópico existente adiciona um chip pequeno removível por "×", input limpa pra digitar o próximo | `svelte-check` e `vite build` confirmados limpos |

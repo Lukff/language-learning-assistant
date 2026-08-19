@@ -136,6 +136,56 @@ func TestListLessonsWithStatus_FiltraPorProfessorEPeriodo(t *testing.T) {
 	}
 }
 
+func TestListLessonsWithStatus_FiltraPorTopicosComSemanticaOR(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	grammar, err := GetOrCreateTopicByName(conn, "grammar")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName(grammar) erro inesperado: %v", err)
+	}
+	travel, err := GetOrCreateTopicByName(conn, "travel")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName(travel) erro inesperado: %v", err)
+	}
+	work, err := GetOrCreateTopicByName(conn, "work")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName(work) erro inesperado: %v", err)
+	}
+
+	grammarLesson := mustInsertLessonForJobs(t, conn, "grammar.mp4")
+	if err := AddLessonTopic(conn, grammarLesson, grammar); err != nil {
+		t.Fatalf("AddLessonTopic(grammar) erro inesperado: %v", err)
+	}
+
+	travelLesson := mustInsertLessonForJobs(t, conn, "travel.mp4")
+	if err := AddLessonTopic(conn, travelLesson, travel); err != nil {
+		t.Fatalf("AddLessonTopic(travel) erro inesperado: %v", err)
+	}
+
+	noTopicLesson := mustInsertLessonForJobs(t, conn, "sem-topico.mp4")
+	_ = noTopicLesson
+
+	filtered, err := ListLessonsWithStatus(conn, LessonFilter{TopicIDs: []int64{grammar, travel}})
+	if err != nil {
+		t.Fatalf("ListLessonsWithStatus(TopicIDs) erro inesperado: %v", err)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("ListLessonsWithStatus(TopicIDs=[grammar,travel]) = %+v, esperado as 2 aulas com qualquer um dos tópicos", filtered)
+	}
+
+	byWork, err := ListLessonsWithStatus(conn, LessonFilter{TopicIDs: []int64{work}})
+	if err != nil {
+		t.Fatalf("ListLessonsWithStatus(TopicIDs=[work]) erro inesperado: %v", err)
+	}
+	if len(byWork) != 0 {
+		t.Errorf("ListLessonsWithStatus(TopicIDs=[work]) = %+v, esperado vazio (nenhuma aula tem o tópico work)", byWork)
+	}
+}
+
 func TestFindLessonWithStatusByID_FindsExistingWithStatusAndNilWhenMissing(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {

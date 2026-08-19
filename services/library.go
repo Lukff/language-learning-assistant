@@ -51,9 +51,10 @@ type Lesson struct {
 // LessonFilter filtra ListLessons — campos zero são ignorados (sem filtro
 // naquele critério).
 type LessonFilter struct {
-	TeacherID int64  `json:"teacherId"`
-	DateFrom  string `json:"dateFrom"`
-	DateTo    string `json:"dateTo"`
+	TeacherID int64   `json:"teacherId"`
+	DateFrom  string  `json:"dateFrom"`
+	DateTo    string  `json:"dateTo"`
+	TopicIDs  []int64 `json:"topicIds"`
 }
 
 // Transcript é a transcrição de uma lesson, no formato exposto ao Detalhe
@@ -79,6 +80,7 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 		TeacherID: filter.TeacherID,
 		DateFrom:  filter.DateFrom,
 		DateTo:    filter.DateTo,
+		TopicIDs:  filter.TopicIDs,
 	})
 	if err != nil {
 		return nil, err

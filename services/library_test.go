@@ -115,6 +115,50 @@ func TestLibraryService_ListLessons_FiltersByTeacher(t *testing.T) {
 	}
 }
 
+func TestLibraryService_ListLessons_FiltersByTopicWithORSemantics(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	grammar, err := db.GetOrCreateTopicByName(conn, "grammar")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName(grammar) erro inesperado: %v", err)
+	}
+	travel, err := db.GetOrCreateTopicByName(conn, "travel")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName(travel) erro inesperado: %v", err)
+	}
+
+	grammarLesson := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "grammar.mp4")
+	mustInsertJobWithStatus(t, conn, grammarLesson, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, grammarLesson, "transcribe", "done", "")
+	if err := db.AddLessonTopic(conn, grammarLesson, grammar); err != nil {
+		t.Fatalf("AddLessonTopic(grammar) erro inesperado: %v", err)
+	}
+
+	travelLesson := mustInsertLesson(t, conn, "2026-07-21", "James K.", "travel.mp4")
+	mustInsertJobWithStatus(t, conn, travelLesson, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, travelLesson, "transcribe", "done", "")
+	if err := db.AddLessonTopic(conn, travelLesson, travel); err != nil {
+		t.Fatalf("AddLessonTopic(travel) erro inesperado: %v", err)
+	}
+
+	noTopicLesson := mustInsertLesson(t, conn, "2026-07-22", "Sarah M.", "sem-topico.mp4")
+	mustInsertJobWithStatus(t, conn, noTopicLesson, "extract_audio", "done", "")
+	mustInsertJobWithStatus(t, conn, noTopicLesson, "transcribe", "done", "")
+
+	svc := NewLibraryService(conn, testStorageRoot(t))
+	lessons, err := svc.ListLessons(LessonFilter{TopicIDs: []int64{grammar, travel}})
+	if err != nil {
+		t.Fatalf("ListLessons(TopicIDs) erro inesperado: %v", err)
+	}
+	if len(lessons) != 2 {
+		t.Fatalf("ListLessons(TopicIDs=[grammar,travel]) = %+v, esperado as 2 aulas com qualquer um dos tópicos", lessons)
+	}
+}
+
 func TestLibraryService_ListLessons_ErrorStatusAndMessageFromExtractAudio(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {

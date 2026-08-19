@@ -4,6 +4,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // LessonFilter filtra ListLessonsWithStatus — todos os campos são opcionais
@@ -13,6 +14,7 @@ type LessonFilter struct {
 	TeacherID int64
 	DateFrom  string // AAAA-MM-DD, inclusive
 	DateTo    string // AAAA-MM-DD, inclusive
+	TopicIDs  []int64 // vazio = sem filtro; semântica OR (Fase 2, História 4)
 }
 
 // LessonWithStatus é uma lesson com o status derivado dos jobs
@@ -94,6 +96,14 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 	if filter.DateTo != "" {
 		query += ` AND substr(l.lesson_date, 1, 10) <= ?`
 		args = append(args, filter.DateTo)
+	}
+	if len(filter.TopicIDs) > 0 {
+		placeholders := strings.Repeat("?,", len(filter.TopicIDs))
+		placeholders = placeholders[:len(placeholders)-1]
+		query += ` AND l.id IN (SELECT lesson_id FROM lesson_topics WHERE topic_id IN (` + placeholders + `))`
+		for _, topicID := range filter.TopicIDs {
+			args = append(args, topicID)
+		}
 	}
 	query += ` ORDER BY l.lesson_date DESC, l.id DESC`
 

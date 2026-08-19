@@ -5,7 +5,8 @@
   import * as ImportService from "../../../bindings/assistente-idiomas/services/importservice";
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
   import * as TeacherService from "../../../bindings/assistente-idiomas/services/teacherservice";
-  import type { PendingImport, Lesson, LessonFilter, Teacher } from "../../../bindings/assistente-idiomas/services/models";
+  import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
+  import type { PendingImport, Lesson, LessonFilter, Teacher, Topic } from "../../../bindings/assistente-idiomas/services/models";
   import ImportConfirmModal from "../ImportConfirmModal.svelte";
 
   let {
@@ -17,6 +18,7 @@
   let pending: PendingImport[] = $state([]);
   let lessons: Lesson[] = $state([]);
   let teachers: Teacher[] = $state([]);
+  let topics: Topic[] = $state([]);
   let loading: boolean = $state(true);
   let syncing: boolean = $state(false);
   let syncMessage: string = $state("");
@@ -34,6 +36,8 @@
   let filterTeacherId: number = $state(0);
   let filterDateFrom: string = $state("");
   let filterDateTo: string = $state("");
+  let filterTopicIds: number[] = $state([]);
+  let topicFilterInput: string = $state("");
 
   const STATUS_LABEL: Record<string, string> = {
     pronta: "pronta",
@@ -46,12 +50,34 @@
   }
 
   async function loadLessons() {
-    const filter: LessonFilter = { teacherId: filterTeacherId, dateFrom: filterDateFrom, dateTo: filterDateTo };
+    const filter: LessonFilter = {
+      teacherId: filterTeacherId,
+      dateFrom: filterDateFrom,
+      dateTo: filterDateTo,
+      topicIds: filterTopicIds,
+    };
     lessons = (await LibraryService.ListLessons(filter)) ?? [];
   }
 
   async function loadTeachers() {
     teachers = (await TeacherService.ListTeachers()) ?? [];
+  }
+
+  async function loadTopics() {
+    topics = (await TopicsService.ListTopics()) ?? [];
+  }
+
+  function addTopicFilter(name: string) {
+    const match = topics.find((t) => t.name.toLowerCase() === name.trim().toLowerCase());
+    if (!match || filterTopicIds.includes(match.id)) return;
+    filterTopicIds = [...filterTopicIds, match.id];
+    topicFilterInput = "";
+    applyFilter();
+  }
+
+  function removeTopicFilter(topicId: number) {
+    filterTopicIds = filterTopicIds.filter((id) => id !== topicId);
+    applyFilter();
   }
 
   // lessonDate é gravado como "AAAA-MM-DD" ou "AAAA-MM-DDTHH:MM" (formato de
@@ -74,7 +100,7 @@
 
   async function loadAll() {
     try {
-      await Promise.all([loadPending(), loadLessons(), loadTeachers()]);
+      await Promise.all([loadPending(), loadLessons(), loadTeachers(), loadTopics()]);
     } catch (e) {
       error = String(e);
     } finally {
@@ -233,6 +259,43 @@
         Até
         <input type="date" bind:value={filterDateTo} onchange={applyFilter} />
       </label>
+      {#if topics.length > 0}
+        <div class="topic-filter">
+          <label>
+            Tópicos
+            <input
+              list="topic-filter-datalist"
+              type="text"
+              placeholder="Adicionar tópico…"
+              autocomplete="off"
+              bind:value={topicFilterInput}
+              onchange={() => addTopicFilter(topicFilterInput)}
+            />
+            <datalist id="topic-filter-datalist">
+              {#each topics.filter((t) => !filterTopicIds.includes(t.id)) as topic (topic.id)}
+                <option value={topic.name}></option>
+              {/each}
+            </datalist>
+          </label>
+          {#if filterTopicIds.length > 0}
+            <div class="topic-filter-chips">
+              {#each filterTopicIds as topicId (topicId)}
+                {@const topic = topics.find((t) => t.id === topicId)}
+                {#if topic}
+                  <span class="topic-chip">
+                    {topic.name}
+                    <button
+                      type="button"
+                      onclick={() => removeTopicFilter(topicId)}
+                      aria-label={`Remover filtro ${topic.name}`}>×</button
+                    >
+                  </span>
+                {/if}
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </section>
 
     {#if lessons.length > 0}
@@ -344,6 +407,35 @@
     flex-direction: column;
     gap: 0.25rem;
     font-size: 0.8rem;
+  }
+  .topic-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 12rem;
+  }
+  .topic-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .topic-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    background: rgba(110, 168, 254, 0.12);
+  }
+  .topic-chip button {
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    line-height: 1;
+    font-size: 0.9rem;
   }
   .pending h2,
   .lessons h2 {
