@@ -14,6 +14,8 @@
   let topicRenameErrors: Record<number, string> = $state({});
   let deletingTopicId: number | null = $state(null);
   let topicDeleteErrors: Record<number, string> = $state({});
+  let deletingAll: boolean = $state(false);
+  let deleteAllError: string = $state("");
 
   async function loadTopics(justRenamedId?: number) {
     const previousTopics = topics;
@@ -58,6 +60,21 @@
     }
   }
 
+  async function deleteAllTopics() {
+    const confirmed = confirm(`Excluir todos os ${topics.length} tópicos? Isso não pode ser desfeito.`);
+    if (!confirmed) return;
+    deleteAllError = "";
+    deletingAll = true;
+    try {
+      await TopicsService.DeleteAllTopics();
+      await loadTopics();
+    } catch (e) {
+      deleteAllError = String(e);
+    } finally {
+      deletingAll = false;
+    }
+  }
+
   onMount(async () => {
     try {
       await loadTopics();
@@ -72,13 +89,23 @@
 <div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
   <button class="back" onclick={onBack} style="color: {colors.mut};">← Biblioteca</button>
 
-  <h1 style="font-family: {fonts.display};">Tópicos</h1>
+  <div class="header-row">
+    <h1 style="font-family: {fonts.display};">Tópicos</h1>
+    {#if topics.length > 0}
+      <button onclick={deleteAllTopics} disabled={deletingAll} style="color: {colors.red};">
+        {deletingAll ? "Excluindo…" : "Excluir todos"}
+      </button>
+    {/if}
+  </div>
 
   {#if loading}
     <p style="color: {colors.mut};">Carregando…</p>
   {:else}
     {#if topicsError}
       <p class="error" style="color: {colors.red};">{topicsError}</p>
+    {/if}
+    {#if deleteAllError}
+      <p class="error" style="color: {colors.red};">{deleteAllError}</p>
     {/if}
     {#if topics.length === 0}
       <p class="hint" style="color: {colors.mut};">Nenhum tópico cadastrado ainda.</p>
@@ -134,7 +161,14 @@
   }
   h1 {
     font-size: 1.4rem;
-    margin: 0 0 1.25rem;
+    margin: 0;
+  }
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
   }
   .hint {
     font-size: 0.8rem;

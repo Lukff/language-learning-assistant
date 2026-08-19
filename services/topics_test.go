@@ -123,6 +123,34 @@ func TestTopicsService_DeleteTopic_RemovesEntityAndLinks(t *testing.T) {
 	}
 }
 
+func TestTopicsService_DeleteAllTopics_RemovesEverything(t *testing.T) {
+	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("db.Open() falhou: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := mustInsertLesson(t, conn, "2026-08-18", "Sarah M.", "aula.mp4")
+	svc := NewTopicsService(conn)
+	if _, err := svc.AddTopic(lessonID, "viagens"); err != nil {
+		t.Fatalf("AddTopic() erro inesperado: %v", err)
+	}
+	if _, err := svc.AddTopic(lessonID, "trabalho remoto"); err != nil {
+		t.Fatalf("AddTopic() erro inesperado: %v", err)
+	}
+
+	if err := svc.DeleteAllTopics(); err != nil {
+		t.Fatalf("DeleteAllTopics() erro inesperado: %v", err)
+	}
+	topics, err := svc.ListTopics()
+	if err != nil {
+		t.Fatalf("ListTopics() erro inesperado: %v", err)
+	}
+	if len(topics) != 0 {
+		t.Errorf("ListTopics() = %+v, esperado []", topics)
+	}
+}
+
 func TestTopicsService_RenameTopic_ReflectsGlobally(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {

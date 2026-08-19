@@ -154,3 +154,26 @@ func DeleteTopic(conn *sql.DB, id int64) error {
 	}
 	return nil
 }
+
+// DeleteAllTopics apaga todos os tópicos cadastrados e seus vínculos com
+// aulas — usado pra reset em massa durante testes manuais, não é um fluxo
+// do dia a dia do usuário.
+func DeleteAllTopics(conn *sql.DB) error {
+	tx, err := conn.Begin()
+	if err != nil {
+		return fmt.Errorf("iniciar transação pra apagar todos os tópicos: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM lesson_topics`); err != nil {
+		return fmt.Errorf("desvincular todos os tópicos das aulas: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM topics`); err != nil {
+		return fmt.Errorf("apagar todos os tópicos: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("confirmar exclusão de todos os tópicos: %w", err)
+	}
+	return nil
+}

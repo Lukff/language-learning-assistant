@@ -77,3 +77,9 @@ func (s *TopicsService) RemoveTopic(lessonID, topicID int64) error {
 func (s *TopicsService) DeleteTopic(id int64) error {
 	return db.DeleteTopic(s.conn, id)
 }
+
+// DeleteAllTopics apaga todos os tópicos cadastrados de uma vez — atalho de
+// reset em massa pra testes manuais, não um fluxo do dia a dia do usuário.
+func (s *TopicsService) DeleteAllTopics() error {
+	return db.DeleteAllTopics(s.conn)
+}

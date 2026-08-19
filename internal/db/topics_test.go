@@ -181,6 +181,56 @@ func TestDeleteTopic_RemovesEntityAndLessonLinks(t *testing.T) {
 	}
 }
 
+func TestDeleteAllTopics_RemovesAllEntitiesAndLinks(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := insertLessonFixture(t, conn)
+	for _, n := range []string{"viagens", "trabalho remoto"} {
+		topicID, err := GetOrCreateTopicByName(conn, n)
+		if err != nil {
+			t.Fatalf("GetOrCreateTopicByName(%q) erro inesperado: %v", n, err)
+		}
+		if err := AddLessonTopic(conn, lessonID, topicID); err != nil {
+			t.Fatalf("AddLessonTopic() erro inesperado: %v", err)
+		}
+	}
+
+	if err := DeleteAllTopics(conn); err != nil {
+		t.Fatalf("DeleteAllTopics() erro inesperado: %v", err)
+	}
+
+	topics, err := ListTopics(conn)
+	if err != nil {
+		t.Fatalf("ListTopics() erro inesperado: %v", err)
+	}
+	if len(topics) != 0 {
+		t.Errorf("ListTopics() = %+v, esperado [] (todos apagados)", topics)
+	}
+	lessonTopics, err := ListLessonTopics(conn, lessonID)
+	if err != nil {
+		t.Fatalf("ListLessonTopics() erro inesperado: %v", err)
+	}
+	if len(lessonTopics) != 0 {
+		t.Errorf("ListLessonTopics() = %+v, esperado [] (vínculos removidos)", lessonTopics)
+	}
+}
+
+func TestDeleteAllTopics_EmptySucceeds(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	if err := DeleteAllTopics(conn); err != nil {
+		t.Fatalf("DeleteAllTopics() erro inesperado: %v", err)
+	}
+}
+
 func TestDeleteTopic_UnusedTopicSucceeds(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
