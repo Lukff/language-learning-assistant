@@ -129,8 +129,9 @@ Design técnico em spec própria.
       `topic_id`); tópicos viram entidade `topics`.
 - [x] Tópicos exibidos como chips no cabeçalho do Detalhe; aula sem a tarefa mostra a transcrição
       normalmente.
-- [x] Adicionar/remover tópico por aula (chips) e renomear tópico globalmente (tela própria
-      acessível pela Biblioteca — movida de Configurações em 18/08/2026).
+- [x] Adicionar/remover tópico por aula (chips), renomear tópico globalmente e excluir tópico
+      globalmente (com desvínculo em cascata das aulas que o usavam) na tela própria acessível
+      pela Biblioteca (movida de Configurações em 18/08/2026).
 - [x] Falha não quebra a aula — erro visível e recuperável.
 - [x] Troca de falante preserva `analyze_topics` e `lesson_topics` (só tarefas que dependem de
       quem é aluno/tutor são descartadas).
@@ -193,3 +194,4 @@ tarefa (ver `docs/notas-analise-llm.md`).
 | 18/08/2026 | Ajuste de UI (fora de história formal): gestão de professores e tópicos sai de Configurações e ganha telas próprias (`Teachers.svelte`, `Topics.svelte`), acessíveis por dois botões novos no cabeçalho da Biblioteca ("Professores", "Tópicos"); Configurações volta a conter só Armazenamento e credenciais; novas telas mapeadas como `active="library"` na Sidebar, com botão "← Biblioteca" no mesmo padrão do Detalhe da aula | Só reorganização de frontend — nenhuma mudança de backend/bindings; lógica de listagem/renome copiada como estava de `Settings.svelte`, sem reescrever; `vite build` confirmado limpo; verificação visual real do fluxo (navegar Biblioteca → Professores/Tópicos → renomear → voltar) segue pendente, mesmo padrão das histórias anteriores |
 | 18/08/2026 | Ajuste de UI (fora de história formal): aba "Progresso" removida da Sidebar e do roteamento em `App.svelte` (placeholder sem conteúdo real, tela prevista só pra Fase 3) | `Progress.svelte` mantido no repo sem uso, pra reaproveitar quando a tela ganhar conteúdo real na Fase 3; `svelte-check` confirmado limpo |
 | 19/08/2026 | Ajuste de prompt (fora de história formal): tarefa `analyze_topics` ganha `prompts/analyze-topics-v3.md` (limite de 4 tópicos por aula, também aplicado como corte em `parseTopics` independente do que o LLM devolver) e, em seguida, `prompts/analyze-topics-v4.md` (saída em inglês em vez de português) | Desvio deliberado, a pedido do usuário, da convenção geral de "textos de análise em PT-BR" do `CLAUDE.md` — só os tópicos passam a sair em inglês; `go build`/`go vet`/`go test ./...` confirmados limpos |
+| 19/08/2026 | Ajuste de UI (fora de história formal): tela "Tópicos" ganha exclusão global de tópico — `internal/db.DeleteTopic` apaga a entidade numa transação (desvincula `lesson_topics` antes, já que a FK não tem `ON DELETE CASCADE` e o banco roda com `foreign_keys=ON`), `TopicsService.DeleteTopic` expõe pro frontend, botão "Excluir" com `confirm()` (mesmo padrão de `LessonDetail.svelte`) some o tópico de todas as aulas que o usavam | `go test ./...`, `go vet ./...`, `pnpm run check` confirmados limpos; verificação visual real do fluxo (excluir tópico em uso → some dos chips da aula) segue pendente, mesmo padrão das entradas anteriores |

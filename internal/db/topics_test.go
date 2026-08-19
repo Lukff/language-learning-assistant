@@ -144,3 +144,64 @@ func TestAddAndRemoveLessonTopic(t *testing.T) {
 		t.Errorf("topicCount = %d, esperado 1 (remover não apaga a entidade)", topicCount)
 	}
 }
+
+func TestDeleteTopic_RemovesEntityAndLessonLinks(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	lessonID := insertLessonFixture(t, conn)
+	topicID, err := GetOrCreateTopicByName(conn, "viagens")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName() erro inesperado: %v", err)
+	}
+	if err := AddLessonTopic(conn, lessonID, topicID); err != nil {
+		t.Fatalf("AddLessonTopic() erro inesperado: %v", err)
+	}
+
+	if err := DeleteTopic(conn, topicID); err != nil {
+		t.Fatalf("DeleteTopic() erro inesperado: %v", err)
+	}
+
+	var topicCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM topics WHERE id = ?`, topicID).Scan(&topicCount); err != nil {
+		t.Fatalf("contar topics falhou: %v", err)
+	}
+	if topicCount != 0 {
+		t.Errorf("topicCount = %d, esperado 0 (entidade apagada)", topicCount)
+	}
+	var linkCount int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM lesson_topics WHERE topic_id = ?`, topicID).Scan(&linkCount); err != nil {
+		t.Fatalf("contar lesson_topics falhou: %v", err)
+	}
+	if linkCount != 0 {
+		t.Errorf("linkCount = %d, esperado 0 (vínculo removido em cascata)", linkCount)
+	}
+}
+
+func TestDeleteTopic_UnusedTopicSucceeds(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("Open() erro inesperado: %v", err)
+	}
+	defer conn.Close()
+
+	topicID, err := GetOrCreateTopicByName(conn, "viagens")
+	if err != nil {
+		t.Fatalf("GetOrCreateTopicByName() erro inesperado: %v", err)
+	}
+
+	if err := DeleteTopic(conn, topicID); err != nil {
+		t.Fatalf("DeleteTopic() erro inesperado: %v", err)
+	}
+
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM topics WHERE id = ?`, topicID).Scan(&count); err != nil {
+		t.Fatalf("contar topics falhou: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, esperado 0", count)
+	}
+}

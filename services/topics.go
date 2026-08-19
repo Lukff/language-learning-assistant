@@ -71,3 +71,9 @@ func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 func (s *TopicsService) RemoveTopic(lessonID, topicID int64) error {
 	return db.RemoveLessonTopic(s.conn, lessonID, topicID)
 }
+
+// DeleteTopic apaga a entidade globalmente, removendo o vínculo de qualquer
+// aula que a usava (chips somem das aulas afetadas).
+func (s *TopicsService) DeleteTopic(id int64) error {
+	return db.DeleteTopic(s.conn, id)
+}

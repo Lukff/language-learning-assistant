@@ -131,3 +131,26 @@ func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	}
 	return nil
 }
+
+// DeleteTopic apaga a entidade id, desvinculando-a antes de qualquer aula
+// que a usava (a FK lesson_topics.topic_id não tem ON DELETE CASCADE, e o
+// banco roda com foreign_keys=ON — sem isso o DELETE em topics falharia).
+func DeleteTopic(conn *sql.DB, id int64) error {
+	tx, err := conn.Begin()
+	if err != nil {
+		return fmt.Errorf("iniciar transação pra apagar tópico %d: %w", id, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM lesson_topics WHERE topic_id = ?`, id); err != nil {
+		return fmt.Errorf("desvincular tópico %d das aulas: %w", id, err)
+	}
+	if _, err := tx.Exec(`DELETE FROM topics WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("apagar tópico %d: %w", id, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("confirmar exclusão do tópico %d: %w", id, err)
+	}
+	return nil
+}

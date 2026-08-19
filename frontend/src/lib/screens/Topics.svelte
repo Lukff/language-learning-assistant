@@ -12,6 +12,8 @@
   let topicRenameDrafts: Record<number, string> = $state({});
   let renamingTopicId: number | null = $state(null);
   let topicRenameErrors: Record<number, string> = $state({});
+  let deletingTopicId: number | null = $state(null);
+  let topicDeleteErrors: Record<number, string> = $state({});
 
   async function loadTopics(justRenamedId?: number) {
     const previousTopics = topics;
@@ -38,6 +40,21 @@
       topicRenameErrors = { ...topicRenameErrors, [id]: String(e) };
     } finally {
       renamingTopicId = null;
+    }
+  }
+
+  async function deleteTopic(topic: Topic) {
+    const confirmed = confirm(`Excluir o tópico "${topic.name}"? Ele será removido de todas as aulas que o usam.`);
+    if (!confirmed) return;
+    topicDeleteErrors = { ...topicDeleteErrors, [topic.id]: "" };
+    deletingTopicId = topic.id;
+    try {
+      await TopicsService.DeleteTopic(topic.id);
+      await loadTopics();
+    } catch (e) {
+      topicDeleteErrors = { ...topicDeleteErrors, [topic.id]: String(e) };
+    } finally {
+      deletingTopicId = null;
     }
   }
 
@@ -80,8 +97,18 @@
             >
               {renamingTopicId === topic.id ? "Renomeando…" : "Renomear"}
             </button>
+            <button
+              onclick={() => deleteTopic(topic)}
+              disabled={deletingTopicId === topic.id}
+              style="color: {colors.red};"
+            >
+              {deletingTopicId === topic.id ? "Excluindo…" : "Excluir"}
+            </button>
             {#if topicRenameErrors[topic.id]}
               <p class="error" style="color: {colors.red};">{topicRenameErrors[topic.id]}</p>
+            {/if}
+            {#if topicDeleteErrors[topic.id]}
+              <p class="error" style="color: {colors.red};">{topicDeleteErrors[topic.id]}</p>
             {/if}
           </li>
         {/each}
