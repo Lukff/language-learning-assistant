@@ -3,10 +3,16 @@
 > Objetivo: levar a análise por LLM (já validada isoladamente na Fase 0) para dentro do app, **uma
 > tarefa de cada vez**: implementar sob demanda, observar em aulas reais, decidir se ela fica
 > (mantida, refinada ou descartada), e só então automatizar em background. Não há mais um roteiro
-> fixo pras 7 tarefas planejadas (`analyze_corrections`, `analyze_vocabulary`,
+> fixo pras 7 tarefas originalmente planejadas (`analyze_corrections`, `analyze_vocabulary`,
 > `analyze_tutor_expressions`, `analyze_tutor_taught_terms`, `analyze_tutor_feedback`,
 > `analyze_tutor_corrections`, `analyze_topics`) — é possível (esperado, até) que nem todas
 > sobrevivam à validação em uso real.
+>
+> **Escopo atual (20/08/2026):** só `analyze_corrections` e `analyze_topics` seguem ativas —
+> ambas já implementadas (Histórias 2 e 3) e mantidas, com trabalho futuro voltado a refinar seus
+> prompts/UX, não a expandir cobertura. As outras 5 tarefas candidatas ficam pausadas
+> indefinidamente (não descartadas, só fora do radar por ora); retomam só se o usuário pedir
+> explicitamente.
 >
 > Replanejamento registrado em
 > `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md` (substitui a
@@ -166,15 +172,18 @@ História 3 (tópicos precisam existir pra filtrar).
 
 ---
 
-## Tarefas candidatas (sem história detalhada ainda)
+## Tarefas candidatas (pausadas)
 
-As 5 tarefas restantes viram uma história de verdade (mesmo formato da História 2: credencial já
-resolvida, sob demanda, UI mínima, decisão explícita registrada em `docs/notas-analise-llm.md`) só
-quando for a vez de implementá-las. Ordem não é comprometida agora; localização na UI (inline vs.
-aba própria) é decidida tarefa a tarefa.
+**Pausado em 20/08/2026, a pedido do usuário:** por ora a fase segue só com `analyze_corrections`
+e `analyze_topics` (refinamento, não expansão). As 5 tarefas abaixo não têm história aberta nem
+previsão de retomada — ficam registradas aqui só como opções futuras, a revisitar se/quando o
+usuário pedir. Quando isso acontecer, cada uma vira uma história no mesmo formato da História 2
+(credencial já resolvida, sob demanda, UI mínima, decisão explícita registrada em
+`docs/notas-analise-llm.md`).
 
 - `analyze_vocabulary` (vocabulário novo) e `analyze_tutor_expressions` (expressões do tutor) têm
-  sinal positivo da validação da Fase 0 (prompt único) — candidatas naturais a vir logo depois.
+  sinal positivo da validação da Fase 0 (prompt único) — candidatas naturais a vir depois, se a
+  fase for retomada.
 - `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections` seguem
   sem validação própria ainda.
 
@@ -220,4 +229,5 @@ tarefa (ver `docs/notas-analise-llm.md`).
 | 19/08/2026 | História 4 implementada: `db.LessonFilter`/`services.LessonFilter` ganham `TopicIDs []int64` (semântica OR via `l.id IN (SELECT lesson_id FROM lesson_topics WHERE topic_id IN (...))`, sem mudança de schema); Biblioteca ganha filtro de tópicos ao lado dos filtros de professor/período já existentes, populado por `TopicsService.ListTopics()` | `go test ./...`, `go vet ./...`, `svelte-check` e `vite build` confirmados limpos; verificação visual real numa janela de verdade segue pendente em Windows/Linux, mesmo padrão das entradas anteriores |
 | 19/08/2026 | Ajuste de UI (fora de história formal, feedback do usuário após ver a tela): filtro de tópicos trocado de lista de checkboxes (ocupava muito espaço) pra caixa de texto com autocomplete (`datalist`, mesmo padrão do `TeacherCombobox`) — digitar/selecionar um tópico existente adiciona um chip pequeno removível por "×", input limpa pra digitar o próximo | `svelte-check` e `vite build` confirmados limpos |
 | 19/08/2026 | **História 3 fechada.** Critério de decisão formal em `docs/notas-analise-llm.md` removido do escopo — uso real já mostrou o resultado aceitável (granularidade, reaproveitamento, edição/exclusão de chips, filtro na Biblioteca), decisão de manter tomada sem entrada dedicada na nota | A partir daqui a próxima tarefa candidata (`analyze_vocabulary` ou `analyze_tutor_expressions`) segue o mesmo padrão da História 2 quando for iniciada |
+| 20/08/2026 | Replanejamento (a pedido do usuário): fase segue só com `analyze_corrections` e `analyze_topics` por ora — trabalho futuro é refinar essas duas, não expandir pras 5 tarefas candidatas restantes (`analyze_vocabulary`, `analyze_tutor_expressions`, `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections`), que ficam pausadas indefinidamente | Nenhum código mudou — só o planejamento (`docs/fase-2-analise-llm.md`) |
 | 20/08/2026 | Fix (fora de história formal, reportado pelo usuário): janelas cmd abrindo em background a cada importação de vídeo — `internal/media.ExtractAudio`/`Duration` chamam ffmpeg/ffprobe via `os/exec` sem esconder o console, e como o Wails roda sem console próprio no Windows cada processo console-subsystem lançado abre sua própria janela | Root cause confirmado (não é ambiental); fix via `SysProcAttr.HideWindow` em arquivo `_windows.go` dedicado (`internal/media/exec_windows.go`, com no-op em `exec_other.go`), mesmo padrão de código específico de plataforma já usado em `services/move_noreplace_windows.go`; `go build`/`go vet`/`go test ./internal/media/...` confirmados limpos em Linux e cross-build pra `GOOS=windows`; verificação visual real (confirmar que a janela não abre mais numa importação de verdade) segue pendente em Windows |
