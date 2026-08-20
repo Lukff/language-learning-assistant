@@ -26,6 +26,7 @@ func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 		"-f", "wav",
 		outputPath,
 	)
+	hideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("media: ffmpeg falhou: %w\n%s", err, output)
@@ -49,6 +50,7 @@ func Duration(ctx context.Context, videoPath string) (time.Duration, error) {
 		"-of", "csv=p=0",
 		videoPath,
 	)
+	hideWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
 		return 0, fmt.Errorf("media: ffprobe falhou: %w", err)
