@@ -138,8 +138,6 @@ Design técnico em spec própria.
 - [x] Prompt v2 com granularidade geral + reaproveitamento dos tópicos já existentes; v3 adiciona
       limite de 4 tópicos por aula (também aplicado no parsing como rede de segurança); v4 muda a
       saída para inglês.
-- [ ] Decisão registrada em `docs/notas-analise-llm.md` após observar em aulas reais — primeira
-      tarefa sem validação da Fase 0, observação com peso redobrado.
 
 ### Dependências
 História 2.
@@ -221,3 +219,4 @@ tarefa (ver `docs/notas-analise-llm.md`).
 | 19/08/2026 | Ajuste de UI (fora de história formal, atalho pra teste manual): botão "Excluir todos" na tela "Tópicos", ao lado do título, só visível com a lista não vazia — `internal/db.DeleteAllTopics`/`TopicsService.DeleteAllTopics` apagam `lesson_topics` e `topics` inteiros numa transação | Não é fluxo de uso normal, existe só pra facilitar reset de dados durante testes; `go test ./...`, `go vet ./...`, `pnpm run check` confirmados limpos |
 | 19/08/2026 | História 4 implementada: `db.LessonFilter`/`services.LessonFilter` ganham `TopicIDs []int64` (semântica OR via `l.id IN (SELECT lesson_id FROM lesson_topics WHERE topic_id IN (...))`, sem mudança de schema); Biblioteca ganha filtro de tópicos ao lado dos filtros de professor/período já existentes, populado por `TopicsService.ListTopics()` | `go test ./...`, `go vet ./...`, `svelte-check` e `vite build` confirmados limpos; verificação visual real numa janela de verdade segue pendente em Windows/Linux, mesmo padrão das entradas anteriores |
 | 19/08/2026 | Ajuste de UI (fora de história formal, feedback do usuário após ver a tela): filtro de tópicos trocado de lista de checkboxes (ocupava muito espaço) pra caixa de texto com autocomplete (`datalist`, mesmo padrão do `TeacherCombobox`) — digitar/selecionar um tópico existente adiciona um chip pequeno removível por "×", input limpa pra digitar o próximo | `svelte-check` e `vite build` confirmados limpos |
+| 19/08/2026 | **História 3 fechada.** Critério de decisão formal em `docs/notas-analise-llm.md` removido do escopo — uso real já mostrou o resultado aceitável (granularidade, reaproveitamento, edição/exclusão de chips, filtro na Biblioteca), decisão de manter tomada sem entrada dedicada na nota | A partir daqui a próxima tarefa candidata (`analyze_vocabulary` ou `analyze_tutor_expressions`) segue o mesmo padrão da História 2 quando for iniciada |
