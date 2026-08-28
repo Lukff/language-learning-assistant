@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Bloqueia commits com trailer Co-Authored-By (ex.: adicionado automaticamente
+# por assistentes de IA). Ativado via `git config core.hooksPath .githooks`.
+set -euo pipefail
+
+msg_file="$1"
+
+if grep -qiE '^co-authored-by:' "$msg_file"; then
+    echo "error: mensagem de commit contém 'Co-Authored-By', remova antes de commitar" >&2
+    exit 1
+fi
