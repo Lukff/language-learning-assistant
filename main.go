@@ -56,6 +56,11 @@ func main() {
 
 	importService := services.NewImportService(conn)
 
+	videoServer, err := services.NewVideoServerService(conn, storageRoot)
+	if err != nil {
+		log.Fatalf("subir servidor de vídeo: %v", err)
+	}
+
 	app := application.New(application.Options{
 		Name:        "Assistente de Idiomas",
 		Description: "Arquivo e análise de aulas de inglês do Cambly",
@@ -68,10 +73,10 @@ func main() {
 			application.NewService(services.NewAnalysisService(conn, storageRoot, analysisProviderFactory)),
 			application.NewService(services.NewTeacherService(conn)),
 			application.NewService(services.NewTopicsService(conn)),
+			application.NewService(videoServer),
 		},
 		Assets: application.AssetOptions{
-			Handler:    application.AssetFileServerFS(assets),
-			Middleware: services.VideoAssetMiddleware(conn, storageRoot),
+			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
@@ -84,6 +89,15 @@ func main() {
 		Height:           760,
 		BackgroundColour: application.NewRGB(20, 24, 31), // #14181F — colors.bg
 		EnableFileDrop:   true,
+		Linux: application.LinuxWindow{
+			// Sem isso, o campo Linux fica zero-value e WebviewGpuPolicy
+			// resolve pra WebviewGpuPolicyAlways (não WebviewGpuPolicyNever,
+			// que só é o default dentro de wails.Run() — não usado aqui, ver
+			// application.WebviewGpuPolicy). Decodificação de vídeo via GPU
+			// no WebKitGTK quebra com conteúdo servido pelo scheme wails://
+			// (https://github.com/wailsapp/wails/issues/2977).
+			WebviewGpuPolicy: application.WebviewGpuPolicyNever,
+		},
 	})
 	win.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
 		importService.DropImport(event.Context().DroppedFiles())

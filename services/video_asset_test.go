@@ -11,7 +11,7 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-func TestVideoAssetMiddleware_ServesVideoWithRangeSupport(t *testing.T) {
+func TestVideoAssetHandler_ServesVideoWithRangeSupport(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("db.Open() falhou: %v", err)
@@ -25,7 +25,7 @@ func TestVideoAssetMiddleware_ServesVideoWithRangeSupport(t *testing.T) {
 	}
 	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
 
-	handler := VideoAssetMiddleware(conn, func() (string, error) { return storageRoot, nil })(http.NotFoundHandler())
+	handler := VideoAssetHandler(conn, func() (string, error) { return storageRoot, nil })
 
 	req := httptest.NewRequest(http.MethodGet, "/media/lesson/"+strconv.FormatInt(lessonID, 10), nil)
 	req.Header.Set("Range", "bytes=0-4")
@@ -40,14 +40,14 @@ func TestVideoAssetMiddleware_ServesVideoWithRangeSupport(t *testing.T) {
 	}
 }
 
-func TestVideoAssetMiddleware_UnknownLessonReturns404(t *testing.T) {
+func TestVideoAssetHandler_UnknownLessonReturns404(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("db.Open() falhou: %v", err)
 	}
 	defer conn.Close()
 
-	handler := VideoAssetMiddleware(conn, func() (string, error) { return t.TempDir(), nil })(http.NotFoundHandler())
+	handler := VideoAssetHandler(conn, func() (string, error) { return t.TempDir(), nil })
 
 	req := httptest.NewRequest(http.MethodGet, "/media/lesson/999", nil)
 	rec := httptest.NewRecorder()
@@ -58,22 +58,20 @@ func TestVideoAssetMiddleware_UnknownLessonReturns404(t *testing.T) {
 	}
 }
 
-func TestVideoAssetMiddleware_OtherPathsDelegateToNext(t *testing.T) {
+func TestVideoAssetHandler_OtherPathsReturn404(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("db.Open() falhou: %v", err)
 	}
 	defer conn.Close()
 
-	nextCalled := false
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { nextCalled = true })
-	handler := VideoAssetMiddleware(conn, func() (string, error) { return t.TempDir(), nil })(next)
+	handler := VideoAssetHandler(conn, func() (string, error) { return t.TempDir(), nil })
 
 	req := httptest.NewRequest(http.MethodGet, "/wails/runtime.js", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if !nextCalled {
-		t.Error("path fora de /media/lesson/ deveria ser delegado a next, mas next não foi chamado")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, esperado 404 pra path fora de /media/lesson/", rec.Code)
 	}
 }

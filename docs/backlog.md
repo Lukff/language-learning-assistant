@@ -11,7 +11,11 @@
 - **Seek no vídeo é lento:** navegar para um momento específico na linha do tempo do
   vídeo apresenta latência alta. Investigar causa (asset handler, encoding, buffering)
   e considerar otimizações como preload de trechos, transcodificação ou ajustes no
-  `<video>` element.
+  `<video>` element. **Atualização 28/08/2026:** o vídeo no Linux nem tocava até essa
+  data (ver `docs/fase-1-mvp.md`) — o asset handler trocou de um `application.Middleware`
+  do Wails (scheme `wails://`) pra um `http.Server` real em loopback
+  (`services/video_server.go`). Reavaliar se esse item ainda se aplica com o servidor
+  novo antes de investigar mais.
 
 ## UX — Transcrição
 

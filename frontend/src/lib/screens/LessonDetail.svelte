@@ -4,6 +4,7 @@
   import * as LibraryService from "../../../bindings/assistente-idiomas/services/libraryservice";
   import * as AnalysisService from "../../../bindings/assistente-idiomas/services/analysisservice";
   import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
+  import * as VideoServerService from "../../../bindings/assistente-idiomas/services/videoserverservice";
   import type { Lesson, Transcript, CorrectionsResult, TopicsResult } from "../../../bindings/assistente-idiomas/services/models";
   import EditLessonModal from "../EditLessonModal.svelte";
 
@@ -51,6 +52,12 @@
     }
   }
 
+  // O <video src> aponta pro servidor HTTP real em loopback
+  // (VideoServerService), não pro path relativo /media/lesson/ servido
+  // pelo scheme wails:// do AssetServer — no Linux (WebKitGTK/GStreamer)
+  // esse scheme não entrega Range request de vídeo direito pro pipeline de
+  // mídia do webview (falha com FormatError mesmo o arquivo sendo válido).
+  let videoBaseURL: string = $state("");
   let videoEl: HTMLVideoElement | undefined = $state();
   let currentTime: number = $state(0);
   let rowRefs: (HTMLElement | null)[] = [];
@@ -261,6 +268,7 @@
 
   onMount(async () => {
     try {
+      videoBaseURL = await VideoServerService.BaseURL();
       lesson = await LibraryService.GetLesson(lessonId);
       await fetchTranscriptIfReady();
       await fetchCorrectionsIfReady();
@@ -341,7 +349,7 @@
           bind:this={videoEl}
           ontimeupdate={onTimeUpdate}
           controls
-          src={`/media/lesson/${lesson.id}`}
+          src={`${videoBaseURL}/media/lesson/${lesson.id}`}
           style="border: 1px solid {colors.line};"
         >
           <track kind="captions" />

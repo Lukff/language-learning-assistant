@@ -28,9 +28,19 @@ ficam registradas em `docs/backlog.md`.
 
 ## Riscos técnicos — atacar primeiro, não por último
 
-1. **Servir vídeo local ao webview com seek:** o clique-na-fala-pula-o-vídeo exige que o
-   asset handler do Wails v3 sirva o `.mp4` com suporte a **HTTP range requests** — sem isso,
-   `<video>` não busca posição arbitrária. Validar num spike de 1 dia antes da História 5.
+1. **Servir vídeo local ao webview com seek (resolvido de verdade em 28/08/2026):** o
+   clique-na-fala-pula-o-vídeo exige que o vídeo seja servido com suporte a **HTTP range
+   requests** — sem isso, `<video>` não busca posição arbitrária. A solução original (endpoint
+   `GET /media/lesson/{id}` via `http.ServeFile`, plugado como `application.Middleware` do
+   AssetServer do Wails, servido pelo scheme `wails://` no Linux) parecia resolver isso — os
+   testes automatizados de range request passavam e o app abria — mas o vídeo nunca tocou de
+   fato no Linux (WebKitGTK/GTK4): a requisição Range chegava certinha no handler Go, mas a
+   resposta 206 não completava o pipeline de mídia do GStreamer (`FormatError` instantâneo,
+   sem pedir o restante do arquivo), enquanto o mesmo `.mp4` tocava normalmente no Chrome/Firefox
+   — limitação conhecida do WebKitGTK com scheme de URI customizado + elementos `<video>`. Fix
+   real: vídeo servido por um `http.Server` de verdade em `127.0.0.1` (porta livre escolhida
+   pelo SO), fora do AssetServer do Wails — `services/video_server.go`, `VideoServerService`. Ver
+   registro de 28/08/2026.
 2. **Drag-and-drop de arquivo no Wails v3 (resolvido, História 3b):** a API nativa
    (`EnableFileDrop` + evento `WindowFilesDropped`) funciona nas três plataformas na versão
    pinada `v3.0.0-alpha2.117` — não foi preciso o fallback de file dialog.
@@ -164,7 +174,9 @@ numa fala, **para** revisar momentos específicos da conversa.
 *É o coração do MVP — fazer o spike do risco 1 antes de começar.*
 
 ### Critérios de aceite
-- [x] Vídeo local servido ao `<video>` via asset handler com range requests; seek funciona (risco 1 resolvido) — endpoint reaproveitado da História 5 sem mudanças.
+- [x] Vídeo local servido ao `<video>` com range requests; seek funciona (risco 1 resolvido de
+      verdade só em 28/08/2026 — a verificação original desta história não pegou que o vídeo não
+      tocava no Linux; ver risco técnico 1 e o registro de 28/08/2026).
 - [x] Transcrição rolável ao lado, falas do aluno visualmente distintas das do tutor (layout do protótipo, sem correções inline — Fase 2) — grade de 2 colunas sem abas; toggle de speaker (rótulos neutros "Speaker A"/"Speaker B" até o usuário indicar qual é o aluno, aí vira "Você"/"Tutor" com cores do tema), escolha persistida em `student_speaker_label`.
 - [x] Clicar numa fala posiciona o vídeo no timestamp (tolerância ~1s) — clique escreve em `video.currentTime`.
 - [x] A fala corrente é destacada conforme o vídeo avança (highlight acompanha o playback) — sincronização via evento `timeupdate` do `<video>` (índice derivado na lista de falas, sem `requestAnimationFrame`/WebVTT), com auto-scroll pra manter a fala corrente visível.
@@ -273,3 +285,4 @@ Fase 1 (História 8).
 | 24/07/2026 | História 8 implementada: tela de Configurações (ícone de engrenagem no Header, fora da Sidebar) com dois painéis — Armazenamento (visualiza pasta atual, botão de troca com dialog nativo + validação de escrita, troca nunca bloqueada) e Credencial STT (status booleano, campo sempre-disponível pra (re)cadastro via keyring); reconciliação por hash reaproveita `importer.Scan` da História 3 (vídeos renomeados na pasta nova têm `video_path` atualizado, ausentes sinalizados como 'vídeo ausente' — recalculado a cada leitura, nunca persistido); badge "vídeo ausente" aparece em Library.svelte e LessonDetail.svelte | Cobertura unitária completa: `services/settings_test.go`, `services/storage_folder_test.go`, `services/library_test.go` estendida; `go test ./...` e `go vet ./...` confirmados limpos, `pnpm run check`/`pnpm run build` confirmados limpos; verificação manual (abrir Configurações pelo ícone do Header, trocar pasta com vídeo renomeado confirmando reconciliação, apagar vídeo confirmando badge 'ausente', recadastro de credencial) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
 | 30/07/2026 | História 9 implementada: professor vira entidade `teachers` (migration com backfill da coluna `tutor`), combobox de professores no formulário de importação, painel "Professores" em Configurações (renomear reflete em todas as aulas via JOIN), edição de data/horário/professor no Detalhe da aula (renomeia o vídeo in-place, melhor esforço) | `go test ./...`, `go vet ./...`, `pnpm run check`/`pnpm run build` confirmados limpos; verificação visual real (combobox, renomear professor, editar aula numa janela de verdade) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
 | 01/08/2026 | **Fase 1 concluída.** Todas as verificações visuais em janela real (Windows e Linux) que estavam pendentes desde a História 1 foram feitas — janela abrindo, keyring (risco 3), varredura automática ao final do wizard (História 3), e os fluxos das Histórias 3b–9 (drag-and-drop, pipeline processando aula real, Detalhe com vídeo+transcrição sincronizada, Fila ao vivo, Configurações, professores) | Marcos M1–M3 fechados; o app está em uso real nas aulas. Próximo passo é a Fase 2 (análise via LLM), já iniciada em 30/07/2026 — ver `docs/fase-2-analise-llm.md` |
+| 28/08/2026 | **Bug real de uso encontrado e corrigido: vídeo não tocava no Linux** (ícone de play riscado, sem áudio nem imagem), apesar da verificação visual de 01/08/2026 ter marcado o fluxo como confirmado — a verificação daquela data não pegou o problema (hipótese: máquina/versão de WebKitGTK diferente, ou o clique em play não foi de fato testado). Diagnóstico: log de debug confirmou que a requisição Range chegava certinha no handler Go (`bytes=0-1445`, típico probe de typefind do GStreamer), sem nenhuma requisição de continuação depois — e o mesmo `.mp4` tocava normal fora do app (Chrome/Firefox), descartando codec/arquivo. Causa raiz: o WebKitGTK (GTK4/webkitgtk-6.0, ainda "experimental" no Wails v3) não entrega direito respostas 206/Range pro pipeline GStreamer quando a origem é o scheme de URI customizado (`wails://`) que o Wails usa pra servir tudo no Linux — fricção conhecida dessa combinação. Fix: `services/video_server.go` sobe um `http.Server` real em `127.0.0.1` (porta livre escolhida pelo SO) só pra vídeo, registrado como `VideoServerService`; o `<video src>` do frontend agora usa `${VideoServerService.BaseURL()}/media/lesson/{id}` em vez do path relativo servido pelo AssetServer. `VideoAssetMiddleware` foi removido (virou `VideoAssetHandler`, sem depender de Wails) — o `Middleware` do `AssetOptions` em `main.go` não é mais usado. De brinde, `Linux.WebviewGpuPolicy` também passou a ser setado explicitamente pra `Never` (o zero-value real é `Always`, não `Never` como a doc do Wails sugere — isso só se aplica dentro de `wails.Run()`, que este app não usa; ver `github.com/wailsapp/wails/issues/2977`) — não foi a causa deste bug, mas é uma cilada real da mesma área (decodificação de vídeo) e não custa nada manter desligada | `go vet ./...`, `go test ./...`, `pnpm run check`, `wails3 build` confirmados limpos; verificado numa janela real no Linux que o vídeo agora toca. Falta re-verificar em janela real no Windows — o AssetServer padrão do Wails nunca foi de fato confirmado funcionando lá pra vídeo (só listado como "pendente" em histórias anteriores), e agora o app depende do `VideoServerService` em todas as plataformas; também vale reavaliar o item de backlog "seek no vídeo é lento" à luz dessa mudança de servidor |
