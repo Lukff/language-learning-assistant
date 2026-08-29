@@ -48,7 +48,7 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 		LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("listar aulas com jobs pra fila: %w", err)
+		return nil, fmt.Errorf("list lessons with jobs for queue: %w", err)
 	}
 	defer rows.Close()
 
@@ -65,7 +65,7 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 			&extractStatus, &extractAttempts, &extractError, &extractUpdatedAt,
 			&transcribeStatus, &transcribeAttempts, &transcribeError, &transcribeUpdatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("ler linha da fila: %w", err)
+			return nil, fmt.Errorf("read queue row: %w", err)
 		}
 
 		entry := QueueEntry{LessonID: lessonID, LessonDate: lessonDate, TeacherName: teacherName}
@@ -91,7 +91,7 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 		out = append(out, entry)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar fila: %w", err)
+		return nil, fmt.Errorf("iterate queue: %w", err)
 	}
 
 	sortQueueEntries(out)

@@ -36,7 +36,7 @@ type elevenLabsWord struct {
 func mapElevenLabsResponse(raw []byte) (*Result, error) {
 	var parsed elevenLabsResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("json inválido: %w", err)
+		return nil, fmt.Errorf("invalid json: %w", err)
 	}
 
 	return &Result{

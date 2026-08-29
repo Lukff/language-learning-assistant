@@ -62,11 +62,15 @@
   let currentTime: number = $state(0);
   let rowRefs: (HTMLElement | null)[] = [];
 
+  const MONTH_ABBREVIATIONS = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
-    const formattedDate = `${day}/${month}/${year}`;
-    return timePart ? `${formattedDate} ${timePart}` : formattedDate;
+    const formattedDate = `${MONTH_ABBREVIATIONS[Number(month) - 1]} ${Number(day)}, ${year}`;
+    return timePart ? `${formattedDate}, ${timePart}` : formattedDate;
   }
 
   function formatDuration(seconds: number | null): string {
@@ -101,7 +105,7 @@
   }
 
   function labelFor(speaker: string, role: Role): string {
-    if (role === "aluno") return "Você";
+    if (role === "aluno") return "You";
     if (role === "tutor") return "Tutor";
     return neutralLabel(speaker);
   }
@@ -134,7 +138,7 @@
   }
 
   async function fetchTranscriptIfReady() {
-    if (!lesson || lesson.status !== "pronta") {
+    if (!lesson || lesson.status !== "ready") {
       transcript = null;
       return;
     }
@@ -149,7 +153,7 @@
   }
 
   async function fetchCorrectionsIfReady() {
-    if (!lesson || lesson.status !== "pronta" || !lesson.studentSpeakerLabel) {
+    if (!lesson || lesson.status !== "ready" || !lesson.studentSpeakerLabel) {
       corrections = null;
       return;
     }
@@ -173,7 +177,7 @@
   }
 
   async function reprocessCorrections() {
-    const confirmed = confirm("Isso sobrescreve a análise atual e gera uma nova chamada à API. Continuar?");
+    const confirmed = confirm("This overwrites the current analysis and triggers a new API call. Continue?");
     if (!confirmed) return;
     correctionsError = "";
     analyzingCorrections = true;
@@ -200,7 +204,7 @@
 
   async function analyzeTopics() {
     if ((topics?.items?.length ?? 0) > 0) {
-      const confirmed = confirm("Isso substitui os tópicos atuais e gera uma nova chamada à API. Continuar?");
+      const confirmed = confirm("This replaces the current topics and triggers a new API call. Continue?");
       if (!confirmed) return;
     }
     topicsError = "";
@@ -215,7 +219,7 @@
   }
 
   async function reprocessTopics() {
-    const confirmed = confirm("Isso substitui os tópicos atuais e gera uma nova chamada à API. Continuar?");
+    const confirmed = confirm("This replaces the current topics and triggers a new API call. Continue?");
     if (!confirmed) return;
     topicsError = "";
     analyzingTopics = true;
@@ -282,10 +286,10 @@
 </script>
 
 <div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
-  <button class="back" onclick={onBack} style="color: {colors.mut};">← Biblioteca</button>
+  <button class="back" onclick={onBack} style="color: {colors.mut};">← Library</button>
 
   {#if loading}
-    <p style="color: {colors.mut};">Carregando…</p>
+    <p style="color: {colors.mut};">Loading…</p>
   {:else if lessonError}
     <p class="error" style="color: {colors.red};">{lessonError}</p>
   {:else if lesson}
@@ -298,13 +302,13 @@
       <span class="meta" style="color: {colors.mut}; font-family: {fonts.mono};"
         >{lesson.tutor}{formatDuration(lesson.durationSeconds) ? ` · ${formatDuration(lesson.durationSeconds)}` : ""}</span
       >
-      <button onclick={() => (editing = true)}>Editar</button>
+      <button onclick={() => (editing = true)}>Edit</button>
       {#if lesson.videoMissing}
         <span
           class="video-missing-badge"
           style="color: {colors.amber}; background: rgba(227,164,76,.1);"
         >
-          vídeo não encontrado na pasta atual
+          video not found in current folder
         </span>
       {/if}
     </div>
@@ -319,24 +323,24 @@
       <input
         class="topic-input"
         bind:value={newTopicName}
-        placeholder="+ adicionar tópico"
+        placeholder="+ add topic"
         onkeydown={(e) => { if (e.key === "Enter") addTopic(); }}
         style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
       />
       {#if lesson.studentSpeakerLabel}
         {#if topics?.analyzed}
           <button onclick={reprocessTopics} disabled={analyzingTopics}>
-            {analyzingTopics ? "Reprocessando…" : "Reprocessar tópicos"}
+            {analyzingTopics ? "Reprocessing…" : "Reprocess topics"}
           </button>
         {:else}
           <button onclick={analyzeTopics} disabled={analyzingTopics}>
-            {analyzingTopics ? "Analisando…" : "Analisar tópicos"}
+            {analyzingTopics ? "Analyzing…" : "Analyze topics"}
           </button>
         {/if}
       {/if}
     </div>
     {#if topics?.analyzed && (topics.items?.length ?? 0) === 0}
-      <p class="hint" style="color: {colors.mut};">sem tópicos identificados</p>
+      <p class="hint" style="color: {colors.mut};">no topics identified</p>
     {/if}
     {#if topicsError}
       <p class="error" style="color: {colors.red};">{topicsError}</p>
@@ -355,36 +359,36 @@
           <track kind="captions" />
         </video>
         <p class="hint" style="color: {colors.mut};">
-          Clique em qualquer fala ao lado para pular o vídeo até aquele momento.
+          Click any line on the side to jump the video to that moment.
         </p>
       </div>
 
       <div class="panel" style="background: {colors.surface}; border: 1px solid {colors.line};">
-        {#if lesson.status === "processando"}
-          <p class="panel-message" style="color: {colors.mut};">Transcrição em processamento…</p>
-        {:else if lesson.status === "erro"}
+        {#if lesson.status === "processing"}
+          <p class="panel-message" style="color: {colors.mut};">Transcription in progress…</p>
+        {:else if lesson.status === "error"}
           <p class="panel-message" style="color: {colors.red};">{lesson.errorMessage}</p>
           <button onclick={retry} disabled={retrying}>
-            {retrying ? "Reprocessando…" : "Reprocessar"}
+            {retrying ? "Reprocessing…" : "Reprocess"}
           </button>
         {:else if loadingTranscript}
-          <p class="panel-message" style="color: {colors.mut};">Carregando transcrição…</p>
+          <p class="panel-message" style="color: {colors.mut};">Loading transcript…</p>
         {:else if !transcript || !transcript.utterances || transcript.utterances.length === 0}
-          <p class="panel-message" style="color: {colors.mut};">Transcrição em processamento…</p>
+          <p class="panel-message" style="color: {colors.mut};">Transcription in progress…</p>
         {:else}
           {#if !lesson.studentSpeakerLabel}
             <p class="hint" style="color: {colors.mut};">
-              Escolha quem é você em "Editar" para habilitar a análise de correções.
+              Choose who you are in "Edit" to enable corrections analysis.
             </p>
           {:else}
             <div class="corrections-actions">
               {#if corrections?.analyzed}
                 <button onclick={reprocessCorrections} disabled={analyzingCorrections}>
-                  {analyzingCorrections ? "Reprocessando…" : "Reprocessar correções"}
+                  {analyzingCorrections ? "Reprocessing…" : "Reprocess corrections"}
                 </button>
               {:else}
                 <button onclick={analyzeCorrections} disabled={analyzingCorrections}>
-                  {analyzingCorrections ? "Analisando…" : "Analisar correções"}
+                  {analyzingCorrections ? "Analyzing…" : "Analyze corrections"}
                 </button>
               {/if}
               {#if correctionsError}
@@ -423,7 +427,7 @@
                 {/if}
                 {#each fallbackCorrections as fallback}
                   <p class="correction-fallback" style="color: {colors.mut};">
-                    ⚠ correção não localizada: "{fallback.original}" → "{fallback.correction}" — {fallback.explanation}
+                    ⚠ correction not matched: "{fallback.original}" → "{fallback.correction}" — {fallback.explanation}
                   </p>
                 {/each}
               </button>

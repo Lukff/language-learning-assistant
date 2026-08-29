@@ -8,5 +8,5 @@ import (
 )
 
 func moveFileNoReplace(_, _ string) error {
-	return fmt.Errorf("move atômico sem substituição não é suportado em %s", runtime.GOOS)
+	return fmt.Errorf("atomic move without replacement is not supported on %s", runtime.GOOS)
 }

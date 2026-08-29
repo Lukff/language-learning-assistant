@@ -25,11 +25,12 @@ func parseTopics(raw json.RawMessage, utteranceCount int) ([]string, error) {
 	return parsed.Topics, nil
 }
 
-// NewTopicsTask returns the topics task on prompt version 4
+// NewTopicsTask returns the topics task on prompt version 5
 // (general granularity + reuse of existing topics + a maximum of
-// 4 topics per lesson + topics in English).
+// 4 topics per lesson + topics in English + English instructions,
+// matching the app-wide switch away from PT-BR).
 func NewTopicsTask() TaskDef {
-	return task[[]string]{name: "analyze_topics", version: 4, prompt: mustLoadPrompt("analyze-topics-v4.md"), parse: parseTopics}
+	return task[[]string]{name: "analyze_topics", version: 5, prompt: mustLoadPrompt("analyze-topics-v5.md"), parse: parseTopics}
 }
 
 // ParseTopicsResult decodes a persisted result_json (JSON array of
@@ -38,7 +39,7 @@ func NewTopicsTask() TaskDef {
 func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error) {
 	var out []string
 	if err := json.Unmarshal(resultJSON, &out); err != nil {
-		return nil, fmt.Errorf("analysis: desserializar resultado de analyze_topics: %w", err)
+		return nil, fmt.Errorf("analysis: deserialize analyze_topics result: %w", err)
 	}
 	return out, nil
 }
@@ -52,7 +53,7 @@ func AppendExistingTopics(transcript string, existing []string) string {
 	}
 	var b strings.Builder
 	b.WriteString(transcript)
-	b.WriteString("\n\nTópicos já utilizados em outras aulas (reutilize quando fizer sentido):\n")
+	b.WriteString("\n\nTopics already used in other lessons (reuse when it makes sense):\n")
 	for _, t := range existing {
 		b.WriteString("- ")
 		b.WriteString(t)

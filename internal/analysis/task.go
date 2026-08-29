@@ -40,15 +40,15 @@ func (t task[T]) Prompt() string { return t.prompt }
 func (t task[T]) Execute(ctx context.Context, provider Provider, transcript string, utteranceCount int) (json.RawMessage, json.RawMessage, error) {
 	raw, err := provider.Complete(ctx, t.prompt, transcript)
 	if err != nil {
-		return nil, raw, fmt.Errorf("analysis: tarefa %s: %w", t.name, err)
+		return nil, raw, fmt.Errorf("analysis: task %s: %w", t.name, err)
 	}
 	parsed, err := t.parse(raw, utteranceCount)
 	if err != nil {
-		return nil, raw, fmt.Errorf("analysis: tarefa %s: parsear: %w", t.name, err)
+		return nil, raw, fmt.Errorf("analysis: task %s: parse: %w", t.name, err)
 	}
 	resultJSON, err := json.Marshal(parsed)
 	if err != nil {
-		return nil, raw, fmt.Errorf("analysis: tarefa %s: serializar resultado: %w", t.name, err)
+		return nil, raw, fmt.Errorf("analysis: task %s: serialize result: %w", t.name, err)
 	}
 	return resultJSON, raw, nil
 }
@@ -83,7 +83,7 @@ func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discar
 func mustLoadPrompt(filename string) string {
 	b, err := prompts.FS.ReadFile(filename)
 	if err != nil {
-		panic(fmt.Sprintf("analysis: prompt %s não encontrado: %v", filename, err))
+		panic(fmt.Sprintf("analysis: prompt %s not found: %v", filename, err))
 	}
 	return string(b)
 }

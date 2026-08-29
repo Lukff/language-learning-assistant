@@ -40,9 +40,9 @@
   let topicFilterInput: string = $state("");
 
   const STATUS_LABEL: Record<string, string> = {
-    pronta: "pronta",
-    processando: "processando…",
-    erro: "erro",
+    ready: "ready",
+    processing: "processing…",
+    error: "error",
   };
 
   async function loadPending() {
@@ -80,14 +80,18 @@
     applyFilter();
   }
 
+  const MONTH_ABBREVIATIONS = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
   // lessonDate is stored as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the format of
-  // <input type="datetime-local">); this just reformats it for pt-BR display
+  // <input type="datetime-local">); this just reformats it for display
   // without depending on timezone (it's not a "Z" timestamp, it's local time).
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
-    const formattedDate = `${day}/${month}/${year}`;
-    return timePart ? `${formattedDate} ${timePart}` : formattedDate;
+    const formattedDate = `${MONTH_ABBREVIATIONS[Number(month) - 1]} ${Number(day)}, ${year}`;
+    return timePart ? `${formattedDate}, ${timePart}` : formattedDate;
   }
 
   function formatDuration(seconds: number | null): string {
@@ -123,7 +127,7 @@
     syncing = true;
     try {
       const summary = await ImportService.ScanFolder();
-      syncMessage = `${summary.new} novas, ${summary.updated} atualizadas, ${summary.errors} erros`;
+      syncMessage = `${summary.new} new, ${summary.updated} updated, ${summary.errors} errors`;
       // The scan can reconcile the video_path of already-confirmed lessons
       // (file renamed/moved, found by hash) — reload lessons
       // too, not just pending, otherwise the missing-video badge (Story 8)
@@ -200,12 +204,12 @@
   style="font-family: {fonts.body}; color: {colors.text}; --drop-highlight: {colors.blue};"
 >
   <div class="header-row">
-    <h1 style="font-family: {fonts.display};">Biblioteca</h1>
+    <h1 style="font-family: {fonts.display};">Library</h1>
     <div class="header-actions">
-      <button onclick={onOpenTeachers}>Professores</button>
-      <button onclick={onOpenTopics}>Tópicos</button>
+      <button onclick={onOpenTeachers}>Teachers</button>
+      <button onclick={onOpenTopics}>Topics</button>
       <button onclick={syncFolder} disabled={syncing}>
-        {syncing ? "Sincronizando…" : "Sincronizar pasta"}
+        {syncing ? "Syncing…" : "Sync folder"}
       </button>
     </div>
   </div>
@@ -225,16 +229,16 @@
   {/if}
 
   {#if loading}
-    <p style="color: {colors.mut};">Carregando…</p>
+    <p style="color: {colors.mut};">Loading…</p>
   {:else}
     {#if pending.length > 0}
       <section class="pending" style="background: {colors.surface}; border: 1px solid {colors.line};">
-        <h2 style="font-family: {fonts.display};">{pending.length} aulas aguardando revisão</h2>
+        <h2 style="font-family: {fonts.display};">{pending.length} lessons awaiting review</h2>
         <ul>
           {#each pending as item (item.id)}
             <li>
               <span class="path" style="font-family: {fonts.mono}; color: {colors.mut};">{item.path}</span>
-              <button onclick={() => (reviewing = item)}>Revisar</button>
+              <button onclick={() => (reviewing = item)}>Review</button>
             </li>
           {/each}
         </ul>
@@ -245,28 +249,28 @@
       <label>
         Tutor
         <select bind:value={filterTeacherId} onchange={applyFilter}>
-          <option value={0}>Todos</option>
+          <option value={0}>All</option>
           {#each teachers as teacher (teacher.id)}
             <option value={teacher.id}>{teacher.name}</option>
           {/each}
         </select>
       </label>
       <label>
-        De
+        From
         <input type="date" bind:value={filterDateFrom} onchange={applyFilter} />
       </label>
       <label>
-        Até
+        To
         <input type="date" bind:value={filterDateTo} onchange={applyFilter} />
       </label>
       {#if topics.length > 0}
         <div class="topic-filter">
           <label>
-            Tópicos
+            Topics
             <input
               list="topic-filter-datalist"
               type="text"
-              placeholder="Adicionar tópico…"
+              placeholder="Add topic…"
               autocomplete="off"
               bind:value={topicFilterInput}
               onchange={() => addTopicFilter(topicFilterInput)}
@@ -287,7 +291,7 @@
                     <button
                       type="button"
                       onclick={() => removeTopicFilter(topicId)}
-                      aria-label={`Remover filtro ${topic.name}`}>×</button
+                      aria-label={`Remove filter ${topic.name}`}>×</button
                     >
                   </span>
                 {/if}
@@ -300,7 +304,7 @@
 
     {#if lessons.length > 0}
       <section class="lessons" style="background: {colors.surface}; border: 1px solid {colors.line};">
-        <h2 style="font-family: {fonts.display};">{lessons.length} aulas</h2>
+        <h2 style="font-family: {fonts.display};">{lessons.length} lessons</h2>
         <ul>
           {#each lessons as lesson (lesson.id)}
             <li>
@@ -312,20 +316,20 @@
                     : ""}</span
                 >
               </button>
-              {#if lesson.status === "erro"}
+              {#if lesson.status === "error"}
                 <div class="status-block">
-                  <span class="badge" style="color: {colors.red}; background: rgba(224,108,108,.1);">erro</span>
+                  <span class="badge" style="color: {colors.red}; background: rgba(224,108,108,.1);">error</span>
                   <span class="error-message" style="color: {colors.mut};">{lesson.errorMessage}</span>
                   <button onclick={() => retry(lesson.id)} disabled={retryingId === lesson.id}>
-                    {retryingId === lesson.id ? "Reprocessando…" : "Reprocessar"}
+                    {retryingId === lesson.id ? "Reprocessing…" : "Reprocess"}
                   </button>
                 </div>
               {:else}
                 <span
                   class="badge"
-                  style="color: {lesson.status === 'pronta'
+                  style="color: {lesson.status === 'ready'
                     ? colors.green
-                    : colors.blue}; background: {lesson.status === 'pronta'
+                    : colors.blue}; background: {lesson.status === 'ready'
                     ? 'rgba(111,191,142,.1)'
                     : 'rgba(110,168,254,.1)'};"
                 >
@@ -334,7 +338,7 @@
               {/if}
               {#if lesson.videoMissing}
                 <span class="badge" style="color: {colors.amber}; background: rgba(227,164,76,.1);">
-                  vídeo ausente
+                  video missing
                 </span>
               {/if}
             </li>
@@ -344,7 +348,7 @@
     {/if}
 
     {#if pending.length === 0 && lessons.length === 0}
-      <p style="color: {colors.mut};">Nenhuma aula importada ainda.</p>
+      <p style="color: {colors.mut};">No lessons imported yet.</p>
     {/if}
   {/if}
 </div>

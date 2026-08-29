@@ -19,12 +19,12 @@ func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64
 	err := conn.QueryRow(`SELECT id, content FROM prompts WHERE name = ? AND version = ?`, name, version).Scan(&id, &existingContent)
 	if err == nil {
 		if existingContent != content {
-			slog.Warn("analysis: conteúdo do prompt divergente pra versão já registrada", "nome", name, "versao", version)
+			slog.Warn("analysis: prompt content diverges from already registered version", "name", name, "version", version)
 		}
 		return id, nil
 	}
 	if err != sql.ErrNoRows {
-		return 0, fmt.Errorf("buscar prompt %s v%d: %w", name, version, err)
+		return 0, fmt.Errorf("fetch prompt %s v%d: %w", name, version, err)
 	}
 
 	res, err := conn.Exec(
@@ -32,7 +32,7 @@ func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64
 		name, version, content, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return 0, fmt.Errorf("inserir prompt %s v%d: %w", name, version, err)
+		return 0, fmt.Errorf("insert prompt %s v%d: %w", name, version, err)
 	}
 	return res.LastInsertId()
 }
@@ -52,7 +52,7 @@ func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID in
 		lessonID, task, promptID, model, resultJSON, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return fmt.Errorf("gravar analysis_result da lesson %d, task %s: %w", lessonID, task, err)
+		return fmt.Errorf("write analysis_result for lesson %d, task %s: %w", lessonID, task, err)
 	}
 	return nil
 }
@@ -79,7 +79,7 @@ func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisRes
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar analysis_result da lesson %d, task %s: %w", lessonID, task, err)
+		return nil, fmt.Errorf("fetch analysis_result for lesson %d, task %s: %w", lessonID, task, err)
 	}
 	return &r, nil
 }
@@ -91,20 +91,20 @@ func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisRes
 func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 	tx, err := conn.Begin()
 	if err != nil {
-		return fmt.Errorf("iniciar transação de lesson_topics da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("start lesson_topics transaction for lesson %d: %w", lessonID, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`DELETE FROM lesson_topics WHERE lesson_id = ?`, lessonID); err != nil {
-		return fmt.Errorf("apagar lesson_topics antigos da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("delete old lesson_topics for lesson %d: %w", lessonID, err)
 	}
 	for _, topicID := range topicIDs {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO lesson_topics (lesson_id, topic_id) VALUES (?, ?)`, lessonID, topicID); err != nil {
-			return fmt.Errorf("inserir tópico %d da lesson %d: %w", topicID, lessonID, err)
+			return fmt.Errorf("insert topic %d for lesson %d: %w", topicID, lessonID, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commitar lesson_topics da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("commit lesson_topics for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 // of the analysis).
 func DeleteSpeakerDependentAnalysisResults(conn *sql.DB, lessonID int64) error {
 	if _, err := conn.Exec(`DELETE FROM analysis_results WHERE lesson_id = ? AND task != 'analyze_topics'`, lessonID); err != nil {
-		return fmt.Errorf("apagar análises dependentes de falante da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("delete speaker-dependent analyses for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }

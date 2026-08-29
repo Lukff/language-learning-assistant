@@ -567,11 +567,11 @@ func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
 	defer conn.Close()
 	svc := NewImportService(conn)
 
-	if err := svc.ConfirmImport(1, "", ""); err == nil || err.Error() != "data da aula não pode ser vazia" {
-		t.Errorf("ConfirmImport() com data e tutor vazios = %v, esperado data da aula não pode ser vazia", err)
+	if err := svc.ConfirmImport(1, "", ""); err == nil || err.Error() != "lesson date cannot be empty" {
+		t.Errorf("ConfirmImport() com data e tutor vazios = %v, esperado lesson date cannot be empty", err)
 	}
-	if err := svc.ConfirmImport(1, "../foraT12:30", ""); err == nil || err.Error() != "tutor não pode ser vazio" {
-		t.Errorf("ConfirmImport() com tutor vazio = %v, esperado tutor não pode ser vazio", err)
+	if err := svc.ConfirmImport(1, "../foraT12:30", ""); err == nil || err.Error() != "tutor cannot be empty" {
+		t.Errorf("ConfirmImport() com tutor vazio = %v, esperado tutor cannot be empty", err)
 	}
 }
 
@@ -592,7 +592,7 @@ func TestImportService_ConfirmImport_RejectsMalformedLessonDate(t *testing.T) {
 	} {
 		t.Run(lessonDate, func(t *testing.T) {
 			err := svc.ConfirmImport(1, lessonDate, "Sarah M.")
-			if err == nil || err.Error() != "data e horário da aula devem estar no formato AAAA-MM-DDTHH:MM" {
+			if err == nil || err.Error() != "lesson date and time must be in YYYY-MM-DDTHH:MM format" {
 				t.Errorf("ConfirmImport(%q) = %v, esperado erro de formato", lessonDate, err)
 			}
 		})
@@ -633,8 +633,8 @@ func TestImportService_ConfirmImport_RejectsDateWithoutTime(t *testing.T) {
 		t.Fatalf("setup: ListPendingImports() = %+v, %v", pending, err)
 	}
 
-	if err := svc.ConfirmImport(pending[0].ID, "2026-07-15", "Sarah M."); err == nil || err.Error() != "horário da aula é obrigatório" {
-		t.Errorf("ConfirmImport() com data sem horário = %v, esperado horário da aula é obrigatório", err)
+	if err := svc.ConfirmImport(pending[0].ID, "2026-07-15", "Sarah M."); err == nil || err.Error() != "lesson time is required" {
+		t.Errorf("ConfirmImport() com data sem horário = %v, esperado lesson time is required", err)
 	}
 
 	pending, err = svc.ListPendingImports()

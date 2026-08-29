@@ -26,7 +26,7 @@ func parseTutorCorrections(raw json.RawMessage, utteranceCount int) ([]TutorCorr
 	}
 	kept, discarded := filterAnchored(parsed.TutorCorrections, utteranceCount)
 	if discarded > 0 {
-		slog.Warn("analysis: itens descartados por utterance_index inválido", "tarefa", "analyze_tutor_corrections", "descartados", discarded)
+		slog.Warn("analysis: items discarded due to invalid utterance_index", "task", "analyze_tutor_corrections", "discarded", discarded)
 	}
 	return kept, nil
 }

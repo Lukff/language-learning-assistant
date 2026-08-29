@@ -101,8 +101,8 @@ func TestRenameTopic_CollidingNameReturnsFriendlyError(t *testing.T) {
 	if err == nil {
 		t.Fatal("RenameTopic() colidindo = nil, esperado erro amigável")
 	}
-	if err.Error() != "já existe um tópico com esse nome" {
-		t.Errorf("RenameTopic() = %q, esperado \"já existe um tópico com esse nome\"", err.Error())
+	if err.Error() != "a topic with this name already exists" {
+		t.Errorf("RenameTopic() = %q, esperado \"a topic with this name already exists\"", err.Error())
 	}
 }
 

@@ -28,7 +28,7 @@ type openAICompatibleProvider struct {
 
 func newOpenAICompatibleProvider(name, baseURL, apiKey, model string, supportsPrefill bool) (*openAICompatibleProvider, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("analysis: chave de API vazia para %s", name)
+		return nil, fmt.Errorf("analysis: empty API key for %s", name)
 	}
 	return &openAICompatibleProvider{
 		name:            name,
@@ -57,28 +57,28 @@ func (p *openAICompatibleProvider) Model() string { return p.model }
 // (task.go) is what knows the expected schema of this content.
 func (p *openAICompatibleProvider) Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) {
 	if systemPrompt == "" {
-		return nil, fmt.Errorf("analysis: prompt de sistema vazio para %s", p.name)
+		return nil, fmt.Errorf("analysis: empty system prompt for %s", p.name)
 	}
 
 	req, err := p.buildRequest(ctx, systemPrompt, transcript)
 	if err != nil {
-		return nil, fmt.Errorf("analysis: montar requisição %s: %w", p.name, err)
+		return nil, fmt.Errorf("analysis: build %s request: %w", p.name, err)
 	}
 
 	raw, err := p.do(req)
 	if err != nil {
-		return nil, fmt.Errorf("analysis: chamar %s: %w", p.name, err)
+		return nil, fmt.Errorf("analysis: call %s: %w", p.name, err)
 	}
 
 	var envelope openAICompatibleEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return nil, fmt.Errorf("analysis: parsear envelope %s: %w", p.name, err)
+		return nil, fmt.Errorf("analysis: parse %s envelope: %w", p.name, err)
 	}
 	if len(envelope.Choices) == 0 {
-		return nil, fmt.Errorf("analysis: %s não retornou choices", p.name)
+		return nil, fmt.Errorf("analysis: %s returned no choices", p.name)
 	}
 
-	slog.Info("analysis: chamada concluída", "provedor", p.name,
+	slog.Info("analysis: call completed", "provider", p.name,
 		"prompt_tokens", envelope.Usage.PromptTokens, "completion_tokens", envelope.Usage.CompletionTokens)
 
 	return stripTrailingCodeFence([]byte(envelope.Choices[0].Message.Content)), nil

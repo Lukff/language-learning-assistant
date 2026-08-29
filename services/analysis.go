@@ -78,7 +78,7 @@ func toCorrectionDisplays(items []analysis.CorrectionDisplay) []CorrectionDispla
 func (s *AnalysisService) GetCorrections(lessonID int64) (CorrectionsResult, error) {
 	result, err := db.FindAnalysisResult(s.conn, lessonID, correctionsTaskName)
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("buscar análise de correções da lesson %d: %w", lessonID, err)
+		return CorrectionsResult{}, fmt.Errorf("find corrections analysis for lesson %d: %w", lessonID, err)
 	}
 	if result == nil {
 		return CorrectionsResult{}, nil
@@ -91,10 +91,10 @@ func (s *AnalysisService) GetCorrections(lessonID int64) (CorrectionsResult, err
 func (s *AnalysisService) buildResult(lessonID int64, resultJSON string) (CorrectionsResult, error) {
 	transcript, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("buscar transcrição da lesson %d: %w", lessonID, err)
+		return CorrectionsResult{}, fmt.Errorf("find transcript for lesson %d: %w", lessonID, err)
 	}
 	if transcript == nil {
-		return CorrectionsResult{}, fmt.Errorf("aula %d não tem mais transcrição", lessonID)
+		return CorrectionsResult{}, fmt.Errorf("lesson %d no longer has a transcript", lessonID)
 	}
 	return s.buildResultFromTranscript(transcript.Utterances, resultJSON)
 }
@@ -102,7 +102,7 @@ func (s *AnalysisService) buildResult(lessonID int64, resultJSON string) (Correc
 func (s *AnalysisService) buildResultFromTranscript(utterances []stt.Utterance, resultJSON string) (CorrectionsResult, error) {
 	corrections, err := analysis.ParseCorrectionsResult(json.RawMessage(resultJSON))
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("desserializar correções: %w", err)
+		return CorrectionsResult{}, fmt.Errorf("deserialize corrections: %w", err)
 	}
 	return CorrectionsResult{Analyzed: true, Items: toCorrectionDisplays(analysis.MatchCorrections(utterances, corrections))}, nil
 }
@@ -123,27 +123,27 @@ func (s *AnalysisService) ReprocessCorrections(lessonID int64) (CorrectionsResul
 func (s *AnalysisService) runCorrections(lessonID int64, overwrite bool) (CorrectionsResult, error) {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("buscar lesson %d: %w", lessonID, err)
+		return CorrectionsResult{}, fmt.Errorf("find lesson %d: %w", lessonID, err)
 	}
 	if lesson == nil {
-		return CorrectionsResult{}, fmt.Errorf("aula %d não encontrada", lessonID)
+		return CorrectionsResult{}, fmt.Errorf("lesson %d not found", lessonID)
 	}
 	if lesson.StudentSpeakerLabel == nil {
-		return CorrectionsResult{}, fmt.Errorf("escolha quem é você na aula antes de analisar correções")
+		return CorrectionsResult{}, fmt.Errorf("choose who you are in the lesson before analyzing corrections")
 	}
 
 	transcript, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("buscar transcrição da lesson %d: %w", lessonID, err)
+		return CorrectionsResult{}, fmt.Errorf("find transcript for lesson %d: %w", lessonID, err)
 	}
 	if transcript == nil {
-		return CorrectionsResult{}, fmt.Errorf("aula %d ainda não tem transcrição", lessonID)
+		return CorrectionsResult{}, fmt.Errorf("lesson %d doesn't have a transcript yet", lessonID)
 	}
 
 	if !overwrite {
 		existing, err := db.FindAnalysisResult(s.conn, lessonID, correctionsTaskName)
 		if err != nil {
-			return CorrectionsResult{}, fmt.Errorf("buscar análise de correções da lesson %d: %w", lessonID, err)
+			return CorrectionsResult{}, fmt.Errorf("find corrections analysis for lesson %d: %w", lessonID, err)
 		}
 		if existing != nil {
 			return s.buildResultFromTranscript(transcript.Utterances, existing.ResultJSON)
@@ -153,37 +153,37 @@ func (s *AnalysisService) runCorrections(lessonID int64, overwrite bool) (Correc
 	speakerRoles := make(map[string]string, len(transcript.Utterances))
 	for _, u := range transcript.Utterances {
 		if u.Speaker == *lesson.StudentSpeakerLabel {
-			speakerRoles[u.Speaker] = "aluno"
+			speakerRoles[u.Speaker] = "student"
 		} else {
 			speakerRoles[u.Speaker] = "tutor"
 		}
 	}
 	formatted, err := analysis.FormatTranscript(transcript.Utterances, speakerRoles)
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("formatar transcrição da lesson %d: %w", lessonID, err)
+		return CorrectionsResult{}, fmt.Errorf("format transcript for lesson %d: %w", lessonID, err)
 	}
 
 	provider, err := s.providerFactory()
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
-			return CorrectionsResult{}, fmt.Errorf("configure a credencial do provedor de análise em Configurações")
+			return CorrectionsResult{}, fmt.Errorf("set up the analysis provider credential in Settings")
 		}
-		return CorrectionsResult{}, fmt.Errorf("obter provedor de análise: %w", err)
+		return CorrectionsResult{}, fmt.Errorf("get analysis provider: %w", err)
 	}
 
 	task := analysis.NewCorrectionsTask()
 	resultJSON, _, err := task.Execute(context.Background(), provider, formatted, len(transcript.Utterances))
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("analisar correções da lesson %d: %w", lessonID, err)
+		return CorrectionsResult{}, fmt.Errorf("analyze corrections for lesson %d: %w", lessonID, err)
 	}
 
 	promptID, err := db.UpsertPrompt(s.conn, task.Name(), task.Version(), task.Prompt())
 	if err != nil {
-		return CorrectionsResult{}, fmt.Errorf("registrar prompt %s: %w", task.Name(), err)
+		return CorrectionsResult{}, fmt.Errorf("register prompt %s: %w", task.Name(), err)
 	}
 
 	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON)); err != nil {
-		return CorrectionsResult{}, fmt.Errorf("gravar resultado da análise: %w", err)
+		return CorrectionsResult{}, fmt.Errorf("save analysis result: %w", err)
 	}
 
 	return s.buildResultFromTranscript(transcript.Utterances, string(resultJSON))
@@ -216,11 +216,11 @@ func (s *AnalysisService) ReprocessTopics(lessonID int64) (TopicsResult, error) 
 func (s *AnalysisService) currentTopics(lessonID int64) (TopicsResult, error) {
 	items, err := db.ListLessonTopics(s.conn, lessonID)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("buscar tópicos da lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("find topics for lesson %d: %w", lessonID, err)
 	}
 	result, err := db.FindAnalysisResult(s.conn, lessonID, topicsTaskName)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("buscar análise de tópicos da lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("find topics analysis for lesson %d: %w", lessonID, err)
 	}
 	return TopicsResult{Analyzed: result != nil, Items: toTopics(items)}, nil
 }
@@ -236,27 +236,27 @@ func toTopics(items []db.Topic) []Topic {
 func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResult, error) {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("buscar lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("find lesson %d: %w", lessonID, err)
 	}
 	if lesson == nil {
-		return TopicsResult{}, fmt.Errorf("aula %d não encontrada", lessonID)
+		return TopicsResult{}, fmt.Errorf("lesson %d not found", lessonID)
 	}
 	if lesson.StudentSpeakerLabel == nil {
-		return TopicsResult{}, fmt.Errorf("escolha quem é você na aula antes de analisar tópicos")
+		return TopicsResult{}, fmt.Errorf("choose who you are in the lesson before analyzing topics")
 	}
 
 	transcript, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("buscar transcrição da lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("find transcript for lesson %d: %w", lessonID, err)
 	}
 	if transcript == nil {
-		return TopicsResult{}, fmt.Errorf("aula %d ainda não tem transcrição", lessonID)
+		return TopicsResult{}, fmt.Errorf("lesson %d doesn't have a transcript yet", lessonID)
 	}
 
 	if !overwrite {
 		existing, err := db.FindAnalysisResult(s.conn, lessonID, topicsTaskName)
 		if err != nil {
-			return TopicsResult{}, fmt.Errorf("buscar análise de tópicos da lesson %d: %w", lessonID, err)
+			return TopicsResult{}, fmt.Errorf("find topics analysis for lesson %d: %w", lessonID, err)
 		}
 		if existing != nil {
 			return s.currentTopics(lessonID)
@@ -266,19 +266,19 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 	speakerRoles := make(map[string]string, len(transcript.Utterances))
 	for _, u := range transcript.Utterances {
 		if u.Speaker == *lesson.StudentSpeakerLabel {
-			speakerRoles[u.Speaker] = "aluno"
+			speakerRoles[u.Speaker] = "student"
 		} else {
 			speakerRoles[u.Speaker] = "tutor"
 		}
 	}
 	formatted, err := analysis.FormatTranscript(transcript.Utterances, speakerRoles)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("formatar transcrição da lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("format transcript for lesson %d: %w", lessonID, err)
 	}
 
 	existingTopics, err := db.ListTopics(s.conn)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("listar tópicos existentes: %w", err)
+		return TopicsResult{}, fmt.Errorf("list existing topics: %w", err)
 	}
 	names := make([]string, 0, len(existingTopics))
 	for _, t := range existingTopics {
@@ -289,20 +289,20 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 	provider, err := s.providerFactory()
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
-			return TopicsResult{}, fmt.Errorf("configure a credencial do provedor de análise em Configurações")
+			return TopicsResult{}, fmt.Errorf("set up the analysis provider credential in Settings")
 		}
-		return TopicsResult{}, fmt.Errorf("obter provedor de análise: %w", err)
+		return TopicsResult{}, fmt.Errorf("get analysis provider: %w", err)
 	}
 
 	task := analysis.NewTopicsTask()
 	resultJSON, _, err := task.Execute(context.Background(), provider, input, len(transcript.Utterances))
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("analisar tópicos da lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("analyze topics for lesson %d: %w", lessonID, err)
 	}
 
 	topics, err := analysis.ParseTopicsResult(resultJSON)
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("desserializar tópicos: %w", err)
+		return TopicsResult{}, fmt.Errorf("deserialize topics: %w", err)
 	}
 	ids := make([]int64, 0, len(topics))
 	for _, name := range topics {
@@ -311,20 +311,20 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 		}
 		id, err := db.GetOrCreateTopicByName(s.conn, name)
 		if err != nil {
-			return TopicsResult{}, fmt.Errorf("registrar tópico %q: %w", name, err)
+			return TopicsResult{}, fmt.Errorf("register topic %q: %w", name, err)
 		}
 		ids = append(ids, id)
 	}
 	if err := db.ReplaceLessonTopics(s.conn, lessonID, ids); err != nil {
-		return TopicsResult{}, fmt.Errorf("gravar tópicos da lesson %d: %w", lessonID, err)
+		return TopicsResult{}, fmt.Errorf("save topics for lesson %d: %w", lessonID, err)
 	}
 
 	promptID, err := db.UpsertPrompt(s.conn, task.Name(), task.Version(), task.Prompt())
 	if err != nil {
-		return TopicsResult{}, fmt.Errorf("registrar prompt %s: %w", task.Name(), err)
+		return TopicsResult{}, fmt.Errorf("register prompt %s: %w", task.Name(), err)
 	}
 	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON)); err != nil {
-		return TopicsResult{}, fmt.Errorf("gravar resultado da análise: %w", err)
+		return TopicsResult{}, fmt.Errorf("save analysis result: %w", err)
 	}
 
 	return s.currentTopics(lessonID)

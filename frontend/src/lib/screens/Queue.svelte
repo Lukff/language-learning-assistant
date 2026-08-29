@@ -6,13 +6,17 @@
   let retryingId: number | null = $state(null);
   let error: string = $state("");
 
+  const MONTH_ABBREVIATIONS = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
   // Same format as Library.svelte (lessonDate is "YYYY-MM-DD" or
   // "YYYY-MM-DDTHH:MM", no timezone — it's not a "Z" timestamp).
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
-    const formattedDate = `${day}/${month}/${year}`;
-    return timePart ? `${formattedDate} ${timePart}` : formattedDate;
+    const formattedDate = `${MONTH_ABBREVIATIONS[Number(month) - 1]} ${Number(day)}, ${year}`;
+    return timePart ? `${formattedDate}, ${timePart}` : formattedDate;
   }
 
   async function retry(lessonId: number) {
@@ -33,14 +37,14 @@
 </script>
 
 <div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
-  <h1 style="font-family: {fonts.display};">Fila</h1>
+  <h1 style="font-family: {fonts.display};">Queue</h1>
 
   {#if error}
     <p class="error" style="color: {colors.red};">{error}</p>
   {/if}
 
   {#if jobsStore.items.length === 0}
-    <p style="color: {colors.mut};">Nada na fila no momento.</p>
+    <p style="color: {colors.mut};">Nothing in the queue right now.</p>
   {:else}
     <ul>
       {#each jobsStore.items as item (item.lessonId)}
@@ -49,12 +53,12 @@
             <span class="date" style="color: {colors.text};">{formatLessonDateTime(item.lessonDate)}</span>
             <span class="tutor" style="color: {colors.mut};">{item.tutor} · {item.stage}</span>
           </div>
-          {#if item.status === "erro"}
+          {#if item.status === "error"}
             <div class="status-block">
-              <span class="badge" style="color: {colors.red}; background: rgba(224,108,108,.1);">erro</span>
+              <span class="badge" style="color: {colors.red}; background: rgba(224,108,108,.1);">error</span>
               <span class="error-message" style="color: {colors.mut};">{item.lastError}</span>
               <button onclick={() => retry(item.lessonId)} disabled={retryingId === item.lessonId}>
-                {retryingId === item.lessonId ? "Reprocessando…" : "Reprocessar"}
+                {retryingId === item.lessonId ? "Reprocessing…" : "Reprocess"}
               </button>
             </div>
           {:else}

@@ -128,7 +128,7 @@ func TestRenameTeacher_CollidingNameReturnsFriendlyError(t *testing.T) {
 	}
 
 	err = RenameTeacher(conn, jamesID, "Sarah M.")
-	if err == nil || err.Error() != "já existe um professor com esse nome" {
-		t.Errorf("RenameTeacher() colidindo = %v, esperado \"já existe um professor com esse nome\"", err)
+	if err == nil || err.Error() != "a teacher with this name already exists" {
+		t.Errorf("RenameTeacher() colidindo = %v, esperado \"a teacher with this name already exists\"", err)
 	}
 }

@@ -14,7 +14,7 @@ import (
 // candidate STT APIs, avoiding codec ambiguity.
 func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		return fmt.Errorf("media: ffmpeg não encontrado no PATH: %w", err)
+		return fmt.Errorf("media: ffmpeg not found in PATH: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, "ffmpeg",
@@ -29,7 +29,7 @@ func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 	hideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("media: ffmpeg falhou: %w\n%s", err, output)
+		return fmt.Errorf("media: ffmpeg failed: %w\n%s", err, output)
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 // it must work even if extract_audio/transcribe never run.
 func Duration(ctx context.Context, videoPath string) (time.Duration, error) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
-		return 0, fmt.Errorf("media: ffprobe não encontrado no PATH: %w", err)
+		return 0, fmt.Errorf("media: ffprobe not found in PATH: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, "ffprobe",
@@ -53,11 +53,11 @@ func Duration(ctx context.Context, videoPath string) (time.Duration, error) {
 	hideWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, fmt.Errorf("media: ffprobe falhou: %w", err)
+		return 0, fmt.Errorf("media: ffprobe failed: %w", err)
 	}
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
 	if err != nil {
-		return 0, fmt.Errorf("media: duração inválida na saída do ffprobe: %w", err)
+		return 0, fmt.Errorf("media: invalid duration in ffprobe output: %w", err)
 	}
 	return time.Duration(seconds * float64(time.Second)), nil
 }

@@ -53,10 +53,10 @@
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
   >
-    <h2 style="font-family: {fonts.display};">Confirmar aula encontrada</h2>
+    <h2 style="font-family: {fonts.display};">Confirm found lesson</h2>
     <p class="path" style="color: {colors.mut}; font-family: {fonts.mono};">{pending.path}</p>
 
-    <label for="lesson-date">Data e horário da aula</label>
+    <label for="lesson-date">Lesson date and time</label>
     <input id="lesson-date" type="datetime-local" bind:value={lessonDate} />
 
     <label for="tutor">Tutor</label>
@@ -67,9 +67,9 @@
     {/if}
 
     <div class="actions">
-      <button class="secondary" onclick={onClose} disabled={saving}>Cancelar</button>
+      <button class="secondary" onclick={onClose} disabled={saving}>Cancel</button>
       <button class="primary" onclick={confirm} disabled={saving || !lessonDate || !tutor}>
-        {saving ? "Salvando…" : "Confirmar"}
+        {saving ? "Saving…" : "Confirm"}
       </button>
     </div>
   </div>

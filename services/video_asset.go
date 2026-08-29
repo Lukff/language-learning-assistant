@@ -47,7 +47,7 @@ func VideoAssetHandler(conn *sql.DB, storageRoot jobs.StorageRootResolver) http.
 		}
 		root, err := storageRoot()
 		if err != nil {
-			http.Error(w, "storage_root não configurado", http.StatusInternalServerError)
+			http.Error(w, "storage_root not configured", http.StatusInternalServerError)
 			return
 		}
 		videoPath := filepath.Join(root, filepath.FromSlash(lesson.VideoPath))

@@ -26,7 +26,7 @@ type Teacher struct {
 func ListTeachers(conn *sql.DB) ([]Teacher, error) {
 	rows, err := conn.Query(`SELECT id, name FROM teachers ORDER BY name ASC`)
 	if err != nil {
-		return nil, fmt.Errorf("listar professores: %w", err)
+		return nil, fmt.Errorf("list teachers: %w", err)
 	}
 	defer rows.Close()
 
@@ -34,12 +34,12 @@ func ListTeachers(conn *sql.DB) ([]Teacher, error) {
 	for rows.Next() {
 		var t Teacher
 		if err := rows.Scan(&t.ID, &t.Name); err != nil {
-			return nil, fmt.Errorf("ler professor: %w", err)
+			return nil, fmt.Errorf("read teacher: %w", err)
 		}
 		out = append(out, t)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar professores: %w", err)
+		return nil, fmt.Errorf("iterate teachers: %w", err)
 	}
 	return out, nil
 }
@@ -69,7 +69,7 @@ func getOrCreateTeacherByName(q execer, name string) (int64, error) {
 		return id, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("buscar professor por nome: %w", err)
+		return 0, fmt.Errorf("fetch teacher by name: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -78,11 +78,11 @@ func getOrCreateTeacherByName(q execer, name string) (int64, error) {
 		name, now, now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("criar professor: %w", err)
+		return 0, fmt.Errorf("create teacher: %w", err)
 	}
 	id, err = res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("obter id do professor criado: %w", err)
+		return 0, fmt.Errorf("get created teacher id: %w", err)
 	}
 	return id, nil
 }
@@ -104,9 +104,9 @@ func RenameTeacher(conn *sql.DB, id int64, newName string) error {
 	_, err := conn.Exec(`UPDATE teachers SET name = ?, updated_at = ? WHERE id = ?`, newName, now, id)
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			return fmt.Errorf("já existe um professor com esse nome")
+			return fmt.Errorf("a teacher with this name already exists")
 		}
-		return fmt.Errorf("renomear professor: %w", err)
+		return fmt.Errorf("rename teacher: %w", err)
 	}
 	return nil
 }

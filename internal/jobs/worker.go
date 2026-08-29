@@ -135,7 +135,7 @@ func (w *Worker) Wake() {
 // requeues any job stuck in "running" (from a previous crash/kill).
 func (w *Worker) Run(ctx context.Context) error {
 	if _, err := db.RequeueRunningJobs(w.conn); err != nil {
-		return fmt.Errorf("jobs: requeue de jobs presos em running: %w", err)
+		return fmt.Errorf("jobs: requeue jobs stuck in running: %w", err)
 	}
 	ticker := time.NewTicker(w.pollInterval)
 	defer ticker.Stop()
@@ -143,7 +143,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		for {
 			job, err := w.claimNextEligibleJob()
 			if err != nil {
-				w.logger.Error("jobs: erro ao selecionar próximo job", "erro", err)
+				w.logger.Error("jobs: error selecting next job", "error", err)
 				break
 			}
 			if job == nil {
@@ -166,22 +166,22 @@ func (w *Worker) Run(ctx context.Context) error {
 func (w *Worker) claimNextEligibleJob() (*db.Job, error) {
 	pending, err := db.ListPendingJobs(w.conn)
 	if err != nil {
-		return nil, fmt.Errorf("listar jobs pendentes: %w", err)
+		return nil, fmt.Errorf("list pending jobs: %w", err)
 	}
 	now := time.Now().UTC()
 	for _, j := range pending {
 		if j.Kind == "transcribe" {
 			sibling, err := db.FindJob(w.conn, j.LessonID, "extract_audio")
 			if err != nil {
-				return nil, fmt.Errorf("buscar job extract_audio da lesson %d: %w", j.LessonID, err)
+				return nil, fmt.Errorf("fetch extract_audio job for lesson %d: %w", j.LessonID, err)
 			}
 			if sibling == nil {
 				continue
 			}
 			if sibling.Status == "error" {
-				reason := fmt.Sprintf("depende de extract_audio que falhou: %s", sibling.LastError)
+				reason := fmt.Sprintf("depends on extract_audio which failed: %s", sibling.LastError)
 				if err := db.MarkJobBlocked(w.conn, j.ID, reason); err != nil {
-					return nil, fmt.Errorf("bloquear job transcribe %d: %w", j.ID, err)
+					return nil, fmt.Errorf("block transcribe job %d: %w", j.ID, err)
 				}
 				w.notifier.JobChanged(JobEvent{LessonID: j.LessonID, Kind: j.Kind, Status: "error", Attempts: j.Attempts, LastError: reason})
 				continue
@@ -194,7 +194,7 @@ func (w *Worker) claimNextEligibleJob() (*db.Job, error) {
 			continue
 		}
 		if err := db.MarkJobRunning(w.conn, j.ID); err != nil {
-			return nil, fmt.Errorf("reivindicar job %d: %w", j.ID, err)
+			return nil, fmt.Errorf("claim job %d: %w", j.ID, err)
 		}
 		claimed := j
 		claimed.Status = "running"
@@ -231,14 +231,14 @@ func (w *Worker) process(ctx context.Context, job db.Job) {
 	case "transcribe":
 		err = w.runTranscribe(ctx, job)
 	default:
-		err = fmt.Errorf("kind de job desconhecido: %s", job.Kind)
+		err = fmt.Errorf("unknown job kind: %s", job.Kind)
 	}
 	if err != nil {
 		w.fail(job, err)
 		return
 	}
 	if markErr := db.MarkJobDone(w.conn, job.ID); markErr != nil {
-		w.logger.Error("jobs: erro ao marcar job como done", "job_id", job.ID, "erro", markErr)
+		w.logger.Error("jobs: error marking job as done", "job_id", job.ID, "error", markErr)
 		return
 	}
 	w.notifier.JobChanged(JobEvent{LessonID: job.LessonID, Kind: job.Kind, Status: "done", Attempts: job.Attempts})
@@ -249,7 +249,7 @@ func (w *Worker) process(ctx context.Context, job db.Job) {
 func (w *Worker) fail(job db.Job, cause error) {
 	status, attempts, err := db.MarkJobRetryOrError(w.conn, job.ID, cause.Error(), maxAttempts)
 	if err != nil {
-		w.logger.Error("jobs: erro ao registrar falha do job", "job_id", job.ID, "erro", err)
+		w.logger.Error("jobs: error recording job failure", "job_id", job.ID, "error", err)
 		return
 	}
 	w.notifier.JobChanged(JobEvent{LessonID: job.LessonID, Kind: job.Kind, Status: status, Attempts: attempts, LastError: cause.Error()})
@@ -261,10 +261,10 @@ func (w *Worker) fail(job db.Job, cause error) {
 func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	lesson, err := db.FindLessonByID(w.conn, job.LessonID)
 	if err != nil {
-		return fmt.Errorf("buscar lesson %d: %w", job.LessonID, err)
+		return fmt.Errorf("fetch lesson %d: %w", job.LessonID, err)
 	}
 	if lesson == nil {
-		return fmt.Errorf("lesson %d não encontrada", job.LessonID)
+		return fmt.Errorf("lesson %d not found", job.LessonID)
 	}
 	audioPath := w.audioPathFor(job.LessonID)
 	if info, statErr := os.Stat(audioPath); statErr == nil && info.Size() > 0 {
@@ -272,11 +272,11 @@ func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	}
 	root, err := w.storageRoot()
 	if err != nil {
-		return fmt.Errorf("resolver storage_root: %w", err)
+		return fmt.Errorf("resolve storage_root: %w", err)
 	}
 	videoPath := filepath.Join(root, filepath.FromSlash(lesson.VideoPath))
 	if err := w.extractAudio(ctx, videoPath, audioPath); err != nil {
-		return fmt.Errorf("extrair áudio: %w", err)
+		return fmt.Errorf("extract audio: %w", err)
 	}
 	return nil
 }
@@ -287,36 +287,36 @@ func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 func (w *Worker) runTranscribe(ctx context.Context, job db.Job) error {
 	has, err := db.HasTranscript(w.conn, job.LessonID)
 	if err != nil {
-		return fmt.Errorf("verificar transcrição existente: %w", err)
+		return fmt.Errorf("check existing transcript: %w", err)
 	}
 	if has {
 		return nil
 	}
 	lesson, err := db.FindLessonByID(w.conn, job.LessonID)
 	if err != nil {
-		return fmt.Errorf("buscar lesson %d: %w", job.LessonID, err)
+		return fmt.Errorf("fetch lesson %d: %w", job.LessonID, err)
 	}
 	if lesson == nil {
-		return fmt.Errorf("lesson %d não encontrada", job.LessonID)
+		return fmt.Errorf("lesson %d not found", job.LessonID)
 	}
 	provider, err := w.sttFactory()
 	if err != nil {
-		return fmt.Errorf("obter provedor de STT: %w", err)
+		return fmt.Errorf("get STT provider: %w", err)
 	}
 	audioPath := w.audioPathFor(job.LessonID)
 	result, err := provider.Transcribe(ctx, audioPath)
 	if err != nil {
-		return fmt.Errorf("transcrever: %w", err)
+		return fmt.Errorf("transcribe: %w", err)
 	}
 	utterancesJSON, err := json.Marshal(result.Utterances)
 	if err != nil {
-		return fmt.Errorf("serializar utterances: %w", err)
+		return fmt.Errorf("marshal utterances: %w", err)
 	}
 	if err := db.InsertTranscript(w.conn, job.LessonID, string(utterancesJSON)); err != nil {
-		return fmt.Errorf("gravar transcript: %w", err)
+		return fmt.Errorf("write transcript: %w", err)
 	}
 	if err := os.Remove(audioPath); err != nil && !os.IsNotExist(err) {
-		w.logger.Warn("jobs: falha ao remover WAV do cache após transcrição", "path", audioPath, "erro", err)
+		w.logger.Warn("jobs: failed to remove cached WAV after transcription", "path", audioPath, "error", err)
 	}
 	return nil
 }

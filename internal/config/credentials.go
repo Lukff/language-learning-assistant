@@ -18,7 +18,7 @@ const (
 // fallback to an environment variable or file.
 func SaveSTTAPIKey(apiKey string) error {
 	if err := keyring.Set(keyringService, keyringUserElevenLabs, apiKey); err != nil {
-		return fmt.Errorf("gravar credencial no gerenciador do sistema: %w", err)
+		return fmt.Errorf("write credential to system manager: %w", err)
 	}
 	return nil
 }
@@ -28,7 +28,7 @@ func SaveSTTAPIKey(apiKey string) error {
 func GetSTTAPIKey() (string, error) {
 	apiKey, err := keyring.Get(keyringService, keyringUserElevenLabs)
 	if err != nil {
-		return "", fmt.Errorf("ler credencial do gerenciador do sistema: %w", err)
+		return "", fmt.Errorf("read credential from system manager: %w", err)
 	}
 	return apiKey, nil
 }
@@ -37,7 +37,7 @@ func GetSTTAPIKey() (string, error) {
 // credential manager, via go-keyring. Never in plain text.
 func SaveAnalysisAPIKey(apiKey string) error {
 	if err := keyring.Set(keyringService, keyringUserDeepSeek, apiKey); err != nil {
-		return fmt.Errorf("gravar credencial no gerenciador do sistema: %w", err)
+		return fmt.Errorf("write credential to system manager: %w", err)
 	}
 	return nil
 }
@@ -47,7 +47,7 @@ func SaveAnalysisAPIKey(apiKey string) error {
 func GetAnalysisAPIKey() (string, error) {
 	apiKey, err := keyring.Get(keyringService, keyringUserDeepSeek)
 	if err != nil {
-		return "", fmt.Errorf("ler credencial do gerenciador do sistema: %w", err)
+		return "", fmt.Errorf("read credential from system manager: %w", err)
 	}
 	return apiKey, nil
 }

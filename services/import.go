@@ -66,7 +66,7 @@ type DropResult struct {
 func (s *ImportService) ScanFolder() (ScanSummary, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return ScanSummary{}, fmt.Errorf("carregar configuração: %w", err)
+		return ScanSummary{}, fmt.Errorf("load configuration: %w", err)
 	}
 	sum, err := importer.Scan(cfg.StorageRoot, &dbRepo{conn: s.conn})
 	if err != nil {
@@ -86,7 +86,7 @@ func (s *ImportService) ScanFolder() (ScanSummary, error) {
 func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, fmt.Errorf("carregar configuração: %w", err)
+		return nil, fmt.Errorf("load configuration: %w", err)
 	}
 	rows, err := db.ListPendingImports(s.conn)
 	if err != nil {
@@ -108,18 +108,18 @@ func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 // setDurationBestEffort).
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error {
 	if lessonDate == "" {
-		return fmt.Errorf("data da aula não pode ser vazia")
+		return fmt.Errorf("lesson date cannot be empty")
 	}
 	if tutor == "" {
-		return fmt.Errorf("tutor não pode ser vazio")
+		return fmt.Errorf("tutor cannot be empty")
 	}
 	if !hasTimeComponent(lessonDate) {
-		return fmt.Errorf("horário da aula é obrigatório")
+		return fmt.Errorf("lesson time is required")
 	}
 	const lessonDateLayout = "2006-01-02T15:04"
 	parsedLessonDate, err := time.Parse(lessonDateLayout, lessonDate)
 	if err != nil || parsedLessonDate.Format(lessonDateLayout) != lessonDate {
-		return fmt.Errorf("data e horário da aula devem estar no formato AAAA-MM-DDTHH:MM")
+		return fmt.Errorf("lesson date and time must be in YYYY-MM-DDTHH:MM format")
 	}
 	lessonID, err := db.ConfirmPendingImport(s.conn, id, lessonDate, tutor)
 	if err != nil {
@@ -159,11 +159,11 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 	videoPath := filepath.Join(cfg.StorageRoot, filepath.FromSlash(lesson.VideoPath))
 	dur, err := media.Duration(context.Background(), videoPath)
 	if err != nil {
-		slog.Warn("importer: não foi possível calcular a duração do vídeo", "lesson_id", lessonID, "erro", err)
+		slog.Warn("importer: could not compute video duration", "lesson_id", lessonID, "error", err)
 		return
 	}
 	if err := db.SetLessonDuration(s.conn, lessonID, int64(dur.Seconds())); err != nil {
-		slog.Warn("importer: não foi possível gravar a duração do vídeo", "lesson_id", lessonID, "erro", err)
+		slog.Warn("importer: could not save video duration", "lesson_id", lessonID, "error", err)
 	}
 }
 
@@ -174,7 +174,7 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, lessonID int64) {
 	lesson, err := db.FindLessonByID(conn, lessonID)
 	if err != nil {
-		slog.Warn("importer: não foi possível carregar a lesson antes de renomear o vídeo", "lesson_id", lessonID, "erro", err)
+		slog.Warn("importer: could not load lesson before renaming video", "lesson_id", lessonID, "error", err)
 		return
 	}
 	if lesson == nil {
@@ -182,7 +182,7 @@ func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, le
 	}
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Warn("importer: não foi possível carregar a configuração antes de renomear o vídeo", "lesson_id", lessonID, "erro", err)
+		slog.Warn("importer: could not load configuration before renaming video", "lesson_id", lessonID, "error", err)
 		return
 	}
 
@@ -194,7 +194,7 @@ func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, le
 	targetAbsDir := filepath.Join(cfg.StorageRoot, relDir)
 	info, err := os.Stat(currentAbsPath)
 	if err != nil {
-		slog.Warn("importer: não foi possível ler o vídeo antes de renomear", "lesson_id", lessonID, "erro", err)
+		slog.Warn("importer: could not read video before renaming", "lesson_id", lessonID, "error", err)
 		return
 	}
 
@@ -203,7 +203,7 @@ func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, le
 		candidateAbsPath := filepath.Join(targetAbsDir, candidate)
 		available, err := renameCandidateAvailable(info, candidateAbsPath)
 		if err != nil {
-			slog.Warn("importer: erro ao checar colisão de nome padronizado", "lesson_id", lessonID, "erro", err)
+			slog.Warn("importer: error checking standardized name collision", "lesson_id", lessonID, "error", err)
 			return
 		}
 		if available {
@@ -216,14 +216,14 @@ func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, le
 	targetInfo, err := os.Stat(targetAbsPath)
 	targetIsCurrent := err == nil && os.SameFile(info, targetInfo)
 	if err != nil && !os.IsNotExist(err) {
-		slog.Warn("importer: não foi possível verificar o destino antes de mover o vídeo", "lesson_id", lessonID, "erro", err)
+		slog.Warn("importer: could not check destination before moving video", "lesson_id", lessonID, "error", err)
 		return
 	}
 	var rollback func() error
 	if targetIsCurrent {
 		sameFileKind := classifySameFilePath(currentAbsPath, targetAbsPath, runtime.GOOS)
 		if err := moveToExistingSameFile(currentAbsPath, targetAbsPath, sameFileKind, moveFile); err != nil {
-			slog.Warn("importer: não foi possível concluir o move para o mesmo arquivo", "lesson_id", lessonID, "erro", err)
+			slog.Warn("importer: could not complete move to the same file", "lesson_id", lessonID, "error", err)
 			return
 		}
 		switch sameFileKind {
@@ -232,7 +232,7 @@ func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, le
 		}
 	} else {
 		if err := moveFile(currentAbsPath, targetAbsPath); err != nil {
-			slog.Warn("importer: não foi possível mover o vídeo pro nome padronizado", "lesson_id", lessonID, "erro", err)
+			slog.Warn("importer: could not move video to standardized name", "lesson_id", lessonID, "error", err)
 			return
 		}
 		rollback = func() error { return moveFile(targetAbsPath, currentAbsPath) }
@@ -244,11 +244,11 @@ func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, le
 		if rollback != nil {
 			rollbackErr := rollback()
 			if rollbackErr != nil {
-				slog.Error("importer: falha ao atualizar o path da lesson e ao reverter o move", "lesson_id", lessonID, "erro_original", err, "erro_rollback", rollbackErr)
+				slog.Error("importer: failed to update lesson path and to roll back the move", "lesson_id", lessonID, "original_error", err, "rollback_error", rollbackErr)
 				return
 			}
 		}
-		slog.Warn("importer: não foi possível atualizar o path da lesson após mover; operação revertida", "lesson_id", lessonID, "erro_original", err)
+		slog.Warn("importer: could not update lesson path after move; operation rolled back", "lesson_id", lessonID, "original_error", err)
 	}
 }
 
@@ -283,7 +283,7 @@ func moveToExistingSameFile(oldPath, newPath string, kind sameFilePathKind, move
 		// to eliminate any risk of removing a concurrent entry.
 		return nil
 	default:
-		return fmt.Errorf("classificação de mesmo arquivo desconhecida: %d", kind)
+		return fmt.Errorf("unknown same-file classification: %d", kind)
 	}
 }
 func renameCandidateAvailable(currentInfo os.FileInfo, candidatePath string) (bool, error) {
@@ -330,7 +330,7 @@ func (r *dbRepo) UpdateLessonPath(hash string, path string, size int64, mtime st
 		return err
 	}
 	if lesson == nil {
-		return fmt.Errorf("lesson com hash %s não encontrada para atualizar path", hash)
+		return fmt.Errorf("lesson with hash %s not found to update path", hash)
 	}
 	return db.UpdateLessonPath(r.conn, lesson.ID, path, size, mtime)
 }
@@ -386,15 +386,15 @@ func (s *ImportService) DropImport(paths []string) []DropResult {
 
 func (s *ImportService) dropOne(path string) (PendingImport, error) {
 	if !importer.HasVideoExtension(path) {
-		return PendingImport{}, fmt.Errorf("tipo de arquivo não suportado (só .mp4)")
+		return PendingImport{}, fmt.Errorf("unsupported file type (only .mp4)")
 	}
 	cfg, err := config.Load()
 	if err != nil {
-		return PendingImport{}, fmt.Errorf("carregar configuração: %w", err)
+		return PendingImport{}, fmt.Errorf("load configuration: %w", err)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return PendingImport{}, fmt.Errorf("ler arquivo: %w", err)
+		return PendingImport{}, fmt.Errorf("read file: %w", err)
 	}
 
 	hash, err := importer.HashFile(path)
@@ -407,14 +407,14 @@ func (s *ImportService) dropOne(path string) (PendingImport, error) {
 		return PendingImport{}, err
 	}
 	if lesson != nil {
-		return PendingImport{}, fmt.Errorf("esta aula já foi importada")
+		return PendingImport{}, fmt.Errorf("this lesson has already been imported")
 	}
 	alreadyPending, err := db.FindPendingImportByHash(s.conn, hash)
 	if err != nil {
 		return PendingImport{}, err
 	}
 	if alreadyPending {
-		return PendingImport{}, fmt.Errorf("esta aula já está aguardando revisão")
+		return PendingImport{}, fmt.Errorf("this lesson is already awaiting review")
 	}
 
 	relPath, fileMTime, fileSize, err := s.placeDroppedFile(path, cfg.StorageRoot)
@@ -450,14 +450,14 @@ func (s *ImportService) placeDroppedFile(path, storageRoot string) (relPath stri
 	if !inside {
 		copiedRel, err := importer.CopyIntoStorageRoot(path, storageRoot)
 		if err != nil {
-			return "", "", 0, fmt.Errorf("copiar vídeo pra raiz de armazenamento: %w", err)
+			return "", "", 0, fmt.Errorf("copy video to storage root: %w", err)
 		}
 		rel = filepath.ToSlash(copiedRel)
 	}
 
 	info, err := os.Stat(filepath.Join(storageRoot, filepath.FromSlash(rel)))
 	if err != nil {
-		return "", "", 0, fmt.Errorf("ler arquivo na raiz de armazenamento: %w", err)
+		return "", "", 0, fmt.Errorf("read file at storage root: %w", err)
 	}
 	return rel, info.ModTime().UTC().Format(time.RFC3339), info.Size(), nil
 }
@@ -470,11 +470,11 @@ func (s *ImportService) placeDroppedFile(path, storageRoot string) (relPath stri
 func relativeIfInsideStorageRoot(path, storageRoot string) (relPath string, inside bool, err error) {
 	resolvedPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return "", false, fmt.Errorf("resolver links simbólicos do arquivo: %w", err)
+		return "", false, fmt.Errorf("resolve file symlinks: %w", err)
 	}
 	resolvedRoot, err := filepath.EvalSymlinks(storageRoot)
 	if err != nil {
-		return "", false, fmt.Errorf("resolver links simbólicos da raiz de armazenamento: %w", err)
+		return "", false, fmt.Errorf("resolve storage root symlinks: %w", err)
 	}
 	rel, err := filepath.Rel(resolvedRoot, resolvedPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {

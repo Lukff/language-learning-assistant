@@ -31,7 +31,7 @@ func (s *SettingsService) GetStorageRoot() (string, error) {
 // wizard) and returns the chosen path, without writing anything yet. Returns an empty
 // path (with no error) if the user cancels the dialog.
 func (s *SettingsService) ChooseStorageFolder() (string, error) {
-	return chooseStorageFolder("Escolha a nova pasta — os arquivos já devem estar lá dentro")
+	return chooseStorageFolder("Choose the new folder — the files should already be inside it")
 }
 
 // ChangeStorageFolder writes newRoot to config.json (always, even if the
@@ -45,13 +45,13 @@ func (s *SettingsService) ChooseStorageFolder() (string, error) {
 // summary format.
 func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, error) {
 	if newRoot == "" {
-		return ScanSummary{}, fmt.Errorf("pasta de armazenamento não pode ser vazia")
+		return ScanSummary{}, fmt.Errorf("storage folder cannot be empty")
 	}
 	if err := isDirWritable(newRoot); err != nil {
 		return ScanSummary{}, err
 	}
 	if err := config.Save(&config.AppConfig{StorageRoot: newRoot}); err != nil {
-		return ScanSummary{}, fmt.Errorf("gravar configuração: %w", err)
+		return ScanSummary{}, fmt.Errorf("write configuration: %w", err)
 	}
 	sum, err := importer.Scan(newRoot, &dbRepo{conn: s.conn})
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *SettingsService) HasSTTCredential() (bool, error) {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return false, nil
 	}
-	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
+	return false, fmt.Errorf("could not access the system credential manager (check that gnome-keyring/kwallet is running): %w", err)
 }
 
 // SaveSTTAPIKey saves/overwrites the STT provider credential.
@@ -92,7 +92,7 @@ func (s *SettingsService) HasAnalysisCredential() (bool, error) {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return false, nil
 	}
-	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
+	return false, fmt.Errorf("could not access the system credential manager (check that gnome-keyring/kwallet is running): %w", err)
 }
 
 // SaveAnalysisAPIKey saves/overwrites the analysis provider credential.

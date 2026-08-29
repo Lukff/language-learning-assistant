@@ -159,7 +159,7 @@ func Scan(root string, repo Repo) (Summary, error) {
 		return nil
 	})
 	if err != nil {
-		return sum, fmt.Errorf("varrer pasta de armazenamento: %w", err)
+		return sum, fmt.Errorf("scan storage folder: %w", err)
 	}
 	return sum, nil
 }
@@ -184,13 +184,13 @@ func HasVideoExtension(path string) bool {
 func HashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("abrir arquivo: %w", err)
+		return "", fmt.Errorf("open file: %w", err)
 	}
 	defer f.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return "", fmt.Errorf("ler arquivo: %w", err)
+		return "", fmt.Errorf("read file: %w", err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

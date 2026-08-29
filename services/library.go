@@ -27,8 +27,8 @@ func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *Librar
 }
 
 // Lesson is a confirmed lesson, in the format exposed to the frontend. Status is
-// always one of "processando", "pronta", "erro" (see db.LessonWithStatus);
-// ErrorMessage is only filled in when Status == "erro". DurationSeconds is
+// always one of "processing", "ready", "error" (see db.LessonWithStatus);
+// ErrorMessage is only filled in when Status == "error". DurationSeconds is
 // nil until the duration probe (best effort, on import
 // confirmation) succeeds. StudentSpeakerLabel is nil until the user marks
 // who the student is in the Detail toggle (Story 6). VideoMissing is
@@ -112,16 +112,16 @@ func (s *LibraryService) RetryLesson(lessonID int64) error {
 }
 
 // GetLesson fetches a lesson by id, with status/error derived from the jobs, for the
-// Detail view (Story 6) — which now opens in any status: "processando"
-// and "erro" show the video without a transcript (see LessonDetail.svelte),
-// "pronta" enables GetTranscript.
+// Detail view (Story 6) — which now opens in any status: "processing"
+// and "error" show the video without a transcript (see LessonDetail.svelte),
+// "ready" enables GetTranscript.
 func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	lws, err := db.FindLessonWithStatusByID(s.conn, id)
 	if err != nil {
 		return Lesson{}, err
 	}
 	if lws == nil {
-		return Lesson{}, fmt.Errorf("aula %d não encontrada", id)
+		return Lesson{}, fmt.Errorf("lesson %d not found", id)
 	}
 	return Lesson{
 		ID:                  lws.ID,
@@ -137,7 +137,7 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 }
 
 // GetTranscript fetches a lesson's transcript for the Detail view (Story 6).
-// Should only be called once GetLesson has already returned Status == "pronta" — the
+// Should only be called once GetLesson has already returned Status == "ready" — the
 // Detail view doesn't call this for lessons processing/erroring, which show the status
 // in place of the transcript panel.
 func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
@@ -146,7 +146,7 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 		return Transcript{}, err
 	}
 	if t == nil {
-		return Transcript{}, fmt.Errorf("aula %d ainda não tem transcrição", lessonID)
+		return Transcript{}, fmt.Errorf("lesson %d has no transcript yet", lessonID)
 	}
 	out := Transcript{Utterances: make([]Utterance, 0, len(t.Utterances))}
 	for _, u := range t.Utterances {
@@ -172,14 +172,14 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
 	if err != nil {
-		return fmt.Errorf("buscar lesson %d: %w", lessonID, err)
+		return fmt.Errorf("fetch lesson %d: %w", lessonID, err)
 	}
 	if lesson == nil {
-		return fmt.Errorf("aula %d não encontrada", lessonID)
+		return fmt.Errorf("lesson %d not found", lessonID)
 	}
 	if lesson.StudentSpeakerLabel != nil && *lesson.StudentSpeakerLabel != speakerLabel {
 		if err := db.DeleteSpeakerDependentAnalysisResults(s.conn, lessonID); err != nil {
-			return fmt.Errorf("descartar análises antigas da lesson %d: %w", lessonID, err)
+			return fmt.Errorf("discard old analyses for lesson %d: %w", lessonID, err)
 		}
 	}
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
@@ -193,18 +193,18 @@ func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) 
 // import confirmation).
 func (s *LibraryService) UpdateLesson(lessonID int64, lessonDate string, teacherName string) error {
 	if lessonDate == "" {
-		return fmt.Errorf("data da aula não pode ser vazia")
+		return fmt.Errorf("lesson date cannot be empty")
 	}
 	if teacherName == "" {
-		return fmt.Errorf("professor não pode ser vazio")
+		return fmt.Errorf("teacher cannot be empty")
 	}
 	if !hasTimeComponent(lessonDate) {
-		return fmt.Errorf("horário da aula é obrigatório")
+		return fmt.Errorf("lesson time is required")
 	}
 	const lessonDateLayout = "2006-01-02T15:04"
 	parsedLessonDate, err := time.Parse(lessonDateLayout, lessonDate)
 	if err != nil || parsedLessonDate.Format(lessonDateLayout) != lessonDate {
-		return fmt.Errorf("data e horário da aula devem estar no formato AAAA-MM-DDTHH:MM")
+		return fmt.Errorf("lesson date and time must be in YYYY-MM-DDTHH:MM format")
 	}
 
 	teacherID, err := db.GetOrCreateTeacherByName(s.conn, teacherName)

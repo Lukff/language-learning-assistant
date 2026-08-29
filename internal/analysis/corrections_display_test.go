@@ -63,10 +63,10 @@ func TestMatchCorrections_SplitsTextAroundTheWrongSpan(t *testing.T) {
 			corrections := []Correction{{UtteranceIdx: 0, Original: tt.original, CorrectionTx: "fix", Explanation: "why"}}
 			got := MatchCorrections(utterances, corrections)
 			if len(got) != 1 {
-				t.Fatalf("len(got) = %d, esperado 1", len(got))
+				t.Fatalf("len(got) = %d, expected 1", len(got))
 			}
 			if got[0].Before != tt.wantBefore || got[0].Wrong != tt.wantWrong || got[0].After != tt.wantAfter {
-				t.Errorf("got[0] = %+v, esperado Before=%q Wrong=%q After=%q", got[0], tt.wantBefore, tt.wantWrong, tt.wantAfter)
+				t.Errorf("got[0] = %+v, expected Before=%q Wrong=%q After=%q", got[0], tt.wantBefore, tt.wantWrong, tt.wantAfter)
 			}
 		})
 	}
@@ -77,13 +77,13 @@ func TestMatchCorrections_OriginalAlwaysPopulatedEvenWithoutMatch(t *testing.T) 
 	corrections := []Correction{{UtteranceIdx: 0, Original: "she goes", CorrectionTx: "fix", Explanation: "why"}}
 	got := MatchCorrections(utterances, corrections)
 	if len(got) != 1 {
-		t.Fatalf("len(got) = %d, esperado 1", len(got))
+		t.Fatalf("len(got) = %d, expected 1", len(got))
 	}
 	if got[0].Original != "she goes" {
-		t.Errorf("Original = %q, esperado preservado mesmo sem match", got[0].Original)
+		t.Errorf("Original = %q, expected to be preserved even without a match", got[0].Original)
 	}
 	if got[0].Wrong != "" {
-		t.Errorf("Wrong = %q, esperado vazio (sem match)", got[0].Wrong)
+		t.Errorf("Wrong = %q, expected empty (no match)", got[0].Wrong)
 	}
 }
 
@@ -99,12 +99,12 @@ func TestMatchCorrections_MultipleCorrectionsAcrossUtterances(t *testing.T) {
 	}
 	got := MatchCorrections(utterances, corrections)
 	if len(got) != 2 {
-		t.Fatalf("len(got) = %d, esperado 2", len(got))
+		t.Fatalf("len(got) = %d, expected 2", len(got))
 	}
 	if got[0].UtteranceIndex != 0 || got[0].Wrong != "I go" {
-		t.Errorf("got[0] = %+v, inesperado", got[0])
+		t.Errorf("got[0] = %+v, unexpected", got[0])
 	}
 	if got[1].UtteranceIndex != 2 || got[1].Wrong != "She go" {
-		t.Errorf("got[1] = %+v, inesperado", got[1])
+		t.Errorf("got[1] = %+v, unexpected", got[1])
 	}
 }

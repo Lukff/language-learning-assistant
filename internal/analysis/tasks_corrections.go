@@ -27,13 +27,15 @@ func parseCorrections(raw json.RawMessage, utteranceCount int) ([]Correction, er
 	}
 	kept, discarded := filterAnchored(parsed.Corrections, utteranceCount)
 	if discarded > 0 {
-		slog.Warn("analysis: itens descartados por utterance_index inválido", "tarefa", "analyze_corrections", "descartados", discarded)
+		slog.Warn("analysis: items discarded due to invalid utterance_index", "task", "analyze_corrections", "discarded", discarded)
 	}
 	return kept, nil
 }
 
+// NewCorrectionsTask returns the corrections task on prompt version 2
+// (English instructions and output, matching the app-wide switch away from PT-BR).
 func NewCorrectionsTask() TaskDef {
-	return task[[]Correction]{name: "analyze_corrections", version: 1, prompt: mustLoadPrompt("analyze-corrections-v1.md"), parse: parseCorrections}
+	return task[[]Correction]{name: "analyze_corrections", version: 2, prompt: mustLoadPrompt("analyze-corrections-v2.md"), parse: parseCorrections}
 }
 
 // ParseCorrectionsResult decodes an already-persisted result_json (written
@@ -44,7 +46,7 @@ func NewCorrectionsTask() TaskDef {
 func ParseCorrectionsResult(resultJSON json.RawMessage) ([]Correction, error) {
 	var out []Correction
 	if err := json.Unmarshal(resultJSON, &out); err != nil {
-		return nil, fmt.Errorf("analysis: desserializar resultado de analyze_corrections: %w", err)
+		return nil, fmt.Errorf("analysis: deserialize analyze_corrections result: %w", err)
 	}
 	return out, nil
 }

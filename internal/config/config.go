@@ -23,11 +23,11 @@ func Load() (*AppConfig, error) {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("ler config: %w", err)
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 	var cfg AppConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsear config: %w", err)
+		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	return &cfg, nil
 }
@@ -40,10 +40,10 @@ func Save(cfg *AppConfig) error {
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("serializar config: %w", err)
+		return fmt.Errorf("marshal config: %w", err)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("gravar config: %w", err)
+		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
 }

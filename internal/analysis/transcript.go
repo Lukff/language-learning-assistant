@@ -9,8 +9,8 @@ import (
 )
 
 // FormatTranscript converts the diarized utterances into text readable by the
-// prompt, labeling each utterance as "Aluno" or "Tutor" according to
-// speakerRoles (accepted values: "aluno" or "tutor"). Errors if any
+// prompt, labeling each utterance as "Student" or "Tutor" according to
+// speakerRoles (accepted values: "student" or "tutor"). Errors if any
 // Speaker isn't mapped or has a role other than these two —
 // an explicit failure, with no silent guess that would contaminate the whole analysis.
 func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error) {
@@ -18,17 +18,17 @@ func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string
 	for i, u := range utterances {
 		role, ok := speakerRoles[u.Speaker]
 		if !ok {
-			return "", fmt.Errorf("analysis: locutor %q sem papel mapeado em speakerRoles", u.Speaker)
+			return "", fmt.Errorf("analysis: speaker %q has no role mapped in speakerRoles", u.Speaker)
 		}
 
 		var label string
 		switch role {
-		case "aluno":
-			label = "Aluno"
+		case "student":
+			label = "Student"
 		case "tutor":
 			label = "Tutor"
 		default:
-			return "", fmt.Errorf("analysis: papel %q inválido para locutor %q (esperado \"aluno\" ou \"tutor\")", role, u.Speaker)
+			return "", fmt.Errorf("analysis: invalid role %q for speaker %q (expected \"student\" or \"tutor\")", role, u.Speaker)
 		}
 
 		fmt.Fprintf(&b, "[%d] %s: %s\n", i, label, u.Text)

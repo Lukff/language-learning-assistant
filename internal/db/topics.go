@@ -22,7 +22,7 @@ type Topic struct {
 func ListTopics(conn *sql.DB) ([]Topic, error) {
 	rows, err := conn.Query(`SELECT id, name FROM topics ORDER BY name ASC`)
 	if err != nil {
-		return nil, fmt.Errorf("listar tópicos: %w", err)
+		return nil, fmt.Errorf("list topics: %w", err)
 	}
 	defer rows.Close()
 
@@ -30,12 +30,12 @@ func ListTopics(conn *sql.DB) ([]Topic, error) {
 	for rows.Next() {
 		var t Topic
 		if err := rows.Scan(&t.ID, &t.Name); err != nil {
-			return nil, fmt.Errorf("ler tópico: %w", err)
+			return nil, fmt.Errorf("read topic: %w", err)
 		}
 		out = append(out, t)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar tópicos: %w", err)
+		return nil, fmt.Errorf("iterate topics: %w", err)
 	}
 	return out, nil
 }
@@ -50,7 +50,7 @@ func getOrCreateTopicByName(q execer, name string) (int64, error) {
 		return id, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("buscar tópico por nome: %w", err)
+		return 0, fmt.Errorf("fetch topic by name: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -59,11 +59,11 @@ func getOrCreateTopicByName(q execer, name string) (int64, error) {
 		name, now, now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("criar tópico: %w", err)
+		return 0, fmt.Errorf("create topic: %w", err)
 	}
 	id, err = res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("obter id do tópico criado: %w", err)
+		return 0, fmt.Errorf("get created topic id: %w", err)
 	}
 	return id, nil
 }
@@ -80,9 +80,9 @@ func RenameTopic(conn *sql.DB, id int64, newName string) error {
 	_, err := conn.Exec(`UPDATE topics SET name = ?, updated_at = ? WHERE id = ?`, newName, now, id)
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			return fmt.Errorf("já existe um tópico com esse nome")
+			return fmt.Errorf("a topic with this name already exists")
 		}
-		return fmt.Errorf("renomear tópico: %w", err)
+		return fmt.Errorf("rename topic: %w", err)
 	}
 	return nil
 }
@@ -95,7 +95,7 @@ func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 		lessonID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("listar tópicos da lesson %d: %w", lessonID, err)
+		return nil, fmt.Errorf("list topics for lesson %d: %w", lessonID, err)
 	}
 	defer rows.Close()
 
@@ -103,12 +103,12 @@ func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 	for rows.Next() {
 		var t Topic
 		if err := rows.Scan(&t.ID, &t.Name); err != nil {
-			return nil, fmt.Errorf("ler tópico da lesson: %w", err)
+			return nil, fmt.Errorf("read lesson topic: %w", err)
 		}
 		out = append(out, t)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar tópicos da lesson: %w", err)
+		return nil, fmt.Errorf("iterate lesson topics: %w", err)
 	}
 	return out, nil
 }
@@ -118,7 +118,7 @@ func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 func AddLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	_, err := conn.Exec(`INSERT OR IGNORE INTO lesson_topics (lesson_id, topic_id) VALUES (?, ?)`, lessonID, topicID)
 	if err != nil {
-		return fmt.Errorf("vincular tópico %d à lesson %d: %w", topicID, lessonID, err)
+		return fmt.Errorf("link topic %d to lesson %d: %w", topicID, lessonID, err)
 	}
 	return nil
 }
@@ -127,7 +127,7 @@ func AddLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	_, err := conn.Exec(`DELETE FROM lesson_topics WHERE lesson_id = ? AND topic_id = ?`, lessonID, topicID)
 	if err != nil {
-		return fmt.Errorf("desvincular tópico %d da lesson %d: %w", topicID, lessonID, err)
+		return fmt.Errorf("unlink topic %d from lesson %d: %w", topicID, lessonID, err)
 	}
 	return nil
 }
@@ -138,19 +138,19 @@ func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 func DeleteTopic(conn *sql.DB, id int64) error {
 	tx, err := conn.Begin()
 	if err != nil {
-		return fmt.Errorf("iniciar transação pra apagar tópico %d: %w", id, err)
+		return fmt.Errorf("start transaction to delete topic %d: %w", id, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`DELETE FROM lesson_topics WHERE topic_id = ?`, id); err != nil {
-		return fmt.Errorf("desvincular tópico %d das aulas: %w", id, err)
+		return fmt.Errorf("unlink topic %d from lessons: %w", id, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM topics WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("apagar tópico %d: %w", id, err)
+		return fmt.Errorf("delete topic %d: %w", id, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("confirmar exclusão do tópico %d: %w", id, err)
+		return fmt.Errorf("confirm deletion of topic %d: %w", id, err)
 	}
 	return nil
 }
@@ -161,19 +161,19 @@ func DeleteTopic(conn *sql.DB, id int64) error {
 func DeleteAllTopics(conn *sql.DB) error {
 	tx, err := conn.Begin()
 	if err != nil {
-		return fmt.Errorf("iniciar transação pra apagar todos os tópicos: %w", err)
+		return fmt.Errorf("start transaction to delete all topics: %w", err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`DELETE FROM lesson_topics`); err != nil {
-		return fmt.Errorf("desvincular todos os tópicos das aulas: %w", err)
+		return fmt.Errorf("unlink all topics from lessons: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM topics`); err != nil {
-		return fmt.Errorf("apagar todos os tópicos: %w", err)
+		return fmt.Errorf("delete all topics: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("confirmar exclusão de todos os tópicos: %w", err)
+		return fmt.Errorf("confirm deletion of all topics: %w", err)
 	}
 	return nil
 }

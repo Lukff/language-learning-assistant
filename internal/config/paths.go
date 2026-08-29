@@ -17,11 +17,11 @@ const appDirName = "assistente-idiomas"
 func AppDataDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("resolver diretório de configuração do SO: %w", err)
+		return "", fmt.Errorf("resolve OS config directory: %w", err)
 	}
 	dir := filepath.Join(base, appDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("criar diretório de dados do app: %w", err)
+		return "", fmt.Errorf("create app data directory: %w", err)
 	}
 	return dir, nil
 }
@@ -55,7 +55,7 @@ func AudioCacheDir() (string, error) {
 	}
 	cacheDir := filepath.Join(dir, "audio-cache")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return "", fmt.Errorf("criar diretório de cache de áudio: %w", err)
+		return "", fmt.Errorf("create audio cache directory: %w", err)
 	}
 	return cacheDir, nil
 }

@@ -44,7 +44,7 @@
     if (newSpeaker === studentSpeaker) return;
     if (currentStudentSpeaker !== null && hasAnalysisResults) {
       const confirmed = confirm(
-        "Trocar quem é você descarta as análises já feitas dessa aula — você vai precisar reprocessar. Continuar?",
+        "Changing who you are discards the analyses already done for this lesson — you'll need to reprocess it. Continue?",
       );
       if (!confirmed) return;
     }
@@ -90,16 +90,16 @@
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
   >
-    <h2 style="font-family: {fonts.display};">Editar aula</h2>
+    <h2 style="font-family: {fonts.display};">Edit lesson</h2>
 
-    <label for="edit-lesson-date">Data e horário da aula</label>
+    <label for="edit-lesson-date">Lesson date and time</label>
     <input id="edit-lesson-date" type="datetime-local" bind:value={lessonDate} />
 
     <label for="edit-tutor">Tutor</label>
     <TeacherCombobox id="edit-tutor" bind:value={teacherName} />
 
     {#if speakerOptions.length > 0}
-      <span class="speaker-section-title">Quem é você</span>
+      <span class="speaker-section-title">Who are you</span>
       {#if speakerOptions.length === 2 && studentSpeaker !== null}
         <button
           type="button"
@@ -107,7 +107,7 @@
           onclick={() => chooseSpeaker(speakerOptions.find((s) => s !== studentSpeaker) ?? speakerOptions[0])}
           disabled={savingSpeaker}
         >
-          {savingSpeaker ? "Salvando…" : "Inverter falantes"}
+          {savingSpeaker ? "Saving…" : "Swap speakers"}
         </button>
       {:else}
         <div class="speaker-buttons">
@@ -119,13 +119,13 @@
               onclick={() => chooseSpeaker(speaker)}
               disabled={savingSpeaker}
             >
-              {speakerLabel(speaker)} é você
+              {speakerLabel(speaker)} is you
             </button>
           {/each}
         </div>
       {/if}
       {#if studentSpeaker}
-        <p class="hint">Atualmente: {speakerLabel(studentSpeaker)}</p>
+        <p class="hint">Currently: {speakerLabel(studentSpeaker)}</p>
       {/if}
       {#if speakerError}
         <p class="error" style="color: {colors.red};">{speakerError}</p>
@@ -137,9 +137,9 @@
     {/if}
 
     <div class="actions">
-      <button class="secondary" onclick={onClose} disabled={saving}>Cancelar</button>
+      <button class="secondary" onclick={onClose} disabled={saving}>Cancel</button>
       <button class="primary" onclick={save} disabled={saving || !lessonDate || !teacherName}>
-        {saving ? "Salvando…" : "Salvar"}
+        {saving ? "Saving…" : "Save"}
       </button>
     </div>
   </div>

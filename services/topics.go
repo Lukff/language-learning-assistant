@@ -53,7 +53,7 @@ func (s *TopicsService) RenameTopic(id int64, newName string) error {
 func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Topic{}, fmt.Errorf("tópico não pode ser vazio")
+		return Topic{}, fmt.Errorf("topic cannot be empty")
 	}
 	id, err := db.GetOrCreateTopicByName(s.conn, name)
 	if err != nil {

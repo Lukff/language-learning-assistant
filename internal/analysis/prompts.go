@@ -14,7 +14,7 @@ import (
 func RegisterPrompts(conn *sql.DB) error {
 	for _, t := range Tasks {
 		if _, err := db.UpsertPrompt(conn, t.Name(), t.Version(), t.Prompt()); err != nil {
-			return fmt.Errorf("analysis: registrar prompt %s: %w", t.Name(), err)
+			return fmt.Errorf("analysis: register prompt %s: %w", t.Name(), err)
 		}
 	}
 	return nil

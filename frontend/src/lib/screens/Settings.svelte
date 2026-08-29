@@ -62,7 +62,7 @@
     changingFolder = true;
     try {
       const summary = await SettingsService.ChangeStorageFolder(chosen);
-      scanSummary = `${summary.new} novas, ${summary.updated} atualizadas, ${summary.skipped} puladas, ${summary.errors} erros`;
+      scanSummary = `${summary.new} new, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.errors} errors`;
       await loadStorageRoot();
     } catch (e) {
       folderError = String(e);
@@ -115,24 +115,24 @@
 </script>
 
 <div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
-  <h1 style="font-family: {fonts.display};">Configurações</h1>
+  <h1 style="font-family: {fonts.display};">Settings</h1>
 
   {#if loading}
-    <p style="color: {colors.mut};">Carregando…</p>
+    <p style="color: {colors.mut};">Loading…</p>
   {:else}
     {#if loadError}
       <p class="error" style="color: {colors.red};">{loadError}</p>
     {/if}
 
     <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
-      <h2 style="font-family: {fonts.display};">Armazenamento</h2>
+      <h2 style="font-family: {fonts.display};">Storage</h2>
       <p class="path" style="font-family: {fonts.mono}; color: {colors.mut};">{storageRoot}</p>
       <p class="hint" style="color: {colors.mut};">
-        Se você já moveu a pasta de aulas manualmente, aponte o app pra ela aqui — os vídeos não
-        são copiados nem movidos pelo app.
+        If you've already moved the lessons folder manually, point the app to it here — videos
+        are not copied or moved by the app.
       </p>
       <button onclick={changeFolder} disabled={changingFolder}>
-        {changingFolder ? "Trocando…" : "Trocar pasta"}
+        {changingFolder ? "Changing…" : "Change folder"}
       </button>
       {#if scanSummary}
         <p class="hint" style="color: {colors.mut};">{scanSummary}</p>
@@ -143,28 +143,28 @@
     </section>
 
     <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
-      <h2 style="font-family: {fonts.display};">Credencial do provedor de transcrição</h2>
+      <h2 style="font-family: {fonts.display};">Transcription provider credential</h2>
       {#if credentialError}
         <p class="error" style="color: {colors.red};">{credentialError}</p>
       {:else}
         <p class="status" style="color: {hasCredential ? colors.green : colors.mut};">
-          {hasCredential ? "Credencial configurada" : "Nenhuma credencial configurada"}
+          {hasCredential ? "Credential configured" : "No credential configured"}
         </p>
       {/if}
       <div class="credential-form">
         <input
           type="password"
           bind:value={apiKeyInput}
-          placeholder="Nova API key da ElevenLabs"
+          placeholder="New ElevenLabs API key"
           autocomplete="off"
           style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
         />
         <button onclick={saveCredential} disabled={savingCredential || !apiKeyInput}>
-          {savingCredential ? "Salvando…" : "Salvar"}
+          {savingCredential ? "Saving…" : "Save"}
         </button>
       </div>
       {#if saveCredentialSuccess}
-        <p class="hint" style="color: {colors.green};">Credencial salva.</p>
+        <p class="hint" style="color: {colors.green};">Credential saved.</p>
       {/if}
       {#if saveCredentialError}
         <p class="error" style="color: {colors.red};">{saveCredentialError}</p>
@@ -172,28 +172,28 @@
     </section>
 
     <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
-      <h2 style="font-family: {fonts.display};">Credencial do provedor de análise</h2>
+      <h2 style="font-family: {fonts.display};">Analysis provider credential</h2>
       {#if analysisCredentialError}
         <p class="error" style="color: {colors.red};">{analysisCredentialError}</p>
       {:else}
         <p class="status" style="color: {hasAnalysisCredential ? colors.green : colors.mut};">
-          {hasAnalysisCredential ? "Credencial configurada" : "Nenhuma credencial configurada"}
+          {hasAnalysisCredential ? "Credential configured" : "No credential configured"}
         </p>
       {/if}
       <div class="credential-form">
         <input
           type="password"
           bind:value={analysisApiKeyInput}
-          placeholder="Nova API key da DeepSeek"
+          placeholder="New DeepSeek API key"
           autocomplete="off"
           style="border: 1px solid {colors.line}; background: transparent; color: {colors.text};"
         />
         <button onclick={saveAnalysisCredential} disabled={savingAnalysisCredential || !analysisApiKeyInput}>
-          {savingAnalysisCredential ? "Salvando…" : "Salvar"}
+          {savingAnalysisCredential ? "Saving…" : "Save"}
         </button>
       </div>
       {#if saveAnalysisCredentialSuccess}
-        <p class="hint" style="color: {colors.green};">Credencial salva.</p>
+        <p class="hint" style="color: {colors.green};">Credential saved.</p>
       {/if}
       {#if saveAnalysisCredentialError}
         <p class="error" style="color: {colors.red};">{saveAnalysisCredentialError}</p>

@@ -16,11 +16,11 @@ func TestFS_ContainsAllTaskPrompts(t *testing.T) {
 	for _, f := range files {
 		data, err := FS.ReadFile(f)
 		if err != nil {
-			t.Errorf("FS.ReadFile(%q) erro: %v", f, err)
+			t.Errorf("FS.ReadFile(%q) error: %v", f, err)
 			continue
 		}
 		if len(data) == 0 {
-			t.Errorf("FS.ReadFile(%q) retornou conteúdo vazio", f)
+			t.Errorf("FS.ReadFile(%q) returned empty content", f)
 		}
 	}
 }

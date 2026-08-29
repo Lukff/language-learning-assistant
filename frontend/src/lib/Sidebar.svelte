@@ -7,8 +7,8 @@
   let { active, onNavigate }: { active: Screen; onNavigate: (screen: Screen) => void } = $props();
 
   const NAV: { key: Screen; label: string; icon: string }[] = [
-    { key: "library", label: "Biblioteca", icon: "▤" },
-    { key: "queue", label: "Fila", icon: "≡" },
+    { key: "library", label: "Library", icon: "▤" },
+    { key: "queue", label: "Queue", icon: "≡" },
   ];
 </script>
 
@@ -16,7 +16,7 @@
   <div class="brand">
     <div class="brand-name" style="font-family: {fonts.display}; color: {colors.text};">Replay</div>
     <div class="brand-sub" style="font-family: {fonts.body}; color: {colors.mut};">
-      diário de aulas de inglês
+      English lesson diary
     </div>
   </div>
   {#each NAV as item (item.key)}

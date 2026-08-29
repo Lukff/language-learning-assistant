@@ -48,7 +48,7 @@ func TestTeacherService_RenameTeacher_RejectsCollidingName(t *testing.T) {
 
 	svc := NewTeacherService(conn)
 	err = svc.RenameTeacher(jamesID, "Sarah M.")
-	if err == nil || err.Error() != "já existe um professor com esse nome" {
+	if err == nil || err.Error() != "a teacher with this name already exists" {
 		t.Errorf("RenameTeacher() colidindo = %v, esperado erro de nome já existente", err)
 	}
 }

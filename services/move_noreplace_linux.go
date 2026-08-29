@@ -10,7 +10,7 @@ import (
 
 func moveFileNoReplace(oldPath, newPath string) error {
 	if err := unix.Renameat2(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, unix.RENAME_NOREPLACE); err != nil {
-		return fmt.Errorf("mover arquivo sem substituir destino: %w", err)
+		return fmt.Errorf("move file without replacing destination: %w", err)
 	}
 	return nil
 }

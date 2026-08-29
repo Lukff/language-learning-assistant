@@ -18,8 +18,8 @@ type LessonFilter struct {
 }
 
 // LessonWithStatus is a lesson with the status derived from the
-// extract_audio/transcribe jobs. Status is always one of "processando" (processing), "pronta" (ready),
-// "erro" (error); ErrorMessage is only filled when Status == "erro" — see the
+// extract_audio/transcribe jobs. Status is always one of "processing", "ready",
+// "error"; ErrorMessage is only filled when Status == "error" — see the
 // derivation rules in deriveStatus.
 type LessonWithStatus struct {
 	Lesson
@@ -109,7 +109,7 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 
 	rows, err := conn.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("listar lessons com status: %w", err)
+		return nil, fmt.Errorf("list lessons with status: %w", err)
 	}
 	defer rows.Close()
 
@@ -117,12 +117,12 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 	for rows.Next() {
 		lws, err := scanLessonWithStatusRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("ler lesson com status: %w", err)
+			return nil, fmt.Errorf("read lesson with status: %w", err)
 		}
 		out = append(out, lws)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar lessons com status: %w", err)
+		return nil, fmt.Errorf("iterate lessons with status: %w", err)
 	}
 	return out, nil
 }
@@ -130,7 +130,7 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 // FindLessonWithStatusByID looks up a lesson by id already with the status
 // derived from the jobs (same rules as ListLessonsWithStatus) — used by the
 // Detail view (Story 6), which now opens at any status, not just
-// "pronta" (ready) (see services.LibraryService.GetLesson). Returns (nil, nil) if
+// "ready" (see services.LibraryService.GetLesson). Returns (nil, nil) if
 // the lesson doesn't exist.
 func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error) {
 	row := conn.QueryRow(`SELECT`+lessonWithStatusColumns+lessonWithStatusFromJoin+` WHERE l.id = ?`, id)
@@ -139,7 +139,7 @@ func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error)
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson com status por id %d: %w", id, err)
+		return nil, fmt.Errorf("fetch lesson with status by id %d: %w", id, err)
 	}
 	return &lws, nil
 }
@@ -147,17 +147,17 @@ func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error)
 // deriveStatus applies the Library's status rules (Story 5): an
 // extract_audio error is the root cause and takes priority over the
 // transcribe error (which gets blocked when its extract_audio fails — see
-// claimNextEligibleJob in internal/jobs/worker.go); "pronta" (ready) requires
+// claimNextEligibleJob in internal/jobs/worker.go); "ready" requires
 // transcribe to be done, not just extract_audio.
 func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError string) (status string, message string) {
 	if extractStatus == "error" {
-		return "erro", extractError
+		return "error", extractError
 	}
 	if transcribeStatus == "error" {
-		return "erro", transcribeError
+		return "error", transcribeError
 	}
 	if transcribeStatus == "done" {
-		return "pronta", ""
+		return "ready", ""
 	}
-	return "processando", ""
+	return "processing", ""
 }

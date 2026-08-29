@@ -19,7 +19,7 @@ func chooseStorageFolder(title string) (string, error) {
 		CanCreateDirectories(true).
 		PromptForSingleSelection()
 	if err != nil {
-		return "", fmt.Errorf("abrir diálogo de pasta: %w", err)
+		return "", fmt.Errorf("open folder dialog: %w", err)
 	}
 	if dir == "" {
 		return "", nil
@@ -35,12 +35,12 @@ func chooseStorageFolder(title string) (string, error) {
 func isDirWritable(dir string) error {
 	f, err := os.CreateTemp(dir, ".assistente-idiomas-write-test-*")
 	if err != nil {
-		return fmt.Errorf("pasta sem permissão de escrita: %w", err)
+		return fmt.Errorf("folder has no write permission: %w", err)
 	}
 	name := f.Name()
 	f.Close()
 	if err := os.Remove(name); err != nil {
-		return fmt.Errorf("não foi possível limpar arquivo de teste na pasta: %w", err)
+		return fmt.Errorf("could not clean up test file in folder: %w", err)
 	}
 	return nil
 }

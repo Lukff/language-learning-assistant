@@ -31,7 +31,7 @@ func (s *SetupService) IsFirstRun() bool {
 // it is writable. Returns an empty path (with no error) if the user cancels the
 // dialog.
 func (s *SetupService) ChooseStorageFolder() (string, error) {
-	return chooseStorageFolder("Escolha a pasta onde as aulas ficarão guardadas")
+	return chooseStorageFolder("Choose the folder where lessons will be stored")
 }
 
 // CompleteSetup saves the ElevenLabs credential (keyring) and, only if that
@@ -39,13 +39,13 @@ func (s *SetupService) ChooseStorageFolder() (string, error) {
 // fails, config.json isn't touched and the app keeps detecting first-run.
 func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 	if storageRoot == "" {
-		return fmt.Errorf("pasta de armazenamento não pode ser vazia")
+		return fmt.Errorf("storage folder cannot be empty")
 	}
 	if err := config.SaveSTTAPIKey(apiKey); err != nil {
-		return fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
+		return fmt.Errorf("could not access the system credential manager (check that gnome-keyring/kwallet is running): %w", err)
 	}
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
-		return fmt.Errorf("gravar configuração: %w", err)
+		return fmt.Errorf("write configuration: %w", err)
 	}
 	return nil
 }

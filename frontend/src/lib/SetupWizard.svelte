@@ -55,26 +55,26 @@
 <div class="wizard" style="background: {colors.bg}; font-family: {fonts.body}; color: {colors.text};">
   <div class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
     {#if step === "folder"}
-      <h1 style="font-family: {fonts.display};">Onde ficam suas aulas?</h1>
+      <h1 style="font-family: {fonts.display};">Where do your lessons live?</h1>
       <p style="color: {colors.mut};">
-        Escolha a pasta sincronizada (por exemplo, dentro do Google Drive) onde os vídeos
-        importados serão guardados.
+        Choose the synced folder (for example, inside Google Drive) where imported videos
+        will be stored.
       </p>
       <button onclick={chooseFolder} disabled={choosing}>
-        {choosing ? "Abrindo…" : "Escolher pasta"}
+        {choosing ? "Opening…" : "Choose folder"}
       </button>
     {:else if step === "credentials"}
-      <h1 style="font-family: {fonts.display};">Pasta selecionada</h1>
+      <h1 style="font-family: {fonts.display};">Folder selected</h1>
       <p class="mono" style="color: {colors.mut};">{storageRoot}</p>
-      <h2 style="font-family: {fonts.display};">Chave da API (ElevenLabs)</h2>
+      <h2 style="font-family: {fonts.display};">API key (ElevenLabs)</h2>
       <input type="password" bind:value={apiKey} placeholder="sk-..." />
       <button onclick={complete} disabled={saving || apiKey.length === 0}>
-        {saving ? "Salvando…" : "Concluir"}
+        {saving ? "Saving…" : "Finish"}
       </button>
     {:else}
-      <h1 style="font-family: {fonts.display};">Procurando aulas na pasta…</h1>
+      <h1 style="font-family: {fonts.display};">Looking for lessons in the folder…</h1>
       <p style="color: {colors.mut};">
-        Verificando se já existem vídeos de aula em {storageRoot}.
+        Checking whether lesson videos already exist in {storageRoot}.
       </p>
     {/if}
     {#if error}

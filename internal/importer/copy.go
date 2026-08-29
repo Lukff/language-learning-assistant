@@ -23,23 +23,23 @@ import (
 func CopyIntoStorageRoot(srcPath, storageRoot string) (string, error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
-		return "", fmt.Errorf("abrir arquivo de origem: %w", err)
+		return "", fmt.Errorf("open source file: %w", err)
 	}
 	defer src.Close()
 
 	tmp, err := os.CreateTemp(storageRoot, "importing-*.tmp")
 	if err != nil {
-		return "", fmt.Errorf("criar arquivo temporário de cópia: %w", err)
+		return "", fmt.Errorf("create temporary copy file: %w", err)
 	}
 	tmpPath := tmp.Name()
 	if _, err := io.Copy(tmp, src); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
-		return "", fmt.Errorf("copiar conteúdo do vídeo: %w", err)
+		return "", fmt.Errorf("copy video contents: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
-		return "", fmt.Errorf("finalizar cópia do vídeo: %w", err)
+		return "", fmt.Errorf("finalize video copy: %w", err)
 	}
 
 	base := filepath.Base(srcPath)
@@ -52,12 +52,12 @@ func CopyIntoStorageRoot(srcPath, storageRoot string) (string, error) {
 		if _, statErr := os.Stat(destPath); os.IsNotExist(statErr) {
 			if err := os.Rename(tmpPath, destPath); err != nil {
 				os.Remove(tmpPath)
-				return "", fmt.Errorf("mover cópia pro nome final: %w", err)
+				return "", fmt.Errorf("move copy to final name: %w", err)
 			}
 			return candidate, nil
 		} else if statErr != nil {
 			os.Remove(tmpPath)
-			return "", fmt.Errorf("checar colisão de nome no destino: %w", statErr)
+			return "", fmt.Errorf("check name collision at destination: %w", statErr)
 		}
 		candidate = fmt.Sprintf("%s-%d%s", stem, i, ext)
 	}

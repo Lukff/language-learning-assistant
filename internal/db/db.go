@@ -21,28 +21,28 @@ var migrationsFS embed.FS
 // doesn't exist.
 func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("criar diretório do banco: %w", err)
+		return nil, fmt.Errorf("create database directory: %w", err)
 	}
 
 	conn, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
 	if err != nil {
-		return nil, fmt.Errorf("abrir banco: %w", err)
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL;"); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("ativar WAL: %w", err)
+		return nil, fmt.Errorf("enable WAL: %w", err)
 	}
 
 	goose.SetBaseFS(migrationsFS)
 	defer goose.SetBaseFS(nil)
 	if err := goose.SetDialect("sqlite"); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("configurar dialeto goose: %w", err)
+		return nil, fmt.Errorf("configure goose dialect: %w", err)
 	}
 	if err := goose.Up(conn, "migrations"); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("rodar migrations: %w", err)
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
 	return conn, nil

@@ -19,7 +19,7 @@ func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("buscar transcript da lesson %d: %w", lessonID, err)
+		return false, fmt.Errorf("fetch transcript for lesson %d: %w", lessonID, err)
 	}
 	return true, nil
 }
@@ -32,7 +32,7 @@ func InsertTranscript(conn *sql.DB, lessonID int64, utterancesJSON string) error
 		lessonID, utterancesJSON, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return fmt.Errorf("inserir transcript da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("insert transcript for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
@@ -56,11 +56,11 @@ func FindTranscriptByLessonID(conn *sql.DB, lessonID int64) (*Transcript, error)
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar transcript da lesson %d: %w", lessonID, err)
+		return nil, fmt.Errorf("fetch transcript for lesson %d: %w", lessonID, err)
 	}
 	var utterances []stt.Utterance
 	if err := json.Unmarshal([]byte(utterancesJSON), &utterances); err != nil {
-		return nil, fmt.Errorf("desserializar utterances da lesson %d: %w", lessonID, err)
+		return nil, fmt.Errorf("unmarshal utterances for lesson %d: %w", lessonID, err)
 	}
 	return &Transcript{LessonID: lessonID, Utterances: utterances}, nil
 }

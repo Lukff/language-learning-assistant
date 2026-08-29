@@ -27,7 +27,7 @@ func FindPendingImportByHash(conn *sql.DB, hash string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("buscar pending_import por hash: %w", err)
+		return false, fmt.Errorf("fetch pending_import by hash: %w", err)
 	}
 	return true, nil
 }
@@ -42,11 +42,11 @@ func InsertPendingImport(conn *sql.DB, p PendingImport) (int64, error) {
 		p.Path, p.FileSize, p.FileMTime, p.SHA256, p.SuggestedDate, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return 0, fmt.Errorf("inserir pending_import: %w", err)
+		return 0, fmt.Errorf("insert pending_import: %w", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("obter id do pending_import: %w", err)
+		return 0, fmt.Errorf("get pending_import id: %w", err)
 	}
 	return id, nil
 }
@@ -58,7 +58,7 @@ func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 		`SELECT id, path, file_size, file_mtime, sha256, COALESCE(suggested_date, '') FROM pending_imports ORDER BY created_at DESC`,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("listar pending_imports: %w", err)
+		return nil, fmt.Errorf("list pending_imports: %w", err)
 	}
 	defer rows.Close()
 
@@ -66,12 +66,12 @@ func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 	for rows.Next() {
 		var p PendingImport
 		if err := rows.Scan(&p.ID, &p.Path, &p.FileSize, &p.FileMTime, &p.SHA256, &p.SuggestedDate); err != nil {
-			return nil, fmt.Errorf("ler pending_import: %w", err)
+			return nil, fmt.Errorf("read pending_import: %w", err)
 		}
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar pending_imports: %w", err)
+		return nil, fmt.Errorf("iterate pending_imports: %w", err)
 	}
 	return out, nil
 }
@@ -86,7 +86,7 @@ func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, teacherName string) (int64, error) {
 	tx, err := conn.Begin()
 	if err != nil {
-		return 0, fmt.Errorf("iniciar transação: %w", err)
+		return 0, fmt.Errorf("start transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -96,10 +96,10 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, teacherName
 		id,
 	).Scan(&p.ID, &p.Path, &p.FileSize, &p.FileMTime, &p.SHA256)
 	if err == sql.ErrNoRows {
-		return 0, fmt.Errorf("candidato %d não encontrado (já foi confirmado ou removido?)", id)
+		return 0, fmt.Errorf("candidate %d not found (already confirmed or removed?)", id)
 	}
 	if err != nil {
-		return 0, fmt.Errorf("buscar pending_import: %w", err)
+		return 0, fmt.Errorf("fetch pending_import: %w", err)
 	}
 
 	teacherID, err := getOrCreateTeacherByName(tx, teacherName)
@@ -113,11 +113,11 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, teacherName
 		lessonDate, teacherID, p.Path, p.SHA256, p.FileSize, p.FileMTime, now, now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("inserir lesson: %w", err)
+		return 0, fmt.Errorf("insert lesson: %w", err)
 	}
 	lessonID, err := res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("obter id da lesson: %w", err)
+		return 0, fmt.Errorf("get lesson id: %w", err)
 	}
 
 	for _, kind := range []string{"extract_audio", "transcribe"} {
@@ -125,16 +125,16 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, teacherName
 			`INSERT INTO jobs (lesson_id, kind, status, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)`,
 			lessonID, kind, now, now,
 		); err != nil {
-			return 0, fmt.Errorf("criar job %s: %w", kind, err)
+			return 0, fmt.Errorf("create job %s: %w", kind, err)
 		}
 	}
 
 	if _, err := tx.Exec(`DELETE FROM pending_imports WHERE id = ?`, id); err != nil {
-		return 0, fmt.Errorf("remover pending_import: %w", err)
+		return 0, fmt.Errorf("remove pending_import: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("confirmar transação: %w", err)
+		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
 	return lessonID, nil
 }

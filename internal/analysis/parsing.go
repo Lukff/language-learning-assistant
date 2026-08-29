@@ -22,7 +22,7 @@ func stripTrailingCodeFence(raw []byte) []byte {
 // about the schema of any specific task.
 func unmarshalJSON(raw json.RawMessage, v any) error {
 	if err := json.Unmarshal(raw, v); err != nil {
-		return fmt.Errorf("analysis: json inválido: %w", err)
+		return fmt.Errorf("analysis: invalid json: %w", err)
 	}
 	return nil
 }

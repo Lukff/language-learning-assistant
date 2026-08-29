@@ -66,7 +66,7 @@ func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_path = ?`, path)
 	l, err := scanLessonRow(row)
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson por path: %w", err)
+		return nil, fmt.Errorf("fetch lesson by path: %w", err)
 	}
 	return l, nil
 }
@@ -77,7 +77,7 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_hash = ?`, hash)
 	l, err := scanLessonRow(row)
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson por hash: %w", err)
+		return nil, fmt.Errorf("fetch lesson by hash: %w", err)
 	}
 	return l, nil
 }
@@ -87,7 +87,7 @@ func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.id = ?`, id)
 	l, err := scanLessonRow(row)
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson por id: %w", err)
+		return nil, fmt.Errorf("fetch lesson by id: %w", err)
 	}
 	return l, nil
 }
@@ -103,7 +103,7 @@ func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fil
 		path, size, fileMTime, time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar path da lesson: %w", err)
+		return fmt.Errorf("update lesson path: %w", err)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 		seconds, time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return fmt.Errorf("gravar duração da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("write duration for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
@@ -131,7 +131,7 @@ func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error 
 		speakerLabel, time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return fmt.Errorf("gravar student_speaker_label da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("write student_speaker_label for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
@@ -146,7 +146,7 @@ func UpdateLesson(conn *sql.DB, lessonID int64, lessonDate string, teacherID int
 		lessonDate, teacherID, time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar lesson %d: %w", lessonID, err)
+		return fmt.Errorf("update lesson %d: %w", lessonID, err)
 	}
 	return nil
 }

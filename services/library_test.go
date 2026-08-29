@@ -64,8 +64,8 @@ func TestLibraryService_ListLessons_ReturnsConfirmedLessons(t *testing.T) {
 	if lessons[0].LessonDate != "2026-07-20" || lessons[0].TeacherName != "Sarah M." || lessons[0].VideoPath != "aula.mp4" {
 		t.Errorf("ListLessons()[0] = %+v, esperado data/tutor/path da fixture", lessons[0])
 	}
-	if lessons[0].Status != "pronta" {
-		t.Errorf("ListLessons()[0].Status = %q, esperado pronta (extract_audio e transcribe done)", lessons[0].Status)
+	if lessons[0].Status != "ready" {
+		t.Errorf("ListLessons()[0].Status = %q, esperado ready (extract_audio e transcribe done)", lessons[0].Status)
 	}
 }
 
@@ -167,16 +167,16 @@ func TestLibraryService_ListLessons_ErrorStatusAndMessageFromExtractAudio(t *tes
 	defer conn.Close()
 
 	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
-	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "error", "ffmpeg não encontrado")
-	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "error", "depende de extract_audio que falhou: ffmpeg não encontrado")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "error", "ffmpeg not found")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "error", "depends on extract_audio which failed: ffmpeg not found")
 
 	svc := NewLibraryService(conn, testStorageRoot(t))
 	lessons, err := svc.ListLessons(LessonFilter{})
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Status != "erro" || lessons[0].ErrorMessage != "ffmpeg não encontrado" {
-		t.Errorf("ListLessons()[0] = %+v, esperado status=erro com a mensagem do extract_audio (causa raiz)", lessons[0])
+	if len(lessons) != 1 || lessons[0].Status != "error" || lessons[0].ErrorMessage != "ffmpeg not found" {
+		t.Errorf("ListLessons()[0] = %+v, esperado status=error com a mensagem do extract_audio (causa raiz)", lessons[0])
 	}
 }
 
@@ -188,8 +188,8 @@ func TestLibraryService_RetryLesson_ResetsErrorJobsToPending(t *testing.T) {
 	defer conn.Close()
 
 	lessonID := mustInsertLesson(t, conn, "2026-07-20", "Sarah M.", "aula.mp4")
-	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "error", "ffmpeg não encontrado")
-	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "error", "depende de extract_audio que falhou")
+	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "error", "ffmpeg not found")
+	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "error", "depends on extract_audio which failed")
 
 	svc := NewLibraryService(conn, testStorageRoot(t))
 	if err := svc.RetryLesson(lessonID); err != nil {
@@ -200,8 +200,8 @@ func TestLibraryService_RetryLesson_ResetsErrorJobsToPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListLessons() erro inesperado: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Status != "processando" {
-		t.Errorf("ListLessons()[0] após RetryLesson = %+v, esperado status=processando (jobs voltaram a pending)", lessons[0])
+	if len(lessons) != 1 || lessons[0].Status != "processing" {
+		t.Errorf("ListLessons()[0] após RetryLesson = %+v, esperado status=processing (jobs voltaram a pending)", lessons[0])
 	}
 }
 
@@ -244,8 +244,8 @@ func TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetLesson() erro inesperado: %v", err)
 	}
-	if lesson.Status != "processando" {
-		t.Errorf("GetLesson().Status = %q, esperado processando (transcribe ainda rodando)", lesson.Status)
+	if lesson.Status != "processing" {
+		t.Errorf("GetLesson().Status = %q, esperado processing (transcribe ainda rodando)", lesson.Status)
 	}
 	if lesson.StudentSpeakerLabel != nil {
 		t.Errorf("GetLesson().StudentSpeakerLabel = %v, esperado nil antes do toggle", lesson.StudentSpeakerLabel)

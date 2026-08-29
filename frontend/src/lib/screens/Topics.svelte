@@ -46,7 +46,7 @@
   }
 
   async function deleteTopic(topic: Topic) {
-    const confirmed = confirm(`Excluir o tópico "${topic.name}"? Ele será removido de todas as aulas que o usam.`);
+    const confirmed = confirm(`Delete the topic "${topic.name}"? It will be removed from all lessons that use it.`);
     if (!confirmed) return;
     topicDeleteErrors = { ...topicDeleteErrors, [topic.id]: "" };
     deletingTopicId = topic.id;
@@ -61,7 +61,7 @@
   }
 
   async function deleteAllTopics() {
-    const confirmed = confirm(`Excluir todos os ${topics.length} tópicos? Isso não pode ser desfeito.`);
+    const confirmed = confirm(`Delete all ${topics.length} topics? This cannot be undone.`);
     if (!confirmed) return;
     deleteAllError = "";
     deletingAll = true;
@@ -87,19 +87,19 @@
 </script>
 
 <div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
-  <button class="back" onclick={onBack} style="color: {colors.mut};">← Biblioteca</button>
+  <button class="back" onclick={onBack} style="color: {colors.mut};">← Library</button>
 
   <div class="header-row">
-    <h1 style="font-family: {fonts.display};">Tópicos</h1>
+    <h1 style="font-family: {fonts.display};">Topics</h1>
     {#if topics.length > 0}
       <button onclick={deleteAllTopics} disabled={deletingAll} style="color: {colors.red};">
-        {deletingAll ? "Excluindo…" : "Excluir todos"}
+        {deletingAll ? "Deleting…" : "Delete all"}
       </button>
     {/if}
   </div>
 
   {#if loading}
-    <p style="color: {colors.mut};">Carregando…</p>
+    <p style="color: {colors.mut};">Loading…</p>
   {:else}
     {#if topicsError}
       <p class="error" style="color: {colors.red};">{topicsError}</p>
@@ -108,7 +108,7 @@
       <p class="error" style="color: {colors.red};">{deleteAllError}</p>
     {/if}
     {#if topics.length === 0}
-      <p class="hint" style="color: {colors.mut};">Nenhum tópico cadastrado ainda.</p>
+      <p class="hint" style="color: {colors.mut};">No topics added yet.</p>
     {:else}
       <ul class="topic-list">
         {#each topics as topic (topic.id)}
@@ -122,14 +122,14 @@
               onclick={() => renameTopic(topic.id)}
               disabled={renamingTopicId === topic.id || !topicRenameDrafts[topic.id] || topicRenameDrafts[topic.id] === topic.name}
             >
-              {renamingTopicId === topic.id ? "Renomeando…" : "Renomear"}
+              {renamingTopicId === topic.id ? "Renaming…" : "Rename"}
             </button>
             <button
               onclick={() => deleteTopic(topic)}
               disabled={deletingTopicId === topic.id}
               style="color: {colors.red};"
             >
-              {deletingTopicId === topic.id ? "Excluindo…" : "Excluir"}
+              {deletingTopicId === topic.id ? "Deleting…" : "Delete"}
             </button>
             {#if topicRenameErrors[topic.id]}
               <p class="error" style="color: {colors.red};">{topicRenameErrors[topic.id]}</p>

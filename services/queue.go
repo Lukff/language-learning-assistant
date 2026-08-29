@@ -17,20 +17,24 @@ func NewQueueService(conn *sql.DB) *QueueService {
 	return &QueueService{conn: conn}
 }
 
-// stageLabel translates the job kind into a PT-BR stage label, displayed
-// in the Queue.
+// stageLabel translates the job kind into a stage label, displayed
+// as free text in the Queue (Queue.svelte renders it directly, never
+// matches on it) — purely cosmetic, unlike statusLabel below.
 var stageLabel = map[string]string{
-	"extract_audio": "Extração de áudio",
-	"transcribe":    "Transcrição",
+	"extract_audio": "Audio extraction",
+	"transcribe":    "Transcription",
 }
 
 // statusLabel translates the raw job status into the vocabulary already used in the
 // Library (Library.svelte: STATUS_LABEL) — "pending"/"running" become
-// "aguardando"/"processando", "error" becomes "erro".
+// "waiting"/"processing", "error" stays "error". These are the same
+// literal values the frontend matches on (e.g. Queue.svelte checks
+// item.status === "error"), so a future change here must land on both
+// sides together.
 var statusLabel = map[string]string{
-	"pending": "aguardando",
-	"running": "processando",
-	"error":   "erro",
+	"pending": "waiting",
+	"running": "processing",
+	"error":   "error",
 }
 
 // QueueItem is a queue entry, in the format exposed to the frontend.

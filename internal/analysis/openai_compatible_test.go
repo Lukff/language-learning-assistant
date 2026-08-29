@@ -20,52 +20,52 @@ func TestOpenAICompatibleProvider_Complete_SendsSystemPromptPerCall(t *testing.T
 
 	p, err := newOpenAICompatibleProvider("fake", server.URL, "key", "fake-model", false)
 	if err != nil {
-		t.Fatalf("newOpenAICompatibleProvider erro: %v", err)
+		t.Fatalf("newOpenAICompatibleProvider error: %v", err)
 	}
 
 	raw, err := p.Complete(context.Background(), "system prompt A", "transcript A")
 	if err != nil {
-		t.Fatalf("Complete erro: %v", err)
+		t.Fatalf("Complete error: %v", err)
 	}
 	if string(raw) != `{"ok":true}` {
-		t.Errorf("raw = %s, inesperado", raw)
+		t.Errorf("raw = %s, unexpected", raw)
 	}
 
 	messages, _ := capturedBody["messages"].([]any)
 	if len(messages) < 1 {
-		t.Fatal("esperava ao menos 1 mensagem no corpo")
+		t.Fatal("expected at least 1 message in the body")
 	}
 	first, _ := messages[0].(map[string]any)
 	if first["role"] != "system" || first["content"] != "system prompt A" {
-		t.Errorf("primeira mensagem = %+v, esperado role=system content=\"system prompt A\"", first)
+		t.Errorf("first message = %+v, expected role=system content=\"system prompt A\"", first)
 	}
 
 	if _, err := p.Complete(context.Background(), "system prompt B", "transcript B"); err != nil {
-		t.Fatalf("segunda Complete erro: %v", err)
+		t.Fatalf("second Complete error: %v", err)
 	}
 	messages2, _ := capturedBody["messages"].([]any)
 	first2, _ := messages2[0].(map[string]any)
 	if first2["content"] != "system prompt B" {
-		t.Errorf("segunda chamada content = %v, esperado \"system prompt B\"", first2["content"])
+		t.Errorf("second call content = %v, expected \"system prompt B\"", first2["content"])
 	}
 }
 
 func TestOpenAICompatibleProvider_Complete_EmptySystemPrompt(t *testing.T) {
 	p, err := newOpenAICompatibleProvider("fake", "http://example.invalid", "key", "fake-model", false)
 	if err != nil {
-		t.Fatalf("newOpenAICompatibleProvider erro: %v", err)
+		t.Fatalf("newOpenAICompatibleProvider error: %v", err)
 	}
 	if _, err := p.Complete(context.Background(), "", "transcript"); err == nil {
-		t.Fatal("esperava erro para systemPrompt vazio, obteve nil")
+		t.Fatal("expected error for empty systemPrompt, got nil")
 	}
 }
 
 func TestOpenAICompatibleProvider_Model_ReturnsConfiguredModel(t *testing.T) {
 	p, err := newOpenAICompatibleProvider("fake", "http://example.invalid", "key", "fake-model", false)
 	if err != nil {
-		t.Fatalf("newOpenAICompatibleProvider erro: %v", err)
+		t.Fatalf("newOpenAICompatibleProvider error: %v", err)
 	}
 	if got := p.Model(); got != "fake-model" {
-		t.Errorf("Model() = %q, esperado %q", got, "fake-model")
+		t.Errorf("Model() = %q, expected %q", got, "fake-model")
 	}
 }

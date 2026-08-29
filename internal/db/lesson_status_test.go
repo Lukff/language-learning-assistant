@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestListLessonsWithStatus_ProcessandoWhenNoJobsDone(t *testing.T) {
+func TestListLessonsWithStatus_ProcessingWhenNoJobsDone(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -18,17 +18,17 @@ func TestListLessonsWithStatus_ProcessandoWhenNoJobsDone(t *testing.T) {
 
 	lessons, err := ListLessonsWithStatus(conn, LessonFilter{})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus() erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus() unexpected error: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Status != "processando" {
-		t.Errorf("ListLessonsWithStatus() = %+v, esperado status=processando", lessons)
+	if len(lessons) != 1 || lessons[0].Status != "processing" {
+		t.Errorf("ListLessonsWithStatus() = %+v, expected status=processing", lessons)
 	}
 }
 
-func TestListLessonsWithStatus_ProntaWhenTranscribeDone(t *testing.T) {
+func TestListLessonsWithStatus_ReadyWhenTranscribeDone(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -38,158 +38,158 @@ func TestListLessonsWithStatus_ProntaWhenTranscribeDone(t *testing.T) {
 
 	lessons, err := ListLessonsWithStatus(conn, LessonFilter{})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus() erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus() unexpected error: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Status != "pronta" {
-		t.Errorf("ListLessonsWithStatus() = %+v, esperado status=pronta", lessons)
+	if len(lessons) != 1 || lessons[0].Status != "ready" {
+		t.Errorf("ListLessonsWithStatus() = %+v, expected status=ready", lessons)
 	}
 }
 
-func TestListLessonsWithStatus_ErroComMensagemDaCausaRaiz(t *testing.T) {
+func TestListLessonsWithStatus_ErrorWithRootCauseMessage(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	lessonID := mustInsertLessonForJobs(t, conn, "aula.mp4")
 	mustInsertJob(t, conn, lessonID, "extract_audio", "error", 3, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
-	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "ffmpeg não encontrado", lessonID, "extract_audio"); err != nil {
-		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "ffmpeg not found", lessonID, "extract_audio"); err != nil {
+		t.Fatalf("preparing fixture last_error failed: %v", err)
 	}
 	mustInsertJob(t, conn, lessonID, "transcribe", "error", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
-	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "depende de extract_audio que falhou: ffmpeg não encontrado", lessonID, "transcribe"); err != nil {
-		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "depends on extract_audio which failed: ffmpeg not found", lessonID, "transcribe"); err != nil {
+		t.Fatalf("preparing fixture last_error failed: %v", err)
 	}
 
 	lessons, err := ListLessonsWithStatus(conn, LessonFilter{})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus() erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus() unexpected error: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Status != "erro" || lessons[0].ErrorMessage != "ffmpeg não encontrado" {
-		t.Errorf("ListLessonsWithStatus() = %+v, esperado status=erro com a mensagem do extract_audio (causa raiz, não a do transcribe bloqueado)", lessons)
+	if len(lessons) != 1 || lessons[0].Status != "error" || lessons[0].ErrorMessage != "ffmpeg not found" {
+		t.Errorf("ListLessonsWithStatus() = %+v, expected status=error with the extract_audio message (root cause, not the blocked transcribe one)", lessons)
 	}
 }
 
-func TestListLessonsWithStatus_ErroQuandoSoTranscribeFalhou(t *testing.T) {
+func TestListLessonsWithStatus_ErrorWhenOnlyTranscribeFailed(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	lessonID := mustInsertLessonForJobs(t, conn, "aula.mp4")
 	mustInsertJob(t, conn, lessonID, "extract_audio", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
 	mustInsertJob(t, conn, lessonID, "transcribe", "error", 3, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
-	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "falha real de STT", lessonID, "transcribe"); err != nil {
-		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "real STT failure", lessonID, "transcribe"); err != nil {
+		t.Fatalf("preparing fixture last_error failed: %v", err)
 	}
 
 	lessons, err := ListLessonsWithStatus(conn, LessonFilter{})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus() erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus() unexpected error: %v", err)
 	}
-	if len(lessons) != 1 || lessons[0].Status != "erro" || lessons[0].ErrorMessage != "falha real de STT" {
-		t.Errorf("ListLessonsWithStatus() = %+v, esperado status=erro com a mensagem do transcribe", lessons)
+	if len(lessons) != 1 || lessons[0].Status != "error" || lessons[0].ErrorMessage != "real STT failure" {
+		t.Errorf("ListLessonsWithStatus() = %+v, expected status=error with the transcribe message", lessons)
 	}
 }
 
-func TestListLessonsWithStatus_FiltraPorProfessorEPeriodo(t *testing.T) {
+func TestListLessonsWithStatus_FiltersByTeacherAndPeriod(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	sarah := mustInsertLessonForJobs(t, conn, "sarah.mp4")
 	if _, err := conn.Exec(`UPDATE lessons SET lesson_date = ? WHERE id = ?`, "2026-07-10", sarah); err != nil {
-		t.Fatalf("ajustar fixture sarah falhou: %v", err)
+		t.Fatalf("adjusting sarah fixture failed: %v", err)
 	}
 	mustInsertJob(t, conn, sarah, "extract_audio", "done", 0, "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z")
 	mustInsertJob(t, conn, sarah, "transcribe", "done", 0, "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z")
 
 	jamesTeacherID, err := GetOrCreateTeacherByName(conn, "James K.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	james := mustInsertLessonForJobs(t, conn, "james.mp4")
 	if _, err := conn.Exec(`UPDATE lessons SET teacher_id = ?, lesson_date = ? WHERE id = ?`, jamesTeacherID, "2026-07-20T14:00", james); err != nil {
-		t.Fatalf("ajustar fixture james falhou: %v", err)
+		t.Fatalf("adjusting james fixture failed: %v", err)
 	}
 	mustInsertJob(t, conn, james, "extract_audio", "done", 0, "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z")
 	mustInsertJob(t, conn, james, "transcribe", "done", 0, "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z")
 
 	byTeacher, err := ListLessonsWithStatus(conn, LessonFilter{TeacherID: jamesTeacherID})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(TeacherID) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(TeacherID) unexpected error: %v", err)
 	}
 	if len(byTeacher) != 1 || byTeacher[0].TeacherName != "James K." {
-		t.Errorf("ListLessonsWithStatus(TeacherID=james) = %+v, esperado só a aula de James K.", byTeacher)
+		t.Errorf("ListLessonsWithStatus(TeacherID=james) = %+v, expected only James K.'s lesson", byTeacher)
 	}
 
 	byDate, err := ListLessonsWithStatus(conn, LessonFilter{DateFrom: "2026-07-15", DateTo: "2026-07-31"})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(DateFrom/DateTo) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(DateFrom/DateTo) unexpected error: %v", err)
 	}
 	if len(byDate) != 1 || byDate[0].TeacherName != "James K." {
-		t.Errorf("ListLessonsWithStatus(2026-07-15..2026-07-31) = %+v, esperado só a aula de 20/07 (inclui horário, filtra só pela data)", byDate)
+		t.Errorf("ListLessonsWithStatus(2026-07-15..2026-07-31) = %+v, expected only the 07/20 lesson (includes time, filters by date only)", byDate)
 	}
 }
 
-func TestListLessonsWithStatus_FiltraPorTopicosComSemanticaOR(t *testing.T) {
+func TestListLessonsWithStatus_FiltersByTopicsWithORSemantics(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	grammar, err := GetOrCreateTopicByName(conn, "grammar")
 	if err != nil {
-		t.Fatalf("GetOrCreateTopicByName(grammar) erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTopicByName(grammar) unexpected error: %v", err)
 	}
 	travel, err := GetOrCreateTopicByName(conn, "travel")
 	if err != nil {
-		t.Fatalf("GetOrCreateTopicByName(travel) erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTopicByName(travel) unexpected error: %v", err)
 	}
 	work, err := GetOrCreateTopicByName(conn, "work")
 	if err != nil {
-		t.Fatalf("GetOrCreateTopicByName(work) erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTopicByName(work) unexpected error: %v", err)
 	}
 
 	grammarLesson := mustInsertLessonForJobs(t, conn, "grammar.mp4")
 	if err := AddLessonTopic(conn, grammarLesson, grammar); err != nil {
-		t.Fatalf("AddLessonTopic(grammar) erro inesperado: %v", err)
+		t.Fatalf("AddLessonTopic(grammar) unexpected error: %v", err)
 	}
 
 	travelLesson := mustInsertLessonForJobs(t, conn, "travel.mp4")
 	if err := AddLessonTopic(conn, travelLesson, travel); err != nil {
-		t.Fatalf("AddLessonTopic(travel) erro inesperado: %v", err)
+		t.Fatalf("AddLessonTopic(travel) unexpected error: %v", err)
 	}
 
-	noTopicLesson := mustInsertLessonForJobs(t, conn, "sem-topico.mp4")
+	noTopicLesson := mustInsertLessonForJobs(t, conn, "no-topic.mp4")
 	_ = noTopicLesson
 
 	filtered, err := ListLessonsWithStatus(conn, LessonFilter{TopicIDs: []int64{grammar, travel}})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(TopicIDs) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(TopicIDs) unexpected error: %v", err)
 	}
 	if len(filtered) != 2 {
-		t.Fatalf("ListLessonsWithStatus(TopicIDs=[grammar,travel]) = %+v, esperado as 2 aulas com qualquer um dos tópicos", filtered)
+		t.Fatalf("ListLessonsWithStatus(TopicIDs=[grammar,travel]) = %+v, expected the 2 lessons with either topic", filtered)
 	}
 
 	byWork, err := ListLessonsWithStatus(conn, LessonFilter{TopicIDs: []int64{work}})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(TopicIDs=[work]) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(TopicIDs=[work]) unexpected error: %v", err)
 	}
 	if len(byWork) != 0 {
-		t.Errorf("ListLessonsWithStatus(TopicIDs=[work]) = %+v, esperado vazio (nenhuma aula tem o tópico work)", byWork)
+		t.Errorf("ListLessonsWithStatus(TopicIDs=[work]) = %+v, expected empty (no lesson has the work topic)", byWork)
 	}
 }
 
 func TestFindLessonWithStatusByID_FindsExistingWithStatusAndNilWhenMissing(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -197,25 +197,25 @@ func TestFindLessonWithStatusByID_FindsExistingWithStatusAndNilWhenMissing(t *te
 	mustInsertJob(t, conn, lessonID, "extract_audio", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
 	mustInsertJob(t, conn, lessonID, "transcribe", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
 	if err := SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
-		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+		t.Fatalf("SetStudentSpeaker() unexpected error: %v", err)
 	}
 
 	found, err := FindLessonWithStatusByID(conn, lessonID)
 	if err != nil {
-		t.Fatalf("FindLessonWithStatusByID() erro inesperado: %v", err)
+		t.Fatalf("FindLessonWithStatusByID() unexpected error: %v", err)
 	}
-	if found == nil || found.Status != "pronta" {
-		t.Fatalf("FindLessonWithStatusByID() = %+v, esperado status=pronta", found)
+	if found == nil || found.Status != "ready" {
+		t.Fatalf("FindLessonWithStatusByID() = %+v, expected status=ready", found)
 	}
 	if found.StudentSpeakerLabel == nil || *found.StudentSpeakerLabel != "speaker_0" {
-		t.Errorf("StudentSpeakerLabel = %v, esperado speaker_0", found.StudentSpeakerLabel)
+		t.Errorf("StudentSpeakerLabel = %v, expected speaker_0", found.StudentSpeakerLabel)
 	}
 
 	missing, err := FindLessonWithStatusByID(conn, lessonID+999)
 	if err != nil {
-		t.Fatalf("FindLessonWithStatusByID() erro inesperado: %v", err)
+		t.Fatalf("FindLessonWithStatusByID() unexpected error: %v", err)
 	}
 	if missing != nil {
-		t.Errorf("FindLessonWithStatusByID() para id inexistente = %+v, esperado nil", missing)
+		t.Errorf("FindLessonWithStatusByID() for a nonexistent id = %+v, expected nil", missing)
 	}
 }

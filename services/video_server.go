@@ -24,7 +24,7 @@ type VideoServerService struct {
 func NewVideoServerService(conn *sql.DB, storageRoot jobs.StorageRootResolver) (*VideoServerService, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, fmt.Errorf("abrir porta local do servidor de vídeo: %w", err)
+		return nil, fmt.Errorf("open local video server port: %w", err)
 	}
 
 	server := &http.Server{Handler: VideoAssetHandler(conn, storageRoot)}

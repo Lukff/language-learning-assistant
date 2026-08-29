@@ -24,7 +24,7 @@ func parseTutorFeedback(raw json.RawMessage, utteranceCount int) ([]TutorFeedbac
 	}
 	kept, discarded := filterAnchored(parsed.TutorFeedback, utteranceCount)
 	if discarded > 0 {
-		slog.Warn("analysis: itens descartados por utterance_index inválido", "tarefa", "analyze_tutor_feedback", "descartados", discarded)
+		slog.Warn("analysis: items discarded due to invalid utterance_index", "task", "analyze_tutor_feedback", "discarded", discarded)
 	}
 	return kept, nil
 }

@@ -4,7 +4,7 @@
 
 <div class="screen">
   <p style="font-family: {fonts.body}; color: {colors.mut};">
-    Progresso chega na Fase 3.
+    Progress arrives in Phase 3.
   </p>
 </div>
 

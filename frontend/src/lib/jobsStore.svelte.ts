@@ -17,7 +17,7 @@ export const jobsStore = {
     return items;
   },
   get activeCount() {
-    return items.filter((i) => i.status !== "erro").length;
+    return items.filter((i) => i.status !== "error").length;
   },
 };
 

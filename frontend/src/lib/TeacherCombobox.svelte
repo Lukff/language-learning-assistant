@@ -12,7 +12,7 @@
   });
 </script>
 
-<input {id} list={`${id}-datalist`} type="text" bind:value placeholder="Nome do professor" autocomplete="off" />
+<input {id} list={`${id}-datalist`} type="text" bind:value placeholder="Teacher name" autocomplete="off" />
 <datalist id={`${id}-datalist`}>
   {#each teachers as teacher (teacher.id)}
     <option value={teacher.name}></option>

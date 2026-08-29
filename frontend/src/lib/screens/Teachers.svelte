@@ -62,18 +62,18 @@
 </script>
 
 <div class="screen" style="font-family: {fonts.body}; color: {colors.text};">
-  <button class="back" onclick={onBack} style="color: {colors.mut};">← Biblioteca</button>
+  <button class="back" onclick={onBack} style="color: {colors.mut};">← Library</button>
 
-  <h1 style="font-family: {fonts.display};">Professores</h1>
+  <h1 style="font-family: {fonts.display};">Teachers</h1>
 
   {#if loading}
-    <p style="color: {colors.mut};">Carregando…</p>
+    <p style="color: {colors.mut};">Loading…</p>
   {:else}
     {#if teachersError}
       <p class="error" style="color: {colors.red};">{teachersError}</p>
     {/if}
     {#if teachers.length === 0}
-      <p class="hint" style="color: {colors.mut};">Nenhum professor cadastrado ainda.</p>
+      <p class="hint" style="color: {colors.mut};">No teachers added yet.</p>
     {:else}
       <ul class="teacher-list">
         {#each teachers as teacher (teacher.id)}
@@ -87,7 +87,7 @@
               onclick={() => renameTeacher(teacher.id)}
               disabled={renamingId === teacher.id || !renameDrafts[teacher.id] || renameDrafts[teacher.id] === teacher.name}
             >
-              {renamingId === teacher.id ? "Renomeando…" : "Renomear"}
+              {renamingId === teacher.id ? "Renaming…" : "Rename"}
             </button>
             {#if renameErrors[teacher.id]}
               <p class="error" style="color: {colors.red};">{renameErrors[teacher.id]}</p>

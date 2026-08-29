@@ -5,7 +5,7 @@ import "encoding/json"
 
 // VocabularyItem is a new word or expression for the Student to learn —
 // includes PT/ES words used as a resort to the native language, never
-// treated as an English mistake (see analyze-corrections-v1.md).
+// treated as an English mistake (see analyze-corrections-v2.md).
 type VocabularyItem struct {
 	Term        string `json:"term"`
 	Translation string `json:"translation"`

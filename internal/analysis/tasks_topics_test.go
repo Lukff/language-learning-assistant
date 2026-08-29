@@ -7,19 +7,19 @@ import (
 )
 
 func TestParseTopics_Valid(t *testing.T) {
-	raw := json.RawMessage(`{"topics":["planos de viagem","trabalho remoto"]}`)
+	raw := json.RawMessage(`{"topics":["travel plans","remote work"]}`)
 	got, err := parseTopics(raw, 3)
 	if err != nil {
-		t.Fatalf("parseTopics erro inesperado: %v", err)
+		t.Fatalf("parseTopics unexpected error: %v", err)
 	}
-	if len(got) != 2 || got[0] != "planos de viagem" {
-		t.Errorf("got = %+v, inesperado", got)
+	if len(got) != 2 || got[0] != "travel plans" {
+		t.Errorf("got = %+v, unexpected", got)
 	}
 }
 
 func TestParseTopics_InvalidJSON(t *testing.T) {
 	if _, err := parseTopics(json.RawMessage("not json"), 3); err == nil {
-		t.Fatal("esperava erro para JSON inválido, obteve nil")
+		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
 
@@ -27,15 +27,15 @@ func TestParseTopics_TruncatesToMax(t *testing.T) {
 	raw := json.RawMessage(`{"topics":["a","b","c","d","e","f"]}`)
 	got, err := parseTopics(raw, 3)
 	if err != nil {
-		t.Fatalf("parseTopics erro inesperado: %v", err)
+		t.Fatalf("parseTopics unexpected error: %v", err)
 	}
 	want := []string{"a", "b", "c", "d"}
 	if len(got) != len(want) {
-		t.Fatalf("got = %+v, esperado %+v", got, want)
+		t.Fatalf("got = %+v, expected %+v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Errorf("got[%d] = %q, esperado %q", i, got[i], want[i])
+			t.Errorf("got[%d] = %q, expected %q", i, got[i], want[i])
 		}
 	}
 }
@@ -43,49 +43,49 @@ func TestParseTopics_TruncatesToMax(t *testing.T) {
 func TestNewTopicsTask_HasNameVersionAndPrompt(t *testing.T) {
 	tk := NewTopicsTask()
 	if tk.Name() != "analyze_topics" {
-		t.Errorf("Name() = %q, esperado analyze_topics", tk.Name())
+		t.Errorf("Name() = %q, expected analyze_topics", tk.Name())
 	}
-	if tk.Version() != 4 {
-		t.Errorf("Version() = %d, esperado 4", tk.Version())
+	if tk.Version() != 5 {
+		t.Errorf("Version() = %d, expected 5", tk.Version())
 	}
 	if tk.Prompt() == "" {
-		t.Error("Prompt() vazio, esperado conteúdo do v4")
+		t.Error("Prompt() empty, expected v5 content")
 	}
 }
 
 func TestParseTopicsResult_Valid(t *testing.T) {
-	resultJSON := json.RawMessage(`["viagens","trabalho remoto"]`)
+	resultJSON := json.RawMessage(`["travel","remote work"]`)
 	got, err := ParseTopicsResult(resultJSON)
 	if err != nil {
-		t.Fatalf("ParseTopicsResult erro inesperado: %v", err)
+		t.Fatalf("ParseTopicsResult unexpected error: %v", err)
 	}
-	if len(got) != 2 || got[0] != "viagens" || got[1] != "trabalho remoto" {
-		t.Errorf("got = %+v, inesperado", got)
+	if len(got) != 2 || got[0] != "travel" || got[1] != "remote work" {
+		t.Errorf("got = %+v, unexpected", got)
 	}
 }
 
 func TestParseTopicsResult_InvalidJSON(t *testing.T) {
 	if _, err := ParseTopicsResult(json.RawMessage("not json")); err == nil {
-		t.Fatal("esperava erro para JSON inválido, obteve nil")
+		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
 
 func TestAppendExistingTopics_EmptyLeavesTranscriptUnchanged(t *testing.T) {
-	got := AppendExistingTopics("linha", nil)
-	if got != "linha" {
-		t.Errorf("got = %q, esperado transcript inalterado", got)
+	got := AppendExistingTopics("line", nil)
+	if got != "line" {
+		t.Errorf("got = %q, expected unchanged transcript", got)
 	}
 }
 
 func TestAppendExistingTopics_AppendsBlock(t *testing.T) {
-	got := AppendExistingTopics("linha", []string{"viagens", "trabalho remoto"})
-	want := `linha
+	got := AppendExistingTopics("line", []string{"travel", "remote work"})
+	want := `line
 
-Tópicos já utilizados em outras aulas (reutilize quando fizer sentido):
-- viagens
-- trabalho remoto
+Topics already used in other lessons (reuse when it makes sense):
+- travel
+- remote work
 `
 	if got != want {
-		t.Errorf("got = %q, esperado %q", got, want)
+		t.Errorf("got = %q, expected %q", got, want)
 	}
 }

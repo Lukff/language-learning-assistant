@@ -5,7 +5,7 @@
 Language-learning assistant: a **personal** desktop app (1 user, 1 dev, no server of its
 own) that archives recordings of English lessons from Cambly and generates diarized transcripts
 (student × tutor), LLM-based analyses (corrections, vocabulary, tutor expressions), and a progress
-view. UI and analyses in PT-BR; lessons are in English with occasional code-switching (PT/ES).
+view. UI and analyses in English; lessons are in English with occasional code-switching (PT/ES).
 
 **Sources of truth** (read before deciding anything):
 - `docs/technology-decisions.md` — current technology choices. Do not silently contradict; if a choice needs to change, propose updating the document.
@@ -60,7 +60,7 @@ manifest.
 - **Portable SQL** in the repository layer: nothing driver-specific (switching modernc ↔ mattn should be just the import + `sql.Open`).
 - **Database never inside the synced folder**; video paths in the database are always **relative** to the storage root — never absolute or machine-specific.
 - **Frontend: Svelte 5 with runes, always.** Never use legacy Svelte 3/4 syntax (stores with `$:`, `export let`, etc.) — use `$state`, `$derived`, `$effect`, `$props`. If in doubt between the old and new pattern, stop and ask.
-- Code and identifiers in English; documentation in English; user-facing error messages and analysis text in PT-BR.
+- Code and identifiers in English; documentation in English; user-facing error messages and analysis text in English (switched from PT-BR on 29/08/2026 — see the Phase 2 progress log).
 - STT always with diarization + per-word timestamps + the provider's multilingual/code-switching configuration (document in the code the configuration used and why).
 - In the analysis prompt: a PT/ES word in the student's speech is a resort to their native language (a vocabulary candidate), **not** an English mistake.
 

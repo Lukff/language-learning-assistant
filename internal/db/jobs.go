@@ -29,7 +29,7 @@ func ListPendingJobs(conn *sql.DB) ([]Job, error) {
 		`SELECT id, lesson_id, kind, status, attempts, COALESCE(last_error, ''), created_at, updated_at FROM jobs WHERE status = 'pending' ORDER BY created_at ASC, id ASC`,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("listar jobs pendentes: %w", err)
+		return nil, fmt.Errorf("list pending jobs: %w", err)
 	}
 	defer rows.Close()
 
@@ -37,12 +37,12 @@ func ListPendingJobs(conn *sql.DB) ([]Job, error) {
 	for rows.Next() {
 		var j Job
 		if err := rows.Scan(&j.ID, &j.LessonID, &j.Kind, &j.Status, &j.Attempts, &j.LastError, &j.CreatedAt, &j.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("ler job: %w", err)
+			return nil, fmt.Errorf("read job: %w", err)
 		}
 		out = append(out, j)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar jobs pendentes: %w", err)
+		return nil, fmt.Errorf("iterate pending jobs: %w", err)
 	}
 	return out, nil
 }
@@ -60,7 +60,7 @@ func FindJob(conn *sql.DB, lessonID int64, kind string) (*Job, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar job %s da lesson %d: %w", kind, lessonID, err)
+		return nil, fmt.Errorf("fetch job %s for lesson %d: %w", kind, lessonID, err)
 	}
 	return &j, nil
 }
@@ -74,14 +74,14 @@ func MarkJobRunning(conn *sql.DB, id int64) error {
 		time.Now().UTC().Format(time.RFC3339), id,
 	)
 	if err != nil {
-		return fmt.Errorf("marcar job %d como running: %w", id, err)
+		return fmt.Errorf("mark job %d as running: %w", id, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("confirmar marcação de job %d como running: %w", id, err)
+		return fmt.Errorf("confirm marking job %d as running: %w", id, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("job %d não estava pending — não pode ser reivindicado", id)
+		return fmt.Errorf("job %d was not pending — cannot be claimed", id)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func MarkJobDone(conn *sql.DB, id int64) error {
 		time.Now().UTC().Format(time.RFC3339), id,
 	)
 	if err != nil {
-		return fmt.Errorf("marcar job %d como done: %w", id, err)
+		return fmt.Errorf("mark job %d as done: %w", id, err)
 	}
 	return nil
 }
@@ -106,7 +106,7 @@ func MarkJobDone(conn *sql.DB, id int64) error {
 func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts int) (string, int, error) {
 	var attempts int
 	if err := conn.QueryRow(`SELECT attempts FROM jobs WHERE id = ?`, id).Scan(&attempts); err != nil {
-		return "", 0, fmt.Errorf("ler attempts do job %d: %w", id, err)
+		return "", 0, fmt.Errorf("read attempts for job %d: %w", id, err)
 	}
 	attempts++
 	status := "pending"
@@ -118,7 +118,7 @@ func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts i
 		status, attempts, lastError, time.Now().UTC().Format(time.RFC3339), id,
 	)
 	if err != nil {
-		return "", 0, fmt.Errorf("registrar falha do job %d: %w", id, err)
+		return "", 0, fmt.Errorf("record failure for job %d: %w", id, err)
 	}
 	return status, attempts, nil
 }
@@ -133,7 +133,7 @@ func MarkJobBlocked(conn *sql.DB, id int64, reason string) error {
 		reason, time.Now().UTC().Format(time.RFC3339), id,
 	)
 	if err != nil {
-		return fmt.Errorf("bloquear job %d: %w", id, err)
+		return fmt.Errorf("block job %d: %w", id, err)
 	}
 	return nil
 }
@@ -148,11 +148,11 @@ func RequeueRunningJobs(conn *sql.DB) (int64, error) {
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return 0, fmt.Errorf("requeue de jobs running: %w", err)
+		return 0, fmt.Errorf("requeue running jobs: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("confirmar requeue de jobs running: %w", err)
+		return 0, fmt.Errorf("confirm requeue of running jobs: %w", err)
 	}
 	return n, nil
 }
@@ -171,11 +171,11 @@ func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error) {
 		time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("resetar jobs com erro da lesson %d: %w", lessonID, err)
+		return 0, fmt.Errorf("reset error jobs for lesson %d: %w", lessonID, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("confirmar reset de jobs da lesson %d: %w", lessonID, err)
+		return 0, fmt.Errorf("confirm reset of jobs for lesson %d: %w", lessonID, err)
 	}
 	return n, nil
 }

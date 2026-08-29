@@ -9,7 +9,7 @@
     class="settings-button"
     style="color: {colors.mut};"
     onclick={onOpenSettings}
-    aria-label="Configurações"
+    aria-label="Settings"
   >
     ⚙
   </button>

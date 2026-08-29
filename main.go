@@ -24,16 +24,16 @@ var assets embed.FS
 func main() {
 	dbPath, err := config.DBPath()
 	if err != nil {
-		log.Fatalf("resolver caminho do banco: %v", err)
+		log.Fatalf("resolve database path: %v", err)
 	}
 	conn, err := db.Open(dbPath)
 	if err != nil {
-		log.Fatalf("abrir banco de dados: %v", err)
+		log.Fatalf("open database: %v", err)
 	}
 	defer conn.Close()
 
 	if err := analysis.RegisterPrompts(conn); err != nil {
-		log.Fatalf("registrar prompts de análise: %v", err)
+		log.Fatalf("register analysis prompts: %v", err)
 	}
 
 	storageRoot := func() (string, error) {
@@ -58,12 +58,12 @@ func main() {
 
 	videoServer, err := services.NewVideoServerService(conn, storageRoot)
 	if err != nil {
-		log.Fatalf("subir servidor de vídeo: %v", err)
+		log.Fatalf("start video server: %v", err)
 	}
 
 	app := application.New(application.Options{
-		Name:        "Assistente de Idiomas",
-		Description: "Arquivo e análise de aulas de inglês do Cambly",
+		Name:        "Language Assistant",
+		Description: "Archive and analysis of English lessons from Cambly",
 		Services: []application.Service{
 			application.NewService(services.NewSetupService()),
 			application.NewService(importService),
@@ -84,7 +84,7 @@ func main() {
 	})
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Assistente de Idiomas",
+		Title:            "Language Assistant",
 		Width:            1200,
 		Height:           760,
 		BackgroundColour: application.NewRGB(20, 24, 31), // #14181F — colors.bg
@@ -118,7 +118,7 @@ func main() {
 func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {
 	audioCacheDir, err := config.AudioCacheDir()
 	if err != nil {
-		log.Printf("worker de jobs não iniciado: %v", err)
+		log.Printf("job worker not started: %v", err)
 		return
 	}
 	sttFactory := func() (stt.Provider, error) {
@@ -131,7 +131,7 @@ func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {
 	worker := jobs.NewWorker(conn, storageRoot, audioCacheDir, media.ExtractAudio, sttFactory, services.WailsJobNotifier{})
 	go func() {
 		if err := worker.Run(context.Background()); err != nil {
-			log.Printf("worker de jobs encerrado: %v", err)
+			log.Printf("job worker stopped: %v", err)
 		}
 	}()
 }

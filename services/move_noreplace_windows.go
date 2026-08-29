@@ -12,14 +12,14 @@ import (
 func moveFileNoReplace(oldPath, newPath string) error {
 	oldPathPtr, err := syscall.UTF16PtrFromString(oldPath)
 	if err != nil {
-		return fmt.Errorf("converter path de origem para UTF-16: %w", err)
+		return fmt.Errorf("convert source path to UTF-16: %w", err)
 	}
 	newPathPtr, err := syscall.UTF16PtrFromString(newPath)
 	if err != nil {
-		return fmt.Errorf("converter path de destino para UTF-16: %w", err)
+		return fmt.Errorf("convert destination path to UTF-16: %w", err)
 	}
 	if err := syscall.MoveFile(oldPathPtr, newPathPtr); err != nil {
-		return fmt.Errorf("mover arquivo sem substituir destino: %w", err)
+		return fmt.Errorf("move file without replacing destination: %w", err)
 	}
 	return nil
 }

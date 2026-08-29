@@ -36,7 +36,7 @@ type ElevenLabsProvider struct {
 
 func NewElevenLabsProvider(apiKey string) (*ElevenLabsProvider, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("stt: ELEVENLABS_API_KEY vazia")
+		return nil, fmt.Errorf("stt: ELEVENLABS_API_KEY empty")
 	}
 	// Generous timeout: covers sending the entire lesson WAV (tens of MB)
 	// plus synchronous server-side processing. Same value used by the
@@ -49,12 +49,12 @@ func (p *ElevenLabsProvider) Name() string { return "elevenlabs" }
 func (p *ElevenLabsProvider) Transcribe(ctx context.Context, audioPath string) (*Result, error) {
 	req, err := p.buildRequest(ctx, audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("stt: montar requisição elevenlabs: %w", err)
+		return nil, fmt.Errorf("stt: build elevenlabs request: %w", err)
 	}
 
 	raw, err := p.do(req)
 	if err != nil {
-		return nil, fmt.Errorf("stt: transcrever elevenlabs: %w", err)
+		return nil, fmt.Errorf("stt: transcribe elevenlabs: %w", err)
 	}
 
 	result, err := mapElevenLabsResponse(raw)
@@ -62,7 +62,7 @@ func (p *ElevenLabsProvider) Transcribe(ctx context.Context, audioPath string) (
 		// Preserve the raw JSON even on a parse failure: the API call was already
 		// made (it costs money), so the caller should be able to save
 		// result.RawResponse to disk even with err != nil.
-		return &Result{RawResponse: raw}, fmt.Errorf("stt: parsear resposta elevenlabs: %w", err)
+		return &Result{RawResponse: raw}, fmt.Errorf("stt: parse elevenlabs response: %w", err)
 	}
 	return result, nil
 }
