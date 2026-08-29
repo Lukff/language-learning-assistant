@@ -12,7 +12,7 @@
   high latency. Investigate the cause (asset handler, encoding, buffering)
   and consider optimizations such as preloading segments, transcoding, or adjustments to the
   `<video>` element. **Update 28/08/2026:** video on Linux didn't even play until this
-  date (see `docs/fase-1-mvp.md`) — the asset handler switched from an `application.Middleware`
+  date (see `docs/phase-1-mvp.md`) — the asset handler switched from an `application.Middleware`
   in Wails (`wails://` scheme) to a real `http.Server` on loopback
   (`services/video_server.go`). Reassess whether this item still applies with the
   new server before investigating further.

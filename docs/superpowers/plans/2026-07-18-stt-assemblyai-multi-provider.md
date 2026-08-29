@@ -716,4 +716,4 @@ Running `go.exe run ./cmd/spike -providers=gladia,assemblyai` against the real s
 
 - Repeat the same pattern (mapping + client) for Deepgram and ElevenLabs Scribe.
 - Run the 3–5 sample lessons against all candidates not yet eliminated (the rest of Story 1).
-- Side-by-side comparison and STT decision (Story 2), using `docs/notas-stt.md` as input.
+- Side-by-side comparison and STT decision (Story 2), using `docs/stt-notes.md` as input.

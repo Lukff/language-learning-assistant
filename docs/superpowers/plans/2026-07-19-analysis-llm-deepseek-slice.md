@@ -812,7 +812,7 @@ var analysisProviderEnvVars = map[string]string{
 
 // runAnalysis runs the v1 LLM analysis (Story 3) over the transcript
 // already saved by the winning STT provider (ElevenLabs — see
-// docs/decisoes-tecnologia.md). Doesn't re-run STT: reads the utterances.json
+// docs/technology-decisions.md). Doesn't re-run STT: reads the utterances.json
 // already saved by runProvider.
 func runAnalysis(ctx context.Context, logger *slog.Logger, names []string) bool {
 	const (
@@ -1110,15 +1110,15 @@ doesn't already exist from an earlier run — real ffmpeg, real network, real bi
 (2) `go.exe run ./cmd/spike -analysis-providers=deepseek` (real `DEEPSEEK_API_KEY`, interactive
 stdin prompt to confirm which speaker is the Aluno, real network, real billed usage). This is
 intentionally NOT part of this task's automated steps — happens later, directly with the human.
-Afterwards, fill in `docs/notas-analise-llm.md` (new file, to be created by hand at that point,
-mirroring `docs/notas-stt.md`'s structure) with the DeepSeek quality/cost notes from aula 01, and
+Afterwards, fill in `docs/llm-analysis-notes.md` (new file, to be created by hand at that point,
+mirroring `docs/stt-notes.md`'s structure) with the DeepSeek quality/cost notes from aula 01, and
 decide whether to stop here or move to the Qwen slice per the spec's "Slice Strategy".
 
 ---
 
 ## After this plan
 
-If DeepSeek's quality is convincing, the LLM exploration for (`fase-0-validacao.md`, Story 3)
+If DeepSeek's quality is convincing, the LLM exploration for (`phase-0-validation.md`, Story 3)
 already has a good-enough answer for now — no need to implement Qwen/GLM/Anthropic/OpenAI/Gemini
 in this round. If it isn't convincing, the next slice (Qwen) follows the same pattern as this
 plan: a new constructor in `openai_compatible.go` (or its own client, if the API isn't compatible

@@ -8,7 +8,7 @@ import (
 
 // PendingImport é um vídeo achado pela varredura da pasta de armazenamento
 // que ainda não foi confirmado (data/tutor) pelo usuário — ver História 3
-// em docs/fase-1-mvp.md.
+// em docs/phase-1-mvp.md.
 type PendingImport struct {
 	ID            int64
 	Path          string

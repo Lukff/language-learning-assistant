@@ -134,7 +134,7 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 // "AAAA-MM-DDTHH:MM") tem um componente de horário não vazio depois do "T".
 // ConfirmImport exige isso porque o nome padronizado do arquivo
 // (StandardFilename, internal/importer) depende de sempre haver horário —
-// ver docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md.
+// ver docs/superpowers/specs/2026-07-23-story-3-standardized-filename-design.md.
 func hasTimeComponent(lessonDate string) bool {
 	_, timePart, found := strings.Cut(lessonDate, "T")
 	return found && timePart != ""

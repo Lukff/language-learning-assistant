@@ -1,7 +1,7 @@
 // Package importer — ver importer.go. Este arquivo cobre a padronização do
 // nome do arquivo de vídeo pós-confirmação (História 3, critério adicional
-// registrado em docs/fase-1-mvp.md e desenhado em
-// docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md).
+// registrado em docs/phase-1-mvp.md e desenhado em
+// docs/superpowers/specs/2026-07-23-story-3-standardized-filename-design.md).
 package importer
 
 import (

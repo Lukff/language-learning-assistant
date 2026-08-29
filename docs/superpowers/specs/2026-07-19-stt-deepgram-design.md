@@ -1,11 +1,11 @@
 # Phase 0 — Third STT provider (Deepgram) — Design
 
-> Third slice of Story 1 (`docs/fase-0-validacao.md`), behind the same `stt.Provider` interface
+> Third slice of Story 1 (`docs/phase-0-validation.md`), behind the same `stt.Provider` interface
 > already validated in the Gladia slice
 > (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`) and the AssemblyAI
 > slice (`docs/superpowers/specs/2026-07-18-stt-assemblyai-multi-provider-design.md`). Decision
 > recorded in conversation with the user: Deepgram is the third candidate — and the pair that
-> closes the STT decision in `docs/decisoes-tecnologia.md` ("Preferred candidates: Deepgram or
+> closes the STT decision in `docs/technology-decisions.md` ("Preferred candidates: Deepgram or
 > AssemblyAI. Decision pending.").
 
 ## Objective
@@ -19,7 +19,7 @@ AssemblyAI.
 - ElevenLabs Scribe (left for a later slice, if still needed after the Deepgram × AssemblyAI
   decision).
 - Comparison between providers and the STT decision (Story 2) — this slice only produces the
-  client and the raw/readable outputs; the comparison itself uses `docs/notas-stt.md` as already
+  client and the raw/readable outputs; the comparison itself uses `docs/stt-notes.md` as already
   being done.
 - Any flag besides `-providers` (already exists) — no parallelism, no sophisticated retry.
 - Async mode via Deepgram callback — an explicit decision by the user to go synchronous (see next

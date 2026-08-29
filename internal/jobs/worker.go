@@ -19,7 +19,7 @@ import (
 )
 
 // maxAttempts é o total de tentativas (a primeira + os retries) antes de
-// um job falho virar "error" terminal — ver docs/fase-1-mvp.md (História 4).
+// um job falho virar "error" terminal — ver docs/phase-1-mvp.md (História 4).
 const maxAttempts = 3
 
 // backoff mapeia attempts (já incrementado após uma falha) para o tempo
@@ -69,7 +69,7 @@ type noopNotifier struct{}
 func (noopNotifier) JobChanged(JobEvent) {}
 
 // Worker processa a fila de jobs (tabela jobs) sequencialmente, um de cada
-// vez — ver decisão "worker único" em docs/decisoes-tecnologia.md.
+// vez — ver decisão "worker único" em docs/technology-decisions.md.
 type Worker struct {
 	conn          *sql.DB
 	storageRoot   StorageRootResolver

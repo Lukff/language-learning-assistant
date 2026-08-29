@@ -112,7 +112,7 @@ func main() {
 // goroutine. storageRoot é resolvido a cada job, não uma vez só aqui — o
 // wizard de primeira execução ainda não rodou neste ponto do startup, então
 // resolvê-lo antecipadamente falharia sempre na primeira sessão do app (ver
-// docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
+// docs/superpowers/specs/2026-07-22-story-4-pipeline-jobs-design.md).
 // Só o cache de áudio (que não depende do wizard) é resolvido aqui; se isso
 // falhar, é um problema de disco/permissão e o worker não inicia.
 func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {

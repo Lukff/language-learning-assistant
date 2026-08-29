@@ -8,7 +8,7 @@ let initialized = false;
 // jobsStore é o único ponto de leitura do estado da fila no frontend —
 // Queue.svelte e o badge da Sidebar.svelte leem daqui, sem cada um se
 // inscrever separadamente em "job:updated" (ver
-// docs/superpowers/specs/2026-07-23-historia-7-fila-visivel-design.md).
+// docs/superpowers/specs/2026-07-23-story-7-visible-queue-design.md).
 // Getters (não uma exportação direta de `items`) porque `export let` não
 // propaga reatividade entre módulos no Svelte 5 — funções/objetos com
 // getter são o padrão recomendado pra estado compartilhado em .svelte.ts.

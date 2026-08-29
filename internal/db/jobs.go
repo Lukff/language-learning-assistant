@@ -8,7 +8,7 @@ import (
 )
 
 // Job é uma linha de jobs — ver a fila em tabela + worker único decidida em
-// docs/decisoes-tecnologia.md e a História 4 em docs/fase-1-mvp.md. Status
+// docs/technology-decisions.md e a História 4 em docs/phase-1-mvp.md. Status
 // é sempre um de "pending", "running", "done", "error".
 type Job struct {
 	ID        int64

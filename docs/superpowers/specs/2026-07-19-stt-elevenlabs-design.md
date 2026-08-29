@@ -1,11 +1,11 @@
 # Phase 0 — Fourth (and last) STT provider (ElevenLabs Scribe) — Design
 
-> Fourth slice of Story 1 (`docs/fase-0-validacao.md`), behind the same `stt.Provider` interface
+> Fourth slice of Story 1 (`docs/phase-0-validation.md`), behind the same `stt.Provider` interface
 > already validated in the Gladia slice
 > (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`), the AssemblyAI slice
 > (`docs/superpowers/specs/2026-07-18-stt-assemblyai-multi-provider-design.md`), and the Deepgram
 > slice (`docs/superpowers/specs/2026-07-19-stt-deepgram-design.md`). Closes out the 4 candidates
-> listed in `docs/fase-0-validacao.md` — from here on, Story 1 is ready to turn into Story 2's
+> listed in `docs/phase-0-validation.md` — from here on, Story 1 is ready to turn into Story 2's
 > comparison.
 
 ## Goal

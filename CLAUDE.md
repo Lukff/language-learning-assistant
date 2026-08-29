@@ -8,15 +8,15 @@ own) that archives recordings of English lessons from Cambly and generates diari
 view. UI and analyses in PT-BR; lessons are in English with occasional code-switching (PT/ES).
 
 **Sources of truth** (read before deciding anything):
-- `docs/decisoes-tecnologia.md` — current technology choices. Do not silently contradict; if a choice needs to change, propose updating the document.
-- `docs/fase-1-mvp.md` — stories and tracking for the current phase.
-- `docs/fase-0-validacao.md` — completed phase (API validation); kept as history.
+- `docs/technology-decisions.md` — current technology choices. Do not silently contradict; if a choice needs to change, propose updating the document.
+- `docs/phase-1-mvp.md` — stories and tracking for the current phase.
+- `docs/phase-0-validation.md` — completed phase (API validation); kept as history.
 
 ## Current phase: Phase 1 (MVP — import → transcribe → watch)
 
 Wails v3 app (alpha, **version pinned** in `go.mod`; upgrading from alpha is a deliberate task,
 never in the middle of a feature) + Svelte 5, with a SQLite database. Scope, stories, and
-milestones in `docs/fase-1-mvp.md` — follow it, including the **out-of-scope** list (in-UI
+milestones in `docs/phase-1-mvp.md` — follow it, including the **out-of-scope** list (in-UI
 analysis, tags, progress, sync, FTS are left for later phases) and the **technical risks to
 tackle first** (video with range requests in the asset handler; drag-and-drop in v3; keyring on
 Linux).
@@ -24,7 +24,7 @@ Linux).
 Phase rules:
 - Phase 0 packages (`media`, `stt`, `analysis`) are reused as-is — no copying, no rewriting.
 - The `cmd/spike` CLI and the STT providers discarded in the comparison (Gladia, AssemblyAI, Deepgram) have been removed: they served their purpose validating Phase 0 and have no remaining caller in the app. `internal/stt` keeps only ElevenLabs.
-- App STT: ElevenLabs Scribe (`scribe_v2`, diarization, multilingual detection) — configuration recorded in `decisoes-tecnologia.md`.
+- App STT: ElevenLabs Scribe (`scribe_v2`, diarization, multilingual detection) — configuration recorded in `technology-decisions.md`.
 - Resilience principle: a transcription/analysis failure never blocks watching the video.
 
 ## Architecture — thin-layer principle
@@ -43,7 +43,7 @@ internal/db/        # SQLite (modernc.org/sqlite, WAL) + goose migrations (embed
 internal/jobs/      # table-backed queue + single worker (states, retry, idempotency)
 internal/config/    # machine-local config (paths, keyring)
 prompts/            # versioned prompts (analyze-v1.md, ...)
-docs/               # decisoes-tecnologia.md, fase-1-mvp.md, fase-0-validacao.md
+docs/               # technology-decisions.md, phase-1-mvp.md, phase-0-validation.md
 testdata/           # synthetic/anonymized fixtures
 ```
 
@@ -55,7 +55,7 @@ manifest.
 ## Stack and conventions
 
 - Recent Go; prefer **stdlib**: `net/http` for APIs, `os/exec` for ffmpeg, `log/slog` for logging, `encoding/json`.
-- External dependencies only with justification (approved ones are in `decisoes-tecnologia.md`).
+- External dependencies only with justification (approved ones are in `technology-decisions.md`).
 - **Credentials:** via `zalando/go-keyring` (native OS storage) — never in plain text, never in the synced folder. Nothing hardcoded, nothing committed.
 - **Portable SQL** in the repository layer: nothing driver-specific (switching modernc ↔ mattn should be just the import + `sql.Open`).
 - **Database never inside the synced folder**; video paths in the database are always **relative** to the storage root — never absolute or machine-specific.

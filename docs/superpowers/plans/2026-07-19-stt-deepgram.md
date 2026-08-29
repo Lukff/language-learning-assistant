@@ -524,6 +524,6 @@ human, same as the other two providers.
 ## After this plan
 
 - Side-by-side comparison of Deepgram × AssemblyAI and the STT decision (Story 2), using
-  `docs/notas-stt.md` as input — closes the open decision in `decisoes-tecnologia.md`.
+  `docs/stt-notes.md` as input — closes the open decision in `technology-decisions.md`.
 - ElevenLabs Scribe stays open: only worth implementing if the Deepgram × AssemblyAI decision
   isn't conclusive enough.

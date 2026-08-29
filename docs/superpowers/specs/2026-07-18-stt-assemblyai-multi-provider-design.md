@@ -1,6 +1,6 @@
 # Phase 0 — Second STT provider (AssemblyAI) + multi-provider selection — Design
 
-> Story 1's second slice (`docs/fase-0-validacao.md`), behind the same `stt.Provider` interface
+> Story 1's second slice (`docs/phase-0-validation.md`), behind the same `stt.Provider` interface
 > already validated in the Gladia slice (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`).
 > Decision recorded in conversation with the user: AssemblyAI is the second candidate; `cmd/spike`
 > is also reworked in this slice to allow choosing which providers run per execution, without

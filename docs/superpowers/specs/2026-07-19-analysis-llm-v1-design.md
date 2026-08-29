@@ -1,13 +1,13 @@
 # Phase 0 — Story 3: LLM Analysis v1 — Design
 
 > Covers the complete architecture of the `internal/analysis` package and the
-> `prompts/analyze-v1.md` prompt (`docs/fase-0-validacao.md`, Story 3), including the contract for
+> `prompts/analyze-v1.md` prompt (`docs/phase-0-validation.md`, Story 3), including the contract for
 > all 6 LLM candidates considered. Implementation, however, proceeds in **slices prioritized by
 > cost** (see section below) — this document does not imply implementing all 6 at once.
 >
 > Unlike Story 2 (STT), this LLM exploration remains **non-binding**: Story 3's criterion in
-> `fase-0-validacao.md` already marks the LLM comparison as optional ("no obligation to close the
-> decision in this phase"). `decisoes-tecnologia.md` stays "open" on LLM Analysis until the user
+> `phase-0-validation.md` already marks the LLM comparison as optional ("no obligation to close the
+> decision in this phase"). `technology-decisions.md` stays "open" on LLM Analysis until the user
 > decides to close it, even after this exploration.
 
 ## Objective
@@ -31,7 +31,7 @@ Direct/official price per million tokens, researched in July/2026:
 Implementation and testing order:
 
 1. **Slice 1 — DeepSeek.** Implement the client, run it on lesson 01, note quality in
-   `docs/notas-analise-llm.md`.
+   `docs/llm-analysis-notes.md`.
 2. If the quality isn't convincing → **Slice 2 — Qwen**. If it is, stop here — the following
    slices (including Anthropic/OpenAI/Gemini) are not implemented in this round.
 3. If it still isn't convincing → **Slice 3 — GLM**.
@@ -206,7 +206,7 @@ structural change to the file per new slice (same behavior observed across STT's
 
 ## Cost and quality notes
 
-New doc `docs/notas-analise-llm.md`, mirroring `docs/notas-stt.md` (same privacy header:
+New doc `docs/llm-analysis-notes.md`, mirroring `docs/stt-notes.md` (same privacy header:
 paraphrased notes, no transcribing literal snippets or identifiable data). Criteria per
 provider/lesson:
 
@@ -250,7 +250,7 @@ once.
 
 ## Privacy
 
-Same rules already in effect: `local/` kept out of git, `docs/notas-analise-llm.md` with
+Same rules already in effect: `local/` kept out of git, `docs/llm-analysis-notes.md` with
 paraphrased notes (no literal snippets of real speech, no tutor names), API keys only in
 environment variables / gitignored `.env`.
 

@@ -4,7 +4,7 @@
 
 **Goal:** Implement `stt.Provider` for ElevenLabs Scribe (single synchronous multipart HTTP call,
 mapping to the shared domain) and register it as a fourth selectable provider in `cmd/spike` —
-closing out all 4 STT candidates from `docs/fase-0-validacao.md`.
+closing out all 4 STT candidates from `docs/phase-0-validation.md`.
 
 **Architecture:** `internal/stt/elevenlabs_mapping.go` (pure JSON→domain mapping, fixture-tested) +
 `internal/stt/elevenlabs.go` (live HTTP client: one synchronous multipart `POST
@@ -628,6 +628,6 @@ that happens later, directly with the human, same as the other 3 providers.
 
 ## After this plan
 
-- All 4 STT candidates (`docs/fase-0-validacao.md`) have a client implemented — the next step
-  is the side-by-side comparison and the decision recorded in `docs/decisoes-tecnologia.md`
-  (Story 2), using `docs/notas-stt.md` as input.
+- All 4 STT candidates (`docs/phase-0-validation.md`) have a client implemented — the next step
+  is the side-by-side comparison and the decision recorded in `docs/technology-decisions.md`
+  (Story 2), using `docs/stt-notes.md` as input.

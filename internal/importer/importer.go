@@ -1,5 +1,5 @@
 // Package importer varre a pasta de armazenamento em busca de vídeos de
-// aula que ainda não estão no banco (História 3, docs/fase-1-mvp.md). Não
+// aula que ainda não estão no banco (História 3, docs/phase-1-mvp.md). Não
 // assume nenhuma estrutura de subpastas: identificação e dedupe são sempre
 // por nome do arquivo + SHA-256, nunca por convenção de path. Não importa
 // nada do Wails (camada fina).

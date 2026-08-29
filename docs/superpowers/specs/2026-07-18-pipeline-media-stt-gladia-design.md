@@ -1,6 +1,6 @@
 # Phase 0 — media + stt pipeline (Gladia) — Design
 
-> Initial slice of Story 1 (`docs/fase-0-validacao.md`). Scope deliberately narrowed to
+> Initial slice of Story 1 (`docs/phase-0-validation.md`). Scope deliberately narrowed to
 > **one** STT provider (Gladia) to validate the interface and the end-to-end pipeline before
 > adding the other 3 candidates (AssemblyAI, Deepgram, ElevenLabs Scribe) in later slices.
 > Decision recorded in conversation with the user: incremental approach, Gladia first.
