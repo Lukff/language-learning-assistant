@@ -1,41 +1,41 @@
-# História 9 — Gestão de professores e edição de aula
+# Story 9 — Teacher management and lesson editing
 
-> Design de 3 itens pequenos, pedidos antes de seguir com outros itens da Fase 1: seleção de
-> professor já cadastrado (ou novo nome) no formulário de importação, renomear um professor como
-> entidade (reflete em todas as aulas dele) e editar data/horário/professor de uma aula já
-> confirmada.
+> Design for 3 small items, requested before moving on with other Phase 1 items: selecting an
+> already-registered teacher (or a new name) in the import form, renaming a teacher as an
+> entity (reflected across all their lessons), and editing the date/time/teacher of an already
+> confirmed lesson.
 
-## Contexto
+## Context
 
-Hoje `tutor` é uma coluna `TEXT` livre em `lessons` (sem entidade própria). `ListTutors`
-(`internal/db/lessons.go`) já faz `SELECT DISTINCT tutor` para popular o filtro da Biblioteca, mas
-não há dedup por entidade — duas grafias diferentes do mesmo professor (`"Sarah M."` vs
-`"Sarah M"`) viram "professores" distintos no filtro. Não existe hoje nenhuma forma de editar uma
-`lesson` já confirmada (data/horário/tutor ficam travados no valor informado na confirmação da
-importação, História 3).
+Today `tutor` is a free-form `TEXT` column in `lessons` (no entity of its own). `ListTutors`
+(`internal/db/lessons.go`) already runs `SELECT DISTINCT tutor` to populate the Library filter, but
+there is no dedup by entity — two different spellings of the same teacher (`"Sarah M."` vs
+`"Sarah M"`) end up as distinct "teachers" in the filter. There is currently no way to edit an
+already confirmed `lesson` (date/time/teacher are locked to the value entered at import
+confirmation, Story 3).
 
-O vídeo é renomeado *in place* na confirmação para `AAAA-MM-DD_HHHMM_tutor-slug.ext`
-(`services/import.go:renameVideoBestEffort`, ver
-`docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md`). Editar
-data/professor de uma aula precisa reaproveitar essa mesma lógica de rename best-effort para o
-arquivo continuar refletindo os metadados atuais.
+The video is renamed *in place* on confirmation to `AAAA-MM-DD_HHHMM_tutor-slug.ext`
+(`services/import.go:renameVideoBestEffort`, see
+`docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md`). Editing the
+date/teacher of a lesson needs to reuse this same best-effort rename logic so the file keeps
+reflecting the current metadata.
 
-## Decisões
+## Decisions
 
-1. **Professor vira entidade real** (tabela `teachers`), não só string solta — renomear é um
-   `UPDATE` de uma linha e reflete em todas as aulas automaticamente; nome é `UNIQUE`.
-2. **Editar aula também renomeia o vídeo** — reaproveita a mesma lógica best-effort da História 3
-   (falha no rename não impede salvar a edição).
-3. **Painel "Professores" mora em Configurações**, junto de Armazenamento e Credencial STT.
-4. **Editar aula inclui trocar o professor associado** (reatribuição pontual), além de
-   data/horário — mesmo formulário, mesmo combobox usado na importação.
-5. **Ponto de entrada da edição de aula é um botão "Editar" no Detalhe da aula** (LessonDetail).
-6. **Colisão de nome ao renomear professor é bloqueada com erro** ("já existe um professor com
-   esse nome") — sem merge automático de registros.
+1. **Teacher becomes a real entity** (`teachers` table), not just a loose string — renaming is an
+   `UPDATE` on one row and reflects across all lessons automatically; name is `UNIQUE`.
+2. **Editing a lesson also renames the video** — reuses the same best-effort logic from Story 3
+   (rename failure does not prevent saving the edit).
+3. **The "Teachers" panel lives in Settings**, alongside Storage and STT Credential.
+4. **Editing a lesson includes changing the associated teacher** (one-off reassignment), in
+   addition to date/time — same form, same combobox used during import.
+5. **The entry point for lesson editing is an "Edit" button on the Lesson Detail view** (LessonDetail).
+6. **A name collision when renaming a teacher is blocked with an error** ("já existe um professor com
+   esse nome") — no automatic record merging.
 
-## A. Modelo de dados e migração
+## A. Data model and migration
 
-Nova migration `internal/db/migrations/00005_teachers.sql`:
+New migration `internal/db/migrations/00005_teachers.sql`:
 
 ```sql
 -- +goose Up
@@ -56,9 +56,9 @@ SET teacher_id = (SELECT id FROM teachers WHERE teachers.name = lessons.tutor);
 
 ALTER TABLE lessons DROP COLUMN tutor;
 
--- SQLite não permite adicionar NOT NULL sem default numa coluna já populada
--- via ALTER TABLE; a obrigatoriedade de teacher_id é garantida na camada de
--- repositório (todo INSERT/UPDATE de lessons passa por Go, nunca SQL solto).
+-- SQLite does not allow adding NOT NULL without a default to an already
+-- populated column via ALTER TABLE; the teacher_id constraint is enforced at
+-- the repository layer (every INSERT/UPDATE on lessons goes through Go, never raw SQL).
 
 -- +goose Down
 ALTER TABLE lessons ADD COLUMN tutor TEXT;
@@ -66,121 +66,121 @@ ALTER TABLE lessons DROP COLUMN teacher_id;
 DROP TABLE teachers;
 ```
 
-- Backfill garante que toda `lesson` existente ganha um `teacher_id` correspondente ao seu
-  `tutor` atual, sem perda de dado.
-- `Down` reverte só a estrutura (mesmo padrão de `00001_initial_schema.sql`) — não recupera os
-  valores de `tutor`, consistente com as migrations já existentes deste projeto.
-- Requer SQLite ≥3.35 para `DROP COLUMN` — já embutido em `modernc.org/sqlite v1.54.0` (versão
-  atual do `go.mod`).
+- The backfill ensures every existing `lesson` gets a `teacher_id` matching its current
+  `tutor`, with no data loss.
+- `Down` only reverts the structure (same pattern as `00001_initial_schema.sql`) — it does not
+  recover the `tutor` values, consistent with this project's existing migrations.
+- Requires SQLite ≥3.35 for `DROP COLUMN` — already bundled in `modernc.org/sqlite v1.54.0` (the
+  version currently in `go.mod`).
 
 ## B. Backend (Go)
 
 ### `internal/db`
 
-- Novo `teachers.go`:
+- New `teachers.go`:
   - `type Teacher struct { ID int64; Name string }`
-  - `ListTeachers(conn *sql.DB) ([]Teacher, error)` — ordenado por nome, para o painel de
-    Configurações e para o `TeacherCombobox` do frontend.
-  - `GetOrCreateTeacherByName(conn *sql.DB, name string) (int64, error)` — busca por nome exato;
-    se não existir, insere. Usado por `ConfirmPendingImport` e por `UpdateLesson`, que recebem o
-    nome como string livre vindo do combobox (usuário pode digitar um nome novo).
+  - `ListTeachers(conn *sql.DB) ([]Teacher, error)` — ordered by name, for the Settings panel
+    and for the frontend's `TeacherCombobox`.
+  - `GetOrCreateTeacherByName(conn *sql.DB, name string) (int64, error)` — looks up by exact name;
+    if it doesn't exist, inserts it. Used by `ConfirmPendingImport` and by `UpdateLesson`, which
+    receive the name as a free-form string coming from the combobox (the user may type a new name).
   - `RenameTeacher(conn *sql.DB, id int64, newName string) error` — `UPDATE teachers SET name = ?
-    WHERE id = ?`; violação de `UNIQUE` (checada via `sqlite.Error` / código de constraint do
-    `modernc.org/sqlite`) vira `fmt.Errorf("já existe um professor com esse nome")` — nunca a
-    mensagem crua do driver.
-- `lessons.go`: `Lesson.Tutor` → `Lesson.TeacherID` (para escrita) + `Lesson.TeacherName` (lido via
-  `JOIN teachers ON teachers.id = lessons.teacher_id`, para exibição). `ListTutors` é removida —
-  substituída por `ListTeachers`.
-- `lesson_status.go`: `LessonFilter.Tutor string` → `LessonFilter.TeacherID int64` (zero = sem
-  filtro); `JOIN teachers` para expor `TeacherName` também em `LessonWithStatus`.
-- `queue.go`: mesmo tratamento — `QueueEntry.Tutor` → `QueueEntry.TeacherName` via join.
-- `pending_imports.go` (`ConfirmPendingImport`): assinatura continua recebendo `tutor string`
-  (nome livre); internamente resolve para `teacher_id` via `GetOrCreateTeacherByName` antes do
-  `INSERT` em `lessons`.
-- Novo `UpdateLesson(conn *sql.DB, lessonID int64, lessonDate string, teacherName string) error`:
-  resolve `teacherName` via `GetOrCreateTeacherByName`, faz `UPDATE lessons SET lesson_date = ?,
+    WHERE id = ?`; a `UNIQUE` violation (checked via `sqlite.Error` / the constraint code from
+    `modernc.org/sqlite`) becomes `fmt.Errorf("já existe um professor com esse nome")` — never the
+    driver's raw message.
+- `lessons.go`: `Lesson.Tutor` → `Lesson.TeacherID` (for writes) + `Lesson.TeacherName` (read via
+  `JOIN teachers ON teachers.id = lessons.teacher_id`, for display). `ListTutors` is removed —
+  replaced by `ListTeachers`.
+- `lesson_status.go`: `LessonFilter.Tutor string` → `LessonFilter.TeacherID int64` (zero = no
+  filter); `JOIN teachers` to also expose `TeacherName` in `LessonWithStatus`.
+- `queue.go`: same treatment — `QueueEntry.Tutor` → `QueueEntry.TeacherName` via join.
+- `pending_imports.go` (`ConfirmPendingImport`): the signature still receives `tutor string`
+  (free-form name); internally it resolves to `teacher_id` via `GetOrCreateTeacherByName` before
+  the `INSERT` into `lessons`.
+- New `UpdateLesson(conn *sql.DB, lessonID int64, lessonDate string, teacherName string) error`:
+  resolves `teacherName` via `GetOrCreateTeacherByName`, runs `UPDATE lessons SET lesson_date = ?,
   teacher_id = ?, updated_at = ? WHERE id = ?`.
 
-### `services` (mesmo pacote — reuso direto, sem interfaces novas)
+### `services` (same package — direct reuse, no new interfaces)
 
-- Novo `teachers.go`:
+- New `teachers.go`:
   ```go
   type TeacherService struct{ conn *sql.DB }
   func NewTeacherService(conn *sql.DB) *TeacherService
   func (s *TeacherService) ListTeachers() ([]db.Teacher, error)
   func (s *TeacherService) RenameTeacher(id int64, newName string) error
   ```
-  Registrado em `main.go` junto dos demais `application.NewService(...)`.
+  Registered in `main.go` alongside the other `application.NewService(...)` calls.
 - `services/import.go`:
-  - `ConfirmImport(id int64, lessonDate string, tutor string) error` mantém a assinatura (nome
-    livre do combobox) — sem mudança de contrato com o frontend.
-  - `renameVideoBestEffort` deixa de ser método de `ImportService` e vira função de pacote:
+  - `ConfirmImport(id int64, lessonDate string, tutor string) error` keeps its signature (free-form
+    name from the combobox) — no contract change with the frontend.
+  - `renameVideoBestEffort` stops being a method on `ImportService` and becomes a package function:
     `renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, lessonID int64)` —
-    reaproveitada por `ImportService.ConfirmImport` e pelo novo
+    reused by `ImportService.ConfirmImport` and by the new
     `LibraryService.UpdateLesson`.
 - `services/library.go`:
-  - Novo campo `moveFile func(string, string) error` em `LibraryService` (mesmo padrão de
-    `ImportService`, para injeção em teste), default `moveFileNoReplace`.
-  - Novo `UpdateLesson(lessonID int64, lessonDate string, teacherName string) error`: mesma
-    validação de formato de `lessonDate` que `ConfirmImport` já faz (não vazio, com horário,
-    layout `2006-01-02T15:04`), chama `db.UpdateLesson`, depois `renameVideoBestEffort`
-    (best-effort — falha no rename é só logada, não propagada).
-  - `ListTutors()` é removida — substituída por delegação a `TeacherService` (o frontend passa a
-    chamar `TeacherService.ListTeachers` diretamente).
+  - New field `moveFile func(string, string) error` on `LibraryService` (same pattern as
+    `ImportService`, for test injection), defaulting to `moveFileNoReplace`.
+  - New `UpdateLesson(lessonID int64, lessonDate string, teacherName string) error`: the same
+    `lessonDate` format validation `ConfirmImport` already does (not empty, with time,
+    layout `2006-01-02T15:04`), calls `db.UpdateLesson`, then `renameVideoBestEffort`
+    (best-effort — a rename failure is only logged, not propagated).
+  - `ListTutors()` is removed — replaced by delegation to `TeacherService` (the frontend now
+    calls `TeacherService.ListTeachers` directly).
   - `LessonFilter.Tutor string` → `LessonFilter.TeacherID int64`.
-- `internal/importer.StandardFilename` não muda de assinatura — quem chama passa o
-  `TeacherName` resolvido, não mais a antiga coluna `tutor`.
+- `internal/importer.StandardFilename` keeps its signature unchanged — callers now pass the
+  resolved `TeacherName`, no longer the old `tutor` column.
 
 ## C. Frontend (Svelte 5)
 
-- Novo `frontend/src/lib/TeacherCombobox.svelte`: componente pequeno e independente —
-  `<input list="teachers-list-{id}">` + `<datalist>` nativos, carregando
-  `TeacherService.ListTeachers()` no `onMount`. Permite escolher um professor já cadastrado ou
-  digitar um nome novo (sem componente de terceiros, consistente com o resto do app). Props:
-  `value` (bindable), `id` (para o `<label for>` do consumidor).
-- `ImportConfirmModal.svelte`: troca o `<input type="text">` de tutor pelo `TeacherCombobox`. Sem
-  mudança na chamada a `ImportService.ConfirmImport` — continua enviando string.
-- Novo `frontend/src/lib/EditLessonModal.svelte`: estrutura semelhante ao `ImportConfirmModal`
-  (mesma estética de overlay/card), mas com props próprias (`lessonId`, `initialLessonDate`,
-  `initialTeacherName`, `onSaved`, `onClose`) — não reaproveita o componente diretamente porque os
-  dados de entrada e o serviço chamado (`LibraryService.UpdateLesson`) são diferentes. Campos:
-  data/horário (`datetime-local`) + `TeacherCombobox`.
-- `LessonDetail.svelte`: botão "Editar" ao lado do cabeçalho de data/tutor, abre `EditLessonModal`
-  pré-preenchido com os valores atuais da lesson; `onSaved` recarrega a lesson via `GetLesson`
-  (o `<video>` não precisa recarregar — o endpoint de mídia é servido por id da lesson, não por
-  path, ver História 5).
-- `Settings.svelte`: terceira `<section class="card">`, "Professores" — lista
-  `TeacherService.ListTeachers()`, cada linha com um input de texto (valor atual) + botão
-  "Renomear", mesmo padrão visual do painel de Credencial STT (estado de erro/sucesso por linha).
-- `Library.svelte`: o filtro por tutor passa a ser um `<select>` de `TeacherService.ListTeachers()`
-  (id como valor, nome como label) — `LessonFilter.teacherId` no lugar de `LessonFilter.tutor`.
+- New `frontend/src/lib/TeacherCombobox.svelte`: a small, self-contained component —
+  native `<input list="teachers-list-{id}">` + `<datalist>`, loading
+  `TeacherService.ListTeachers()` on `onMount`. Lets the user pick an already-registered teacher or
+  type a new name (no third-party component, consistent with the rest of the app). Props:
+  `value` (bindable), `id` (for the consumer's `<label for>`).
+- `ImportConfirmModal.svelte`: swaps the tutor `<input type="text">` for `TeacherCombobox`. No
+  change to the call to `ImportService.ConfirmImport` — it still sends a string.
+- New `frontend/src/lib/EditLessonModal.svelte`: structure similar to `ImportConfirmModal`
+  (same overlay/card look), but with its own props (`lessonId`, `initialLessonDate`,
+  `initialTeacherName`, `onSaved`, `onClose`) — it doesn't reuse the component directly because the
+  input data and the service being called (`LibraryService.UpdateLesson`) are different. Fields:
+  date/time (`datetime-local`) + `TeacherCombobox`.
+- `LessonDetail.svelte`: "Edit" button next to the date/tutor header, opens `EditLessonModal`
+  pre-filled with the lesson's current values; `onSaved` reloads the lesson via `GetLesson`
+  (the `<video>` does not need to reload — the media endpoint is served by lesson id, not by
+  path, see Story 5).
+- `Settings.svelte`: a third `<section class="card">`, "Teachers" — lists
+  `TeacherService.ListTeachers()`, each row with a text input (current value) + "Rename"
+  button, same visual pattern as the STT Credential panel (per-row error/success state).
+- `Library.svelte`: the tutor filter becomes a `<select>` populated from `TeacherService.ListTeachers()`
+  (id as value, name as label) — `LessonFilter.teacherId` instead of `LessonFilter.tutor`.
 
-## D. Testes e documentação
+## D. Tests and documentation
 
 - **Go:**
-  - `internal/db/teachers_test.go`: `ListTeachers` (ordem alfabética), `GetOrCreateTeacherByName`
-    (cria se não existe, retorna id existente se já existe), `RenameTeacher` (sucesso e conflito
-    de nome único).
-  - Testes existentes que inserem `tutor` direto via SQL (`lessons_test.go`, `db_test.go`,
+  - `internal/db/teachers_test.go`: `ListTeachers` (alphabetical order), `GetOrCreateTeacherByName`
+    (creates if it doesn't exist, returns the existing id if it does), `RenameTeacher` (success and
+    unique-name conflict).
+  - Existing tests that insert `tutor` directly via SQL (`lessons_test.go`, `db_test.go`,
     `queue_test.go`, `jobs_test.go`, `transcripts_test.go`, `analysis_results_test.go`,
     `pending_imports_test.go`, `lesson_status_test.go`, `worker_test.go`,
-    `services/library_test.go`, `services/queue_test.go`, `services/import_test.go`) passam a
-    inserir via `teachers` + `teacher_id`.
-  - `services/library_test.go`: novo `TestLibraryService_UpdateLesson_*` cobrindo edição de
-    data/professor e reuso do rename best-effort (mesmo padrão de falha determinística injetada já
-    usado em `import_test.go` para `renameVideoBestEffort`).
-  - `go test ./...` e `go vet ./...` limpos.
-- **Frontend:** `pnpm run check` e `pnpm run build` limpos. Verificação visual real (clicar no
-  combobox, renomear um professor em Configurações, editar uma aula no Detalhe) fica pendente em
-  Windows/Linux — mesmo padrão já registrado nas histórias anteriores deste projeto, não bloqueia
-  a implementação.
-- **Documentação:** adicionar **História 9 — Gestão de professores e edição de aula** em
-  `docs/fase-1-mvp.md`, com os 3 itens acima como critérios de aceite e dependência da História 3
-  (única consumidora atual da antiga coluna `tutor`).
+    `services/library_test.go`, `services/queue_test.go`, `services/import_test.go`) switch to
+    inserting via `teachers` + `teacher_id`.
+  - `services/library_test.go`: new `TestLibraryService_UpdateLesson_*` covering date/teacher
+    editing and reuse of the best-effort rename (same pattern of deterministic injected failure
+    already used in `import_test.go` for `renameVideoBestEffort`).
+  - `go test ./...` and `go vet ./...` clean.
+- **Frontend:** `pnpm run check` and `pnpm run build` clean. Real visual verification (clicking the
+  combobox, renaming a teacher in Settings, editing a lesson in Detail) remains pending on
+  Windows/Linux — same pattern already noted in this project's previous stories, does not block
+  the implementation.
+- **Documentation:** add **Story 9 — Teacher management and lesson editing** to
+  `docs/fase-1-mvp.md`, with the 3 items above as acceptance criteria and a dependency on Story 3
+  (the current sole consumer of the old `tutor` column).
 
-## Fora de escopo
+## Out of scope
 
-- Merge de professores duplicados (fica para uma função futura, se necessário).
-- Busca/autocomplete fuzzy no combobox — o `<datalist>` nativo já filtra por substring no
-  navegador, suficiente para o volume de professores esperado (aulas 1:1, poucos tutores).
-- Qualquer outra opção de Configurações (fora do escopo da Fase 1, ver `docs/fase-1-mvp.md`).
+- Merging duplicate teachers (left for a future function, if needed).
+- Fuzzy search/autocomplete in the combobox — the native `<datalist>` already filters by substring
+  in the browser, sufficient for the expected volume of teachers (1:1 lessons, few tutors).
+- Any other Settings option (out of scope for Phase 1, see `docs/fase-1-mvp.md`).

@@ -1,233 +1,234 @@
-# Fase 2 — Análise via LLM na UI
+# Phase 2 — LLM-based analysis in the UI
 
-> Objetivo: levar a análise por LLM (já validada isoladamente na Fase 0) para dentro do app, **uma
-> tarefa de cada vez**: implementar sob demanda, observar em aulas reais, decidir se ela fica
-> (mantida, refinada ou descartada), e só então automatizar em background. Não há mais um roteiro
-> fixo pras 7 tarefas originalmente planejadas (`analyze_corrections`, `analyze_vocabulary`,
+> Goal: bring LLM-based analysis (already validated in isolation in Phase 0) into the app, **one
+> task at a time**: implement on demand, observe it on real lessons, decide whether it stays
+> (kept, refined, or discarded), and only then automate it in the background. There is no longer a
+> fixed roadmap for the 7 originally planned tasks (`analyze_corrections`, `analyze_vocabulary`,
 > `analyze_tutor_expressions`, `analyze_tutor_taught_terms`, `analyze_tutor_feedback`,
-> `analyze_tutor_corrections`, `analyze_topics`) — é possível (esperado, até) que nem todas
-> sobrevivam à validação em uso real.
+> `analyze_tutor_corrections`, `analyze_topics`) — it's possible (expected, even) that not all
+> of them survive validation in real use.
 >
-> **Escopo atual (20/08/2026):** só `analyze_corrections` e `analyze_topics` seguem ativas —
-> ambas já implementadas (Histórias 2 e 3) e mantidas, com trabalho futuro voltado a refinar seus
-> prompts/UX, não a expandir cobertura. As outras 5 tarefas candidatas ficam pausadas
-> indefinidamente (não descartadas, só fora do radar por ora); retomam só se o usuário pedir
-> explicitamente.
+> **Current scope (20/08/2026):** only `analyze_corrections` and `analyze_topics` remain active —
+> both already implemented (Stories 2 and 3) and kept, with future work aimed at refining their
+> prompts/UX, not expanding coverage. The other 5 candidate tasks are paused
+> indefinitely (not discarded, just off the radar for now); they resume only if the user explicitly
+> asks for them.
 >
-> Replanejamento registrado em
-> `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md` (substitui a
-> estrutura original de Histórias 2–5, que automatizava e construía UI pras 7 tarefas de uma vez).
+> Replanning recorded in
+> `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md` (replaces the
+> original Stories 2–5 structure, which automated and built UI for all 7 tasks at once).
 >
-> Base: packages `internal/analysis` e `internal/jobs` da Fase 1, reaproveitados e estendidos.
-> Specs técnicos detalhados são escritos história a história, em
-> `docs/superpowers/specs/YYYY-MM-DD-historia-N-<slug>-design.md`, conforme cada uma é iniciada —
-> este documento fixa o recorte e os critérios de aceite, não o design de implementação.
+> Base: the `internal/analysis` and `internal/jobs` packages from Phase 1, reused and extended.
+> Detailed technical specs are written story by story, at
+> `docs/superpowers/specs/YYYY-MM-DD-historia-N-<slug>-design.md`, as each one is started —
+> this document sets the boundaries and acceptance criteria, not the implementation design.
 
-## Fora de escopo desta fase (anotar ideias, não implementar)
+## Out of scope for this phase (write down ideas, don't implement)
 
-Seleção de provedor/modelo de análise e estimativa de custo (Fase 5) · taxonomia fixa ou
-hierárquica de tópicos (lista livre por aula nesta fase) · busca full-text (FTS5) e tags
-automáticas cruzando aulas (Fase 3) · tela de Progresso (Fase 3) · edição manual de
-correções/vocabulário pelo usuário · re-análise automática ao mudar de prompt (reprocessar
-continua uma ação explícita, mesmo padrão da Fila da Fase 1).
+Analysis provider/model selection and cost estimation (Phase 5) · a fixed or
+hierarchical topic taxonomy (a free-form list per lesson in this phase) · full-text search (FTS5) and
+automatic tags cross-referencing lessons (Phase 3) · Progress screen (Phase 3) · manual
+editing of corrections/vocabulary by the user · automatic re-analysis when the prompt changes
+(reprocessing remains an explicit action, same pattern as the Phase 1 Queue).
 
-## Riscos técnicos — atacar primeiro, não por último
+## Technical risks — tackle first, not last
 
-1. **Qualidade de cada prompt de tarefa:** a Fase 0 validou só 1 prompt com 3 categorias, numa
-   execução. Quebrar em prompts pequenos e focados deve ajudar a precisão (cada um faz uma coisa
-   só), mas isso é hipótese, não fato — validar cada tarefa individualmente, em uso real na UI,
-   antes de automatizá-la em background (não mais em lote via CLI).
-2. **Ancoragem por `utterance_index` (resolvido, História 1):** correções (do aluno e do tutor) e
-   feedback do tutor referenciam o índice da fala na transcrição enviada ao modelo. Índice fora do
-   range ou ausente é descartado silenciosamente (com `slog.Warn`), nunca quebra a tarefa inteira —
-   implementado e testado nas 3 tarefas que ancoram em fala.
-3. **Custo por tarefa confirmada:** a Fase 0 mediu ~US$ 0,0014/aula para 1 chamada com 3 categorias.
-   Cada tarefa nova reenvia a transcrição inteira — medir o custo real de cada tarefa quando ela for
-   implementada, antes de decidir se ela fica.
+1. **Quality of each task's prompt:** Phase 0 validated only 1 prompt with 3 categories, in a
+   single run. Splitting it into small, focused prompts should help precision (each one does just
+   one thing), but that's a hypothesis, not a fact — validate each task individually, in real use in
+   the UI, before automating it in the background (no longer in batch via CLI).
+2. **Anchoring by `utterance_index` (resolved, Story 1):** corrections (student's and tutor's) and
+   tutor feedback reference the index of the utterance in the transcript sent to the model. An
+   out-of-range or missing index is silently discarded (with `slog.Warn`), never breaking the whole
+   task — implemented and tested in the 3 tasks that anchor to an utterance.
+3. **Confirmed cost per task:** Phase 0 measured ~US$0.0014/lesson for 1 call with 3 categories.
+   Each new task re-sends the entire transcript — measure the real cost of each task once it's
+   implemented, before deciding whether it stays.
 
 ---
 
-## História 1 — Prompts por tarefa e persistência da análise
+## Story 1 — Per-task prompts and analysis persistence
 
-**Como** usuário, **quero** que o app tenha os prompts e o armazenamento prontos para cada tipo de
-análise, **para** que as tarefas de análise possam rodar e guardar resultado de forma confiável.
+**As** a user, **I want** the app to have the prompts and storage ready for each analysis
+type, **so that** analysis tasks can run and reliably store their results.
 
-### Critérios de aceite
-- [x] 7 prompts versionados e focados numa saída só cada: `analyze_corrections`,
+### Acceptance criteria
+- [x] 7 versioned prompts, each focused on a single output: `analyze_corrections`,
   `analyze_vocabulary`, `analyze_tutor_expressions`, `analyze_tutor_taught_terms`,
-  `analyze_tutor_feedback`, `analyze_tutor_corrections`, `analyze_topics` — registrados na tabela
-  `prompts` existente (nome + versão), cada um podendo evoluir independentemente dos outros.
-- [x] `FormatTranscript` numera as falas (`utterance_index`) na transcrição enviada ao modelo, para
-  permitir que correções e feedback referenciem a fala exata.
-- [x] `analysis.Provider` vira agnóstico de tarefa: `Complete(ctx, systemPrompt, transcript)
-  (json.RawMessage, error)` — deixa de conhecer `Correction`/`VocabularyItem`/etc. Cada tarefa
-  define seu próprio tipo de saída e faz o parse a partir do JSON bruto, reaproveitando validação
-  genérica comum.
-- [x] Migration nova: tabela `analysis_results` (uma linha por `lesson_id` + `task`, com
-  `prompt_id`, `model`, `result_json`, `raw_response_path`, `UNIQUE(lesson_id, task)`) e
-  `lesson_topics` (`lesson_id`, `topic`) para uso pelas tarefas candidatas que precisarem.
-- [x] Comportamento definido e testado para `utterance_index` fora do range ou ausente (risco 2):
-  índice negativo (JSON sem o campo) ou fora de `[0, utteranceCount)` descarta o item
-  silenciosamente (com `slog.Warn`), nunca quebra a tarefa inteira — mesmo tratamento nas 3 tarefas
-  que ancoram em falas (`analyze_corrections`, `analyze_tutor_feedback`,
+  `analyze_tutor_feedback`, `analyze_tutor_corrections`, `analyze_topics` — registered in the
+  existing `prompts` table (name + version), each able to evolve independently of the others.
+- [x] `FormatTranscript` numbers the utterances (`utterance_index`) in the transcript sent to the
+  model, to allow corrections and feedback to reference the exact utterance.
+- [x] `analysis.Provider` becomes task-agnostic: `Complete(ctx, systemPrompt, transcript)
+  (json.RawMessage, error)` — it no longer knows about `Correction`/`VocabularyItem`/etc. Each task
+  defines its own output type and parses it from the raw JSON, reusing common generic validation.
+- [x] New migration: an `analysis_results` table (one row per `lesson_id` + `task`, with
+  `prompt_id`, `model`, `result_json`, `raw_response_path`, `UNIQUE(lesson_id, task)`) and
+  `lesson_topics` (`lesson_id`, `topic`) for use by candidate tasks that need it.
+- [x] Behavior defined and tested for an out-of-range or missing `utterance_index` (risk 2):
+  a negative index (JSON missing the field) or one outside `[0, utteranceCount)` silently discards
+  the item (with `slog.Warn`), never breaking the whole task — the same handling in the 3 tasks
+  that anchor to utterances (`analyze_corrections`, `analyze_tutor_feedback`,
   `analyze_tutor_corrections`).
-- [x] Validação da infraestrutura: em vez de rodar as 7 tarefas em bloco via CLI temporário, a
-  validação passa a acontecer tarefa por tarefa, à medida que cada uma ganha UI (a partir da
-  História 2) — `cmd/validate-analysis` é removido sem ter rodado (item do plano de implementação
-  da História 2).
+- [x] Infrastructure validation: instead of running all 7 tasks in a batch via a temporary CLI,
+  validation now happens task by task, as each one gets a UI (starting with
+  Story 2) — `cmd/validate-analysis` is removed without ever having run (part of Story 2's
+  implementation plan).
 
-### Dependências
-Nenhuma (usa os packages `internal/analysis`/`internal/db` já existentes da Fase 0/1).
-
----
-
-## História 2 — Piloto: Correções do aluno
-
-**Como** usuário, **quero** ver as correções do aluno destacadas na própria fala onde ocorreram,
-**para** revisar meus erros no contexto exato em que aconteceram — e servir de piloto pra validar se
-vale a pena continuar com as demais tarefas de análise planejadas.
-
-Primeira das 7 tarefas candidatas a ser implementada — escolhida por valor pro aprendizado, não por
-facilidade (é a mais complexa de exibir, por depender de ancoragem por fala). Design técnico
-detalhado em spec própria, escrita antes da implementação.
-
-### Critérios de aceite
-- [x] Credencial do provedor de análise (DeepSeek) via `go-keyring` (`SaveAnalysisAPIKey`/
-  `GetAnalysisAPIKey`, mesmo padrão de `SaveSTTAPIKey`/`GetSTTAPIKey`) + campo na tela de
-  Configurações, ao lado do campo STT — mostra se já há credencial configurada, sem revelar o valor.
-- [x] Ação manual na aula (ex.: botão "Analisar correções") dispara `analyze_corrections` sob
-  demanda — sem job em background nesta fatia.
-- [x] Resultado salvo em `analysis_results` (idempotente: já existindo `(lesson_id,
-  analyze_corrections)`, mostra direto sem rechamar a API; reprocessar é ação explícita que
-  sobrescreve).
-- [x] Falha (rede/API, parsing) não quebra a aula — mesmo princípio de resiliência já usado no
-  pipeline de transcrição; erro fica visível e recuperável, nunca impede assistir ao vídeo.
-- [x] Fala do aluno com item em `corrections` mostra o trecho original riscado + a correção em
-  destaque (visual do protótipo: riscado em cinza, correção em âmbar), inline na transcrição do
-  Detalhe da aula.
-- [x] Aula sem a tarefa concluída (não disparada, pendente ou erro) mostra a transcrição
-  normalmente, sem marcação — mesmo princípio de resiliência já estabelecido na História 6 da
-  Fase 1.
-- [x] **Decisão registrada:** depois de observar o resultado em algumas aulas reais, registrar em
-  `docs/notas-analise-llm.md` se a tarefa vale manter como está, precisa de refinamento de prompt,
-  ou deve ser descartada — não há número fixo de aulas, a decisão é o que fecha a história.
-- [x] `cmd/validate-analysis` removido do repositório (função assumida por esta validação visual).
-
-### Dependências
-História 1.
+### Dependencies
+None (uses the existing `internal/analysis`/`internal/db` packages from Phase 0/1).
 
 ---
 
-## História 3 — Tópicos da aula
+## Story 2 — Pilot: Student corrections
 
-**Como** usuário, **quero** ver os principais assuntos da aula como tópicos curtos (e poder
-corrigi-los), **para** ter uma etiqueta do que foi discutido sem reler a transcrição inteira.
+**As** a user, **I want** to see the student's corrections highlighted in the very utterance
+where they occurred, **so that** I can review my errors in the exact context they happened in — and
+serve as a pilot to validate whether it's worth continuing with the other planned analysis tasks.
 
-Terceira tarefa candidata a virar história — escolhida pelo usuário. Primeira tarefa **não
-ancorada em fala** (resultado é lista de rótulos, não marcação na transcrição), o que muda a UI
-(chips no cabeçalho) e o modelo de dados (tópicos viram entidade editável, como professores).
-Design técnico em spec própria.
+The first of the 7 candidate tasks to be implemented — chosen for learning value, not
+ease (it's the most complex to display, since it depends on anchoring to an utterance). Detailed
+technical design in its own spec, written before implementation.
 
-### Critérios de aceite
-- [x] Tópicos gerados sob demanda (sem job em background), exigindo `StudentSpeakerLabel` (como
-      correções).
-- [x] Resultado persistido em `analysis_results` (idempotente) **e** `lesson_topics` (por
-      `topic_id`); tópicos viram entidade `topics`.
-- [x] Tópicos exibidos como chips no cabeçalho do Detalhe; aula sem a tarefa mostra a transcrição
-      normalmente.
-- [x] Adicionar/remover tópico por aula (chips), renomear tópico globalmente e excluir tópico
-      globalmente (com desvínculo em cascata das aulas que o usavam) na tela própria acessível
-      pela Biblioteca (movida de Configurações em 18/08/2026).
-- [x] Falha não quebra a aula — erro visível e recuperável.
-- [x] Troca de falante preserva `analyze_topics` e `lesson_topics` (só tarefas que dependem de
-      quem é aluno/tutor são descartadas).
-- [x] Prompt v2 com granularidade geral + reaproveitamento dos tópicos já existentes; v3 adiciona
-      limite de 4 tópicos por aula (também aplicado no parsing como rede de segurança); v4 muda a
-      saída para inglês.
+### Acceptance criteria
+- [x] Analysis provider (DeepSeek) credential via `go-keyring` (`SaveAnalysisAPIKey`/
+  `GetAnalysisAPIKey`, same pattern as `SaveSTTAPIKey`/`GetSTTAPIKey`) + a field in the
+  Settings screen, next to the STT field — shows whether a credential is already configured, without revealing the value.
+- [x] A manual action on the lesson (e.g., an "Analyze corrections" button) triggers
+  `analyze_corrections` on demand — no background job in this slice.
+- [x] Result saved to `analysis_results` (idempotent: if `(lesson_id,
+  analyze_corrections)` already exists, it's shown directly without recalling the API; reprocessing
+  is an explicit action that overwrites it).
+- [x] A failure (network/API, parsing) doesn't break the lesson — same resilience principle already used
+  in the transcription pipeline; the error is visible and recoverable, never blocking video playback.
+- [x] A student utterance with an item in `corrections` shows the original passage struck through +
+  the correction highlighted (prototype visual: struck-through in gray, correction in amber), inline
+  in the Lesson Detail transcript.
+- [x] A lesson without the task completed (not triggered, pending, or errored) shows the transcript
+  normally, with no markup — same resilience principle already established in Phase 1's
+  Story 6.
+- [x] **Decision recorded:** after observing the result on a few real lessons, record in
+  `docs/notas-analise-llm.md` whether the task is worth keeping as-is, needs prompt refinement,
+  or should be discarded — there's no fixed number of lessons, the decision is what closes the story.
+- [x] `cmd/validate-analysis` removed from the repository (its role now covered by this visual validation).
 
-### Dependências
-História 2.
-
----
-
-## História 4 — Filtragem por tópicos na Biblioteca
-
-**Como** usuário, **quero** filtrar a lista de aulas por tópico, **para** achar rapidamente
-aulas sobre um assunto específico sem precisar abrir cada uma.
-
-Adiantada da Fase 3 (onde só a busca full-text/tags cruzadas continuam) — filtro simples sobre
-dados que já existem (`topics`/`lesson_topics` da História 3), sem depender de FTS5.
-
-### Critérios de aceite
-- [x] Filtro por tópico na Biblioteca, junto aos filtros já existentes de professor e período
-  (História 5 da Fase 1); aula aparece se tiver **qualquer um** dos tópicos selecionados (OR).
-  UI: caixa de texto com autocomplete (`datalist`) que adiciona chips removíveis, não uma lista
-  de checkboxes — ajustado após feedback visual (ver Registro de progresso).
-- [x] Query combina o filtro de tópicos com os filtros de professor/período já existentes, sem
-  mudança de schema.
-- [x] Aula sem nenhum tópico gerado não aparece quando algum filtro de tópico está ativo.
-
-### Dependências
-História 3 (tópicos precisam existir pra filtrar).
+### Dependencies
+Story 1.
 
 ---
 
-## Tarefas candidatas (pausadas)
+## Story 3 — Lesson topics
 
-**Pausado em 20/08/2026, a pedido do usuário:** por ora a fase segue só com `analyze_corrections`
-e `analyze_topics` (refinamento, não expansão). As 5 tarefas abaixo não têm história aberta nem
-previsão de retomada — ficam registradas aqui só como opções futuras, a revisitar se/quando o
-usuário pedir. Quando isso acontecer, cada uma vira uma história no mesmo formato da História 2
-(credencial já resolvida, sob demanda, UI mínima, decisão explícita registrada em
+**As** a user, **I want** to see a lesson's main subjects as short topics (and be able to
+correct them), **so that** I have a tag for what was discussed without rereading the whole
+transcript.
+
+The third candidate task turned into a story — chosen by the user. The first task **not
+anchored to an utterance** (the result is a list of labels, not markup in the transcript), which
+changes the UI (chips in the header) and the data model (topics become an editable entity, like
+teachers). Technical design in its own spec.
+
+### Acceptance criteria
+- [x] Topics generated on demand (no background job), requiring `StudentSpeakerLabel` (like
+      corrections).
+- [x] Result persisted in `analysis_results` (idempotent) **and** `lesson_topics` (by
+      `topic_id`); topics become a `topics` entity.
+- [x] Topics displayed as chips in the Lesson Detail header; a lesson without the task shows the
+      transcript normally.
+- [x] Add/remove a topic per lesson (chips), rename a topic globally, and delete a topic
+      globally (with a cascading unlink from the lessons that used it) on its own screen accessible
+      from the Library (moved from Settings on 18/08/2026).
+- [x] A failure doesn't break the lesson — the error is visible and recoverable.
+- [x] Switching speakers preserves `analyze_topics` and `lesson_topics` (only tasks that depend on
+      who is the student/tutor are discarded).
+- [x] Prompt v2 with general granularity + reuse of already-existing topics; v3 adds a
+      4-topics-per-lesson limit (also enforced in parsing as a safety net); v4 changes the
+      output to English.
+
+### Dependencies
+Story 2.
+
+---
+
+## Story 4 — Filtering by topic in the Library
+
+**As** a user, **I want** to filter the lesson list by topic, **so that** I can quickly find
+lessons about a specific subject without having to open each one.
+
+Pulled forward from Phase 3 (where only full-text search/cross-referenced tags remain) — a simple
+filter over data that already exists (`topics`/`lesson_topics` from Story 3), with no dependency on
+FTS5.
+
+### Acceptance criteria
+- [x] A topic filter in the Library, alongside the existing teacher and period filters
+  (Phase 1's Story 5); a lesson appears if it has **any** of the selected topics (OR).
+  UI: a text box with autocomplete (`datalist`) that adds removable chips, not a list
+  of checkboxes — adjusted after visual feedback (see progress log).
+- [x] The query combines the topic filter with the existing teacher/period filters, with no
+  schema change.
+- [x] A lesson with no generated topics doesn't appear while any topic filter is active.
+
+### Dependencies
+Story 3 (topics need to exist to filter by them).
+
+---
+
+## Candidate tasks (paused)
+
+**Paused on 20/08/2026, at the user's request:** for now the phase continues with only `analyze_corrections`
+and `analyze_topics` (refinement, not expansion). The 5 tasks below have no open story or
+planned resumption date — they're recorded here only as future options, to revisit if/when the
+user asks. When that happens, each one becomes a story in the same format as Story 2
+(credential already resolved, on demand, minimal UI, an explicit decision recorded in
 `docs/notas-analise-llm.md`).
 
-- `analyze_vocabulary` (vocabulário novo) e `analyze_tutor_expressions` (expressões do tutor) têm
-  sinal positivo da validação da Fase 0 (prompt único) — candidatas naturais a vir depois, se a
-  fase for retomada.
-- `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections` seguem
-  sem validação própria ainda.
+- `analyze_vocabulary` (new vocabulary) and `analyze_tutor_expressions` (tutor expressions) have
+  a positive signal from the Phase 0 validation (single prompt) — natural candidates to come next
+  if the phase is resumed.
+- `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections` still
+  have no validation of their own.
 
-## Promoção a job em background (critério à parte)
+## Promotion to a background job (a separate criterion)
 
-Quando uma tarefa é confirmada como valiosa (decisão registrada em `docs/notas-analise-llm.md`),
-uma história pequena de automação é escrita naquele momento: job kind novo no `Worker`, dependente
-só de `transcribe` concluído (não das outras tarefas de análise), idempotente por
-`(lesson_id, task)`, Reprocessar por tarefa reaproveitando `ResetErrorJobsForLesson` — mesmo
-desenho da fila de background já usado na Fase 1, aplicado por tarefa confirmada, não em bloco.
+Once a task is confirmed as valuable (a decision recorded in `docs/notas-analise-llm.md`),
+a small automation story is written at that point: a new job kind in the `Worker`, dependent
+only on `transcribe` completing (not on the other analysis tasks), idempotent by
+`(lesson_id, task)`, with Reprocess per task reusing `ResetErrorJobsForLesson` — the same
+design as the Phase 1 background queue, applied per confirmed task, not in a batch.
 
 ---
 
-## Marcos
+## Milestones
 
-- **M1 — "Piloto validado":** Histórias 1–2. Infra fechada + Correções do aluno rodando sob demanda
-  na UI, com decisão registrada (manter/refinar/descartar).
-- Não há M2/M3 fixos pra "análise completa". Cada tarefa confirmada e cada promoção a job em
-  background avança a fase incrementalmente — a fase não tem uma lista fechada de entregas, termina
-  quando não houver mais tarefas candidatas com valor claro pra perseguir.
+- **M1 — "Pilot validated":** Stories 1–2. Infra closed + Student corrections running on demand
+  in the UI, with a decision recorded (keep/refine/discard).
+- There is no fixed M2/M3 for "complete analysis". Each confirmed task and each promotion to a
+  background job advances the phase incrementally — the phase doesn't have a fixed list of
+  deliverables, it ends when there are no more candidate tasks with clear value to pursue.
 
-## Incrementos seguintes (visão, sem compromisso)
+## Next increments (vision, no commitment)
 
-Fase 3: tags automáticas + busca full-text (FTS5, com tópicos como um dos insumos, se
-`analyze_topics` for confirmada) + tela de Progresso — a filtragem simples por tópico saiu daqui
-pra Fase 2 (História 4) · Fase 5: seleção de provedor/modelo de
-análise, estimativa de custo, possível opção de análise mais aprofundada com `deepseek-v4-pro` por
-tarefa (ver `docs/notas-analise-llm.md`).
+Phase 3: automatic tags + full-text search (FTS5, with topics as one of the inputs, if
+`analyze_topics` is confirmed) + Progress screen — simple topic filtering moved from here
+to Phase 2 (Story 4) · Phase 5: analysis provider/model
+selection, cost estimation, a possible more in-depth analysis option with `deepseek-v4-pro` per
+task (see `docs/notas-analise-llm.md`).
 
-## Registro de progresso
+## Progress log
 
-| Data | O que foi feito | Observações |
+| Date | What was done | Notes |
 |------|-----------------|-------------|
-| 30/07/2026 | História 1 (Tasks 1–6 do plano) implementada: migration `analysis_results`/`lesson_topics`, pacote `prompts/` com os 7 arquivos versionados, `internal/analysis` reescrito (`Provider` agnóstico de tarefa, framework `TaskDef`, `FormatTranscript` numerando falas), as 7 tarefas concretas com descarte de item por `utterance_index` inválido (risco 2), `RegisterPrompts` ligado no `main.go`, CLI temporário `cmd/validate-analysis` criado | Trabalho pausado antes da Task 7 (validação manual numa aula real) pra fechar a História 9 da Fase 1 (gestão de professores), que estava em aberto; `docs/notas-analise-llm.md` segue só com as notas da Fase 0 (prompt único) — as 7 tarefas novas ainda não foram rodadas contra uma aula real, `cmd/validate-analysis` ainda não foi removido |
-| 05/08/2026 | Replanejamento da Fase 2 pra abordagem iterativa: em vez de automatizar e construir UI pras 7 tarefas de uma vez (antigas Histórias 2–5), cada tarefa passa por um ciclo próprio (sob demanda → UI → observar em aulas reais → decidir manter/refinar/descartar), e só então ganha automação em background. História 1 fecha com o último critério reescrito (validação passa a ser por tarefa, não em bloco via CLI). História 2 vira o piloto de Correções do aluno, a primeira tarefa a ser implementada | Spec em `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md`; nenhum código mudou nesta entrada — só o planejamento |
-| 06/08/2026 | História 2 (Piloto: Correções do aluno) implementada e fechada: credencial DeepSeek via keyring, `AnalysisService` (`GetCorrections`/`AnalyzeCorrections`/`ReprocessCorrections`), correção inline no Detalhe (riscado cinza + destaque âmbar), escolha de falante no `EditLessonModal` com descarte de análise ao trocar quem é o aluno, `cmd/validate-analysis` removido | Verificação manual numa aula real: fluxo completo (credencial → escolha de falante → análise → correção inline → reprocessar → descarte) funcionou como desenhado; decisão registrada em `docs/notas-analise-llm.md` — **manter a tarefa como está**, com refinamento de prompt (`prompts/analyze-corrections-v1.md`) registrado como trabalho futuro: ignorar repetição/hesitação da fala como não-erro, e reduzir o fallback de correção "não localizada" no matching por texto |
-| 18/08/2026 | História 3 implementada: tópicos viram entidade `topics` (migration 00006 com backfill), `lesson_topics` por `topic_id` vira a fonte da verdade da UI; `AnalysisService` ganha Get/Analyze/ReprocessTopics (sob demanda, idempotente, grava em `analysis_results` + `lesson_topics`); `TopicsService` cobre adicionar/remover por aula e renomear global; prompt v2 com granularidade geral + reaproveitamento dos tópicos existentes (anexados à mensagem); chips no Detalhe + painel "Tópicos" em Configurações; troca de falante passa a preservar tópicos (deleção seletiva por dependência de falante) | `go test ./...`, `go vet ./...`, `pnpm run check`/`build` confirmados limpos; verificação manual em aula real (granularidade, reaproveitamento, edição de chips, renome global) e a decisão em `docs/notas-analise-llm.md` seguem pendentes — mesmo padrão das histórias anteriores |
-| 18/08/2026 | Ajuste de UI (fora de história formal): gestão de professores e tópicos sai de Configurações e ganha telas próprias (`Teachers.svelte`, `Topics.svelte`), acessíveis por dois botões novos no cabeçalho da Biblioteca ("Professores", "Tópicos"); Configurações volta a conter só Armazenamento e credenciais; novas telas mapeadas como `active="library"` na Sidebar, com botão "← Biblioteca" no mesmo padrão do Detalhe da aula | Só reorganização de frontend — nenhuma mudança de backend/bindings; lógica de listagem/renome copiada como estava de `Settings.svelte`, sem reescrever; `vite build` confirmado limpo; verificação visual real do fluxo (navegar Biblioteca → Professores/Tópicos → renomear → voltar) segue pendente, mesmo padrão das histórias anteriores |
-| 18/08/2026 | Ajuste de UI (fora de história formal): aba "Progresso" removida da Sidebar e do roteamento em `App.svelte` (placeholder sem conteúdo real, tela prevista só pra Fase 3) | `Progress.svelte` mantido no repo sem uso, pra reaproveitar quando a tela ganhar conteúdo real na Fase 3; `svelte-check` confirmado limpo |
-| 19/08/2026 | Ajuste de prompt (fora de história formal): tarefa `analyze_topics` ganha `prompts/analyze-topics-v3.md` (limite de 4 tópicos por aula, também aplicado como corte em `parseTopics` independente do que o LLM devolver) e, em seguida, `prompts/analyze-topics-v4.md` (saída em inglês em vez de português) | Desvio deliberado, a pedido do usuário, da convenção geral de "textos de análise em PT-BR" do `CLAUDE.md` — só os tópicos passam a sair em inglês; `go build`/`go vet`/`go test ./...` confirmados limpos |
-| 19/08/2026 | Ajuste de UI (fora de história formal): tela "Tópicos" ganha exclusão global de tópico — `internal/db.DeleteTopic` apaga a entidade numa transação (desvincula `lesson_topics` antes, já que a FK não tem `ON DELETE CASCADE` e o banco roda com `foreign_keys=ON`), `TopicsService.DeleteTopic` expõe pro frontend, botão "Excluir" com `confirm()` (mesmo padrão de `LessonDetail.svelte`) some o tópico de todas as aulas que o usavam | `go test ./...`, `go vet ./...`, `pnpm run check` confirmados limpos; verificação visual real do fluxo (excluir tópico em uso → some dos chips da aula) segue pendente, mesmo padrão das entradas anteriores |
-| 19/08/2026 | Ajuste de UI (fora de história formal, atalho pra teste manual): botão "Excluir todos" na tela "Tópicos", ao lado do título, só visível com a lista não vazia — `internal/db.DeleteAllTopics`/`TopicsService.DeleteAllTopics` apagam `lesson_topics` e `topics` inteiros numa transação | Não é fluxo de uso normal, existe só pra facilitar reset de dados durante testes; `go test ./...`, `go vet ./...`, `pnpm run check` confirmados limpos |
-| 19/08/2026 | História 4 implementada: `db.LessonFilter`/`services.LessonFilter` ganham `TopicIDs []int64` (semântica OR via `l.id IN (SELECT lesson_id FROM lesson_topics WHERE topic_id IN (...))`, sem mudança de schema); Biblioteca ganha filtro de tópicos ao lado dos filtros de professor/período já existentes, populado por `TopicsService.ListTopics()` | `go test ./...`, `go vet ./...`, `svelte-check` e `vite build` confirmados limpos; verificação visual real numa janela de verdade segue pendente em Windows/Linux, mesmo padrão das entradas anteriores |
-| 19/08/2026 | Ajuste de UI (fora de história formal, feedback do usuário após ver a tela): filtro de tópicos trocado de lista de checkboxes (ocupava muito espaço) pra caixa de texto com autocomplete (`datalist`, mesmo padrão do `TeacherCombobox`) — digitar/selecionar um tópico existente adiciona um chip pequeno removível por "×", input limpa pra digitar o próximo | `svelte-check` e `vite build` confirmados limpos |
-| 19/08/2026 | **História 3 fechada.** Critério de decisão formal em `docs/notas-analise-llm.md` removido do escopo — uso real já mostrou o resultado aceitável (granularidade, reaproveitamento, edição/exclusão de chips, filtro na Biblioteca), decisão de manter tomada sem entrada dedicada na nota | A partir daqui a próxima tarefa candidata (`analyze_vocabulary` ou `analyze_tutor_expressions`) segue o mesmo padrão da História 2 quando for iniciada |
-| 20/08/2026 | Replanejamento (a pedido do usuário): fase segue só com `analyze_corrections` e `analyze_topics` por ora — trabalho futuro é refinar essas duas, não expandir pras 5 tarefas candidatas restantes (`analyze_vocabulary`, `analyze_tutor_expressions`, `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections`), que ficam pausadas indefinidamente | Nenhum código mudou — só o planejamento (`docs/fase-2-analise-llm.md`) |
-| 20/08/2026 | Fix (fora de história formal, reportado pelo usuário): janelas cmd abrindo em background a cada importação de vídeo — `internal/media.ExtractAudio`/`Duration` chamam ffmpeg/ffprobe via `os/exec` sem esconder o console, e como o Wails roda sem console próprio no Windows cada processo console-subsystem lançado abre sua própria janela | Root cause confirmado (não é ambiental); fix via `SysProcAttr.HideWindow` em arquivo `_windows.go` dedicado (`internal/media/exec_windows.go`, com no-op em `exec_other.go`), mesmo padrão de código específico de plataforma já usado em `services/move_noreplace_windows.go`; `go build`/`go vet`/`go test ./internal/media/...` confirmados limpos em Linux e cross-build pra `GOOS=windows`; verificação visual real (confirmar que a janela não abre mais numa importação de verdade) segue pendente em Windows |
+| 30/07/2026 | Story 1 (Tasks 1–6 of the plan) implemented: `analysis_results`/`lesson_topics` migration, a `prompts/` package with the 7 versioned files, `internal/analysis` rewritten (task-agnostic `Provider`, a `TaskDef` framework, `FormatTranscript` numbering utterances), the 7 concrete tasks with item discard on an invalid `utterance_index` (risk 2), `RegisterPrompts` wired into `main.go`, a temporary CLI `cmd/validate-analysis` created | Work paused before Task 7 (manual validation on a real lesson) to close Phase 1's Story 9 (teacher management), which was still open; `docs/notas-analise-llm.md` still only has the Phase 0 notes (single prompt) — the 7 new tasks haven't yet been run against a real lesson, `cmd/validate-analysis` hasn't been removed yet |
+| 05/08/2026 | Phase 2 replanned toward an iterative approach: instead of automating and building UI for all 7 tasks at once (the old Stories 2–5), each task now goes through its own cycle (on demand → UI → observe on real lessons → decide keep/refine/discard), and only then gains background automation. Story 1 closes with its last criterion rewritten (validation is now per task, not in batch via CLI). Story 2 becomes the Student corrections pilot, the first task to be implemented | Spec in `docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md`; no code changed in this entry — only planning |
+| 06/08/2026 | Story 2 (Pilot: Student corrections) implemented and closed: DeepSeek credential via keyring, `AnalysisService` (`GetCorrections`/`AnalyzeCorrections`/`ReprocessCorrections`), inline correction in the Detail view (gray strikethrough + amber highlight), speaker selection in `EditLessonModal` with analysis discarded when the student is reassigned, `cmd/validate-analysis` removed | Manual verification on a real lesson: the full flow (credential → speaker selection → analysis → inline correction → reprocess → discard) worked as designed; decision recorded in `docs/notas-analise-llm.md` — **keep the task as-is**, with prompt refinement (`prompts/analyze-corrections-v1.md`) recorded as future work: ignore repetition/hesitation in speech as not-an-error, and reduce the "not located" correction fallback in text matching |
+| 18/08/2026 | Story 3 implemented: topics become a `topics` entity (migration 00006 with backfill), `lesson_topics` by `topic_id` becomes the UI's source of truth; `AnalysisService` gains Get/Analyze/ReprocessTopics (on demand, idempotent, writes to `analysis_results` + `lesson_topics`); `TopicsService` covers add/remove per lesson and global rename; prompt v2 with general granularity + reuse of existing topics (appended to the message); chips in the Detail view + a "Topics" panel in Settings; switching speakers now preserves topics (selective deletion by speaker dependency) | `go test ./...`, `go vet ./...`, `pnpm run check`/`build` confirmed clean; manual verification on a real lesson (granularity, reuse, chip editing, global rename) and the decision in `docs/notas-analise-llm.md` are still pending — same pattern as previous stories |
+| 18/08/2026 | UI adjustment (not part of a formal story): teacher and topic management move out of Settings and get their own screens (`Teachers.svelte`, `Topics.svelte`), accessible via two new buttons in the Library header ("Teachers", "Topics"); Settings goes back to containing only Storage and credentials; the new screens are mapped as `active="library"` in the Sidebar, with a "← Library" button following the same pattern as the Lesson Detail view | Frontend-only reorganization — no backend/bindings change; listing/rename logic copied as-is from `Settings.svelte`, without rewriting; `vite build` confirmed clean; real visual verification of the flow (navigate Library → Teachers/Topics → rename → back) is still pending, same pattern as previous stories |
+| 18/08/2026 | UI adjustment (not part of a formal story): the "Progress" tab removed from the Sidebar and from routing in `App.svelte` (a placeholder with no real content, a screen planned only for Phase 3) | `Progress.svelte` kept in the repo unused, to be reused once the screen gets real content in Phase 3; `svelte-check` confirmed clean |
+| 19/08/2026 | Prompt adjustment (not part of a formal story): the `analyze_topics` task gains `prompts/analyze-topics-v3.md` (a 4-topics-per-lesson limit, also enforced as a cutoff in `parseTopics` regardless of what the LLM returns) and, next, `prompts/analyze-topics-v4.md` (output in English instead of Portuguese) | A deliberate deviation, at the user's request, from `CLAUDE.md`'s general "analysis text in PT-BR" convention — only topics now come out in English; `go build`/`go vet`/`go test ./...` confirmed clean |
+| 19/08/2026 | UI adjustment (not part of a formal story): the "Topics" screen gains global topic deletion — `internal/db.DeleteTopic` deletes the entity in a transaction (unlinking `lesson_topics` first, since the FK has no `ON DELETE CASCADE` and the database runs with `foreign_keys=ON`), `TopicsService.DeleteTopic` exposes it to the frontend, a "Delete" button with `confirm()` (same pattern as `LessonDetail.svelte`) removes the topic from every lesson that used it | `go test ./...`, `go vet ./...`, `pnpm run check` confirmed clean; real visual verification of the flow (delete a topic in use → disappears from the lesson's chips) is still pending, same pattern as previous entries |
+| 19/08/2026 | UI adjustment (not part of a formal story, a shortcut for manual testing): a "Delete all" button on the "Topics" screen, next to the title, visible only when the list isn't empty — `internal/db.DeleteAllTopics`/`TopicsService.DeleteAllTopics` delete all of `lesson_topics` and `topics` in a transaction | Not part of normal usage, exists only to make it easier to reset data during testing; `go test ./...`, `go vet ./...`, `pnpm run check` confirmed clean |
+| 19/08/2026 | Story 4 implemented: `db.LessonFilter`/`services.LessonFilter` gain `TopicIDs []int64` (OR semantics via `l.id IN (SELECT lesson_id FROM lesson_topics WHERE topic_id IN (...))`, no schema change); the Library gains a topic filter alongside the existing teacher/period filters, populated by `TopicsService.ListTopics()` | `go test ./...`, `go vet ./...`, `svelte-check`, and `vite build` confirmed clean; real visual verification in a real window is still pending on Windows/Linux, same pattern as previous entries |
+| 19/08/2026 | UI adjustment (not part of a formal story, user feedback after seeing the screen): the topic filter switched from a checkbox list (took up too much space) to a text box with autocomplete (`datalist`, same pattern as `TeacherCombobox`) — typing/selecting an existing topic adds a small removable chip with an "×", the input clears for the next one | `svelte-check` and `vite build` confirmed clean |
+| 19/08/2026 | **Story 3 closed.** The formal decision criterion in `docs/notas-analise-llm.md` dropped from scope — real use already showed an acceptable result (granularity, reuse, chip editing/deletion, Library filter), the decision to keep it made without a dedicated note entry | From here on, the next candidate task (`analyze_vocabulary` or `analyze_tutor_expressions`) follows the same pattern as Story 2 whenever it's started |
+| 20/08/2026 | Replanning (at the user's request): the phase continues with only `analyze_corrections` and `analyze_topics` for now — future work is refining these two, not expanding to the 5 remaining candidate tasks (`analyze_vocabulary`, `analyze_tutor_expressions`, `analyze_tutor_taught_terms`, `analyze_tutor_feedback`, `analyze_tutor_corrections`), which remain paused indefinitely | No code changed — only planning (`docs/fase-2-analise-llm.md`) |
+| 20/08/2026 | Fix (not part of a formal story, reported by the user): cmd windows opening in the background on every video import — `internal/media.ExtractAudio`/`Duration` call ffmpeg/ffprobe via `os/exec` without hiding the console, and since Wails runs without its own console on Windows, each console-subsystem process launched opens its own window | Root cause confirmed (not environmental); fixed via `SysProcAttr.HideWindow` in a dedicated `_windows.go` file (`internal/media/exec_windows.go`, with a no-op in `exec_other.go`), same pattern as platform-specific code already used in `services/move_noreplace_windows.go`; `go build`/`go vet`/`go test ./internal/media/...` confirmed clean on Linux and cross-built for `GOOS=windows`; real visual verification (confirming the window no longer opens on a real import) is still pending on Windows |

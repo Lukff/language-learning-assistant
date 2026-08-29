@@ -1,51 +1,52 @@
-# Fase 0 — Terceiro provedor STT (Deepgram) — Design
+# Phase 0 — Third STT provider (Deepgram) — Design
 
-> Terceira fatia da História 1 (`docs/fase-0-validacao.md`), atrás da mesma interface
-> `stt.Provider` já validada nas fatias da Gladia
-> (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`) e da AssemblyAI
-> (`docs/superpowers/specs/2026-07-18-stt-assemblyai-multi-provider-design.md`). Decisão
-> registrada em conversa com o usuário: Deepgram é o terceiro candidato — e o par que fecha a
-> decisão de STT em `docs/decisoes-tecnologia.md` ("Candidatos preferenciais: Deepgram ou
-> AssemblyAI. Decisão em aberto.").
+> Third slice of Story 1 (`docs/fase-0-validacao.md`), behind the same `stt.Provider` interface
+> already validated in the Gladia slice
+> (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`) and the AssemblyAI
+> slice (`docs/superpowers/specs/2026-07-18-stt-assemblyai-multi-provider-design.md`). Decision
+> recorded in conversation with the user: Deepgram is the third candidate — and the pair that
+> closes the STT decision in `docs/decisoes-tecnologia.md` ("Preferred candidates: Deepgram or
+> AssemblyAI. Decision pending.").
 
-## Objetivo
+## Objective
 
-Implementar `stt.Provider` para o Deepgram (chamada HTTP síncrona, mapeamento para o domínio
-comum), e registrá-lo em `cmd/spike` como um terceiro provedor selecionável via `-providers`, ao
-lado de Gladia e AssemblyAI.
+Implement `stt.Provider` for Deepgram (synchronous HTTP call, mapping to the common domain), and
+register it in `cmd/spike` as a third provider selectable via `-providers`, alongside Gladia and
+AssemblyAI.
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-- ElevenLabs Scribe (fica para uma fatia seguinte, se ainda for necessária depois da decisão
-  Deepgram × AssemblyAI).
-- Comparação entre provedores e decisão de STT (História 2) — esta fatia só produz o cliente e as
-  saídas brutas/legíveis; a comparação em si usa `docs/notas-stt.md` como já vem sendo feito.
-- Qualquer flag além de `-providers` (já existe) — sem paralelismo, sem retry sofisticado.
-- Modo assíncrono via callback do Deepgram — decisão explícita do usuário por síncrono (ver seção
-  seguinte).
+- ElevenLabs Scribe (left for a later slice, if still needed after the Deepgram × AssemblyAI
+  decision).
+- Comparison between providers and the STT decision (Story 2) — this slice only produces the
+  client and the raw/readable outputs; the comparison itself uses `docs/notas-stt.md` as already
+  being done.
+- Any flag besides `-providers` (already exists) — no parallelism, no sophisticated retry.
+- Async mode via Deepgram callback — an explicit decision by the user to go synchronous (see next
+  section).
 
-## Contrato da API Deepgram (referência: `developers.deepgram.com`, verificado em 19/07/2026)
+## Deepgram API contract (reference: `developers.deepgram.com`, verified on 07/19/2026)
 
-Diferença arquitetural central em relação a Gladia e AssemblyAI: o Deepgram **não usa o padrão
-upload → criar job → poll**. A API batch (`POST /v1/listen`) é síncrona — uma única chamada com o
-áudio no corpo bloqueia até a transcrição completa voltar na resposta. O Deepgram também oferece
-um modo assíncrono opcional via callback HTTP (retorna `request_id` e faz um POST para uma URL de
-callback ao terminar), mas foi descartado nesta fatia: exigiria expor um endpoint HTTP local
-(ngrok ou servidor temporário) para um CLI de spike local, complexidade desnecessária frente ao
-modo síncrono.
+Key architectural difference from Gladia and AssemblyAI: Deepgram **does not use the
+upload → create job → poll** pattern. The batch API (`POST /v1/listen`) is synchronous — a single
+call with the audio in the body blocks until the complete transcription comes back in the
+response. Deepgram also offers an optional async mode via HTTP callback (returns `request_id` and
+does a POST to a callback URL when finished), but that was dropped for this slice: it would
+require exposing a local HTTP endpoint (ngrok or a temporary server) for a local spike CLI —
+unnecessary complexity compared to the synchronous mode.
 
-| Aspecto | Gladia / AssemblyAI | Deepgram |
+| Aspect | Gladia / AssemblyAI | Deepgram |
 |---|---|---|
-| Padrão de chamada | upload → criar job → poll (3 chamadas) | uma única chamada síncrona |
-| Endpoint | `/v2/upload` + `/v2/pre-recorded` (ou `/transcript`) + poll | `POST /v1/listen` |
-| Header de auth | `x-gladia-key` / `Authorization` (chave crua) | `Authorization: Token <chave>` |
-| Corpo do áudio | multipart (Gladia) ou binário puro (AssemblyAI) | binário puro (`Content-Type: audio/wav`) |
-| Opções de transcrição | JSON body | query string na própria URL |
-| Timestamps | float64, segundos | float64, segundos (igual à Gladia) |
-| Locutor | inteiro (Gladia) / string (AssemblyAI) | inteiro (`0`, `1`, ...) |
-| Modelo multilíngue/code-switching | `solaria-1` (Gladia) / `universal-3-5-pro` (AssemblyAI) | `model=nova-3` + `language=multi` — suporta code-switching nativo em EN/ES/FR/DE/HI/RU/PT/JA/IT/NL (cobre o caso do projeto) |
+| Call pattern | upload → create job → poll (3 calls) | a single synchronous call |
+| Endpoint | `/v2/upload` + `/v2/pre-recorded` (or `/transcript`) + poll | `POST /v1/listen` |
+| Auth header | `x-gladia-key` / `Authorization` (raw key) | `Authorization: Token <key>` |
+| Audio body | multipart (Gladia) or raw binary (AssemblyAI) | raw binary (`Content-Type: audio/wav`) |
+| Transcription options | JSON body | query string on the URL itself |
+| Timestamps | float64, seconds | float64, seconds (same as Gladia) |
+| Speaker | integer (Gladia) / string (AssemblyAI) | integer (`0`, `1`, ...) |
+| Multilingual/code-switching model | `solaria-1` (Gladia) / `universal-3-5-pro` (AssemblyAI) | `model=nova-3` + `language=multi` — supports native code-switching in EN/ES/FR/DE/HI/RU/PT/JA/IT/NL (covers the project's case) |
 
-Query string da chamada:
+Call query string:
 ```
 POST https://api.deepgram.com/v1/listen
     ?model=nova-3
@@ -54,14 +55,14 @@ POST https://api.deepgram.com/v1/listen
     &punctuate=true
     &utterances=true
 ```
-(`diarize_model=latest` é a forma atual recomendada — substitui o parâmetro `diarize=true`,
-depreciado mas ainda funcional; `diarize_model` já habilita diarização sozinho, sem precisar do
-`diarize=true` junto.)
+(`diarize_model=latest` is the currently recommended form — it replaces the `diarize=true`
+parameter, deprecated but still functional; `diarize_model` alone already enables diarization,
+without needing `diarize=true` alongside it.)
 
-Corpo: bytes crus do WAV, `Content-Type: audio/wav`. Sem multipart, sem etapa de upload prévia —
-o arquivo vai direto no corpo desta mesma requisição.
+Body: raw WAV bytes, `Content-Type: audio/wav`. No multipart, no prior upload step — the file goes
+straight into the body of this same request.
 
-Resposta (200, com `utterances=true`):
+Response (200, with `utterances=true`):
 ```json
 {
   "results": {
@@ -80,45 +81,46 @@ Resposta (200, com `utterances=true`):
   }
 }
 ```
-`results.utterances[]` já vem agrupado por locutor — mesmo nível de conveniência que Gladia e
-AssemblyAI oferecem nativamente, sem precisar agrupar palavras manualmente a partir do array plano
-`results.channels[].alternatives[].words[]`.
+`results.utterances[]` already comes grouped by speaker — the same level of convenience that
+Gladia and AssemblyAI natively offer, without needing to manually group words from the flat
+`results.channels[].alternatives[].words[]` array.
 
-## Componentes
+## Components
 
 ### `internal/stt/deepgram_mapping.go`
 
-Função pura, mesmo padrão dos dois provedores anteriores: `mapDeepgramResponse(raw []byte) (*Result, error)`.
+Pure function, same pattern as the two previous providers: `mapDeepgramResponse(raw []byte) (*Result, error)`.
 
-- Timestamps em float64 segundos, igual à Gladia — reaproveita `secondsToDuration` já definida em
-  `internal/stt/gladia_mapping.go` (mesmo pacote `stt`), em vez de duplicar a função.
-- `Speaker` do Deepgram é inteiro (`0`, `1`, ...); mapeado para `"speaker_0"`, `"speaker_1"`
-  (`fmt.Sprintf("speaker_%d", n)`), mesmo padrão de rótulo já usado na Gladia — mantém as três
-  saídas comparáveis visualmente na História 2.
-- Não há campo `status` no payload do Deepgram (a resposta síncrona só existe quando a
-  transcrição já terminou com sucesso — erro vem como HTTP não-2xx, tratado por `do()`, não como
-  um campo de status no corpo). O erro de mapeamento aqui é só JSON malformado ou
-  `results.utterances` ausente/vazio de um jeito inesperado.
+- Timestamps in float64 seconds, same as Gladia — reuses `secondsToDuration` already defined in
+  `internal/stt/gladia_mapping.go` (same `stt` package), instead of duplicating the function.
+- Deepgram's `Speaker` is an integer (`0`, `1`, ...); mapped to `"speaker_0"`, `"speaker_1"`
+  (`fmt.Sprintf("speaker_%d", n)`), the same label pattern already used for Gladia — keeps the
+  three outputs visually comparable in Story 2.
+- There is no `status` field in the Deepgram payload (the synchronous response only exists once
+  transcription has already finished successfully — an error comes back as a non-2xx HTTP status,
+  handled by `do()`, not as a status field in the body). The only mapping error here is malformed
+  JSON or `results.utterances` missing/empty in an unexpected way.
 
 ### `internal/stt/deepgram.go`
 
-Uma única função HTTP (chamada `transcribe`, via `do()` genérico — mesmo helper que verifica
-status 2xx), sem upload nem poll:
+A single HTTP function (called `transcribe`, via the generic `do()` — the same helper that checks
+for a 2xx status), with no upload and no poll:
 
-1. Monta a URL com os query params acima.
-2. `POST` com os bytes do WAV no corpo, headers `Authorization: Token <chave>` e
+1. Builds the URL with the query params above.
+2. `POST` with the WAV bytes in the body, headers `Authorization: Token <key>` and
    `Content-Type: audio/wav`.
-3. Preserva `RawResponse` mesmo em falha de mapeamento, mesmo padrão dos outros dois provedores.
+3. Preserves `RawResponse` even on a mapping failure, same pattern as the other two providers.
 
-Timeout do `http.Client`: mantido em 10 minutos, por consistência com Gladia/AssemblyAI, mesmo
-sem precisar do timeout curto por chamada de poll que os outros dois têm (não há poll aqui — é uma
-chamada só, então só o timeout generoso do client se aplica).
+`http.Client` timeout: kept at 10 minutes, for consistency with Gladia/AssemblyAI, even though it
+doesn't need the short per-poll-call timeout that the other two have (there's no poll here — it's
+a single call, so only the client's generous timeout applies).
 
-Chave lida de `DEEPGRAM_API_KEY` (variável de ambiente), falha rápido se vazia.
+Key read from `DEEPGRAM_API_KEY` (environment variable), fails fast if empty.
 
 ### `cmd/spike/main.go`
 
-`providerFactories` já é genérico desde a fatia da AssemblyAI — esta fatia só adiciona uma entrada:
+`providerFactories` has already been generic since the AssemblyAI slice — this slice only adds
+one entry:
 
 ```go
 "deepgram": func() (stt.Provider, error) {
@@ -126,11 +128,11 @@ Chave lida de `DEEPGRAM_API_KEY` (variável de ambiente), falha rápido se vazia
 },
 ```
 
-Nenhuma outra mudança no arquivo: seleção via `-providers`, saída por provedor
-(`local/output/aula-01/deepgram/{raw.json,transcript.txt}`), erro por provedor não aborta o run —
-tudo já existe e funciona sem alteração.
+No other changes to the file: selection via `-providers`, per-provider output
+(`local/output/aula-01/deepgram/{raw.json,transcript.txt}`), a per-provider error doesn't abort
+the run — all of this already exists and works without modification.
 
-## Fluxo de dados
+## Data flow
 
 ```
 aula.mp4 --ffmpeg--> audio.wav
@@ -146,29 +148,29 @@ GladiaProvider   AssemblyAIProvider   DeepgramProvider
   transcript.txt    transcript.txt        transcript.txt
 ```
 
-## Tratamento de erro
+## Error handling
 
-Mesma tabela das fatias anteriores (`ffmpeg` ausente, chave vazia, status HTTP não-2xx com corpo,
-JSON que não parseia — raw preservado), com uma simplificação: como não há poll, não existe
-"timeout de polling" nem "status de erro no corpo da resposta de status" para o Deepgram — um erro
-de transcrição aparece só como HTTP não-2xx na própria chamada síncrona, já coberto pelo `do()`
-genérico.
+Same table as the previous slices (`ffmpeg` missing, empty key, non-2xx HTTP status with body,
+JSON that fails to parse — raw preserved), with one simplification: since there's no poll, there
+is no "polling timeout" or "error status in the status response body" for Deepgram — a
+transcription error shows up only as a non-2xx HTTP status on the synchronous call itself, already
+covered by the generic `do()`.
 
-## Testes
+## Tests
 
-- `internal/stt/deepgram_mapping_test.go`: mesmo padrão dos dois provedores anteriores — fixture
-  sintética `testdata/deepgram_response.json` (mesma conversa inventada dos outros fixtures, para
-  leitura lado a lado, incluindo um caso de code-switching PT/EN), testando mapeamento de
-  utterances/words, conversão de timestamps (segundos float → `time.Duration`), formatação do
-  rótulo de locutor (inteiro → `"speaker_N"`), preservação do `RawResponse`, e o caso de erro
-  (JSON inválido).
-- `internal/stt/deepgram.go`: sem testes unitários, mesma justificativa dos outros dois (chamada
-  de rede real, verificada manualmente via CLI).
-- `cmd/spike/main.go`: continua sem testes (descartável); a mudança aqui é a adição de uma entrada
-  no mapa `providerFactories`, verificação manual via `go.exe run ./cmd/spike -providers=deepgram`.
+- `internal/stt/deepgram_mapping_test.go`: same pattern as the two previous providers — synthetic
+  fixture `testdata/deepgram_response.json` (same made-up conversation as the other fixtures, for
+  side-by-side reading, including a PT/EN code-switching case), testing mapping of
+  utterances/words, timestamp conversion (float seconds → `time.Duration`), speaker label
+  formatting (integer → `"speaker_N"`), preservation of `RawResponse`, and the error case (invalid
+  JSON).
+- `internal/stt/deepgram.go`: no unit tests, same justification as the other two (real network
+  call, verified manually via CLI).
+- `cmd/spike/main.go`: still no tests (disposable); the change here is adding an entry to the
+  `providerFactories` map, verified manually via `go.exe run ./cmd/spike -providers=deepgram`.
 
-## Privacidade
+## Privacy
 
-Mesmas regras já em vigor (`local/` fora do git, fixture sintética em `testdata/`,
-`DEEPGRAM_API_KEY` só em variável de ambiente / `.env` gitignored — adicionar ao `.env.example`
-nesta fatia).
+Same rules already in effect (`local/` outside git, synthetic fixture in `testdata/`,
+`DEEPGRAM_API_KEY` only as an environment variable / `.env` gitignored — add it to `.env.example`
+in this slice).

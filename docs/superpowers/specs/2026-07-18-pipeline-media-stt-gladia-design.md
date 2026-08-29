@@ -1,38 +1,38 @@
-# Fase 0 — Pipeline media + stt (Gladia) — Design
+# Phase 0 — media + stt pipeline (Gladia) — Design
 
-> Fatia inicial da História 1 (`docs/fase-0-validacao.md`). Escopo reduzido deliberadamente a
-> **um** provedor de STT (Gladia) para validar a interface e o pipeline ponta a ponta antes de
-> somar os outros 3 candidatos (AssemblyAI, Deepgram, ElevenLabs Scribe) em fatias seguintes.
-> Decisão registrada em conversa com o usuário: abordagem incremental, Gladia primeiro.
+> Initial slice of Story 1 (`docs/fase-0-validacao.md`). Scope deliberately narrowed to
+> **one** STT provider (Gladia) to validate the interface and the end-to-end pipeline before
+> adding the other 3 candidates (AssemblyAI, Deepgram, ElevenLabs Scribe) in later slices.
+> Decision recorded in conversation with the user: incremental approach, Gladia first.
 
-## Objetivo
+## Goal
 
-Extrair o áudio de uma gravação `.mp4` do Cambly e transcrevê-lo via Gladia, com diarização e
-timestamps por palavra, produzindo:
-- o JSON bruto da resposta do provedor, salvo em disco;
-- uma versão legível em texto simples (locutor + timestamp + fala).
+Extract the audio from a Cambly `.mp4` recording and transcribe it via Gladia, with diarization
+and word-level timestamps, producing:
+- the provider's raw JSON response, saved to disk;
+- a plain-text readable version (speaker + timestamp + speech).
 
-Isso valida a interface `stt` (pensada para as 4 implementações futuras) e o package `media`,
-ambos definitivos conforme `CLAUDE.md`.
+This validates the `stt` interface (designed for the 4 future implementations) and the `media`
+package, both final per `CLAUDE.md`.
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-- AssemblyAI, Deepgram, ElevenLabs Scribe (interface já preparada para eles, implementação vem depois).
-- Mapeamento automático de `speaker_N` → aluno/tutor (passo manual da História 2).
-- Comparação entre provedores (História 2) e análise LLM (História 3).
-- Flags de CLI, paralelismo, retry sofisticado — proibidos pela regra de escopo do spike.
+- AssemblyAI, Deepgram, ElevenLabs Scribe (interface already prepared for them, implementation comes later).
+- Automatic mapping of `speaker_N` → student/tutor (manual step in Story 2).
+- Provider comparison (Story 2) and LLM analysis (Story 3).
+- CLI flags, parallelism, sophisticated retry — forbidden by the spike's scope rule.
 
-## Arquitetura
+## Architecture
 
 ```
-cmd/spike/main.go       # orquestra: extrai áudio → transcreve → salva saídas. Paths hardcoded.
-internal/media/         # extração de áudio via ffmpeg
-internal/stt/           # interface Provider + implementação Gladia
-testdata/               # fixture sintética da resposta Gladia (anonimizada)
-local/                  # saídas reais (áudio, JSON bruto, txt) — fora do git
+cmd/spike/main.go       # orchestrates: extract audio → transcribe → save outputs. Hardcoded paths.
+internal/media/         # audio extraction via ffmpeg
+internal/stt/           # Provider interface + Gladia implementation
+testdata/               # synthetic Gladia response fixture (anonymized)
+local/                  # real outputs (audio, raw JSON, txt) — outside git
 ```
 
-## Componentes
+## Components
 
 ### `internal/media`
 
@@ -42,16 +42,16 @@ package media
 func ExtractAudio(ctx context.Context, videoPath, outputPath string) error
 ```
 
-- Implementação via `os/exec`, chamando:
+- Implementation via `os/exec`, calling:
   `ffmpeg -i <videoPath> -vn -ac 1 -ar 16000 -f wav <outputPath>`
-  (mono, 16kHz, WAV — formato universalmente aceito por APIs de STT, evita ambiguidade de codec).
-- Verifica `exec.LookPath("ffmpeg")` antes de rodar; se ausente, retorna erro claro
-  (`ffmpeg não encontrado no PATH`) sem tentar executar.
-- Se o `ffmpeg` retornar código de saída != 0, o erro inclui stderr do processo para diagnóstico.
+  (mono, 16kHz, WAV — a format universally accepted by STT APIs, avoids codec ambiguity).
+- Checks `exec.LookPath("ffmpeg")` before running; if missing, returns a clear error
+  (`ffmpeg não encontrado no PATH`) without attempting to execute.
+- If `ffmpeg` returns a non-zero exit code, the error includes the process's stderr for diagnosis.
 
 ### `internal/stt`
 
-Interface única, usada por todas as implementações presentes e futuras:
+Single interface, used by all present and future implementations:
 
 ```go
 package stt
@@ -62,12 +62,12 @@ type Provider interface {
 }
 
 type Result struct {
-    RawResponse []byte      // JSON bruto exatamente como recebido, para salvar sem perda
+    RawResponse []byte      // raw JSON exactly as received, to save without loss
     Utterances  []Utterance
 }
 
 type Utterance struct {
-    Speaker    string        // rótulo bruto do provedor (ex.: "speaker_0")
+    Speaker    string        // provider's raw label (e.g. "speaker_0")
     Text       string
     Start, End time.Duration
     Words      []Word
@@ -79,45 +79,45 @@ type Word struct {
 }
 ```
 
-Decisões de design:
-- `Speaker` permanece como string bruta do provedor — não há normalização aluno/tutor nesta fase
-  (cada provedor rotula diferente; a comparação e o mapeamento acontecem na História 2).
-- `RawResponse` viaja junto ao `Result` para que o `cmd/spike` grave o bruto sem a implementação
-  precisar saber de I/O de arquivo — mantém `internal/stt` livre de efeitos colaterais de disco.
-- `Word.Start/End` sempre presentes (Gladia retorna timestamp por palavra por padrão); provedores
-  futuros que não garantirem isso deverão documentar a limitação no próprio arquivo de implementação.
+Design decisions:
+- `Speaker` remains the provider's raw string — there is no student/tutor normalization at this
+  stage (each provider labels differently; comparison and mapping happen in Story 2).
+- `RawResponse` travels along with `Result` so that `cmd/spike` can write the raw data without the
+  implementation needing to know about file I/O — keeps `internal/stt` free of disk side effects.
+- `Word.Start/End` are always present (Gladia returns word-level timestamps by default); future
+  providers that don't guarantee this must document the limitation in their own implementation file.
 
 ### `internal/stt/gladia.go`
 
-Fluxo assíncrono conforme a API da Gladia (`docs.gladia.io`):
+Asynchronous flow per the Gladia API (`docs.gladia.io`):
 
-1. `POST https://api.gladia.io/v2/upload` (multipart, o arquivo WAV) → resposta traz `audio_url`.
-2. `POST https://api.gladia.io/v2/pre-recorded` com corpo:
+1. `POST https://api.gladia.io/v2/upload` (multipart, the WAV file) → response returns `audio_url`.
+2. `POST https://api.gladia.io/v2/pre-recorded` with body:
    ```json
    {
-     "audio_url": "<recebido no passo 1>",
+     "audio_url": "<received in step 1>",
      "model": "solaria-1",
      "diarization": true,
      "language_config": { "languages": ["en", "pt", "es"] }
    }
    ```
-   Motivo do `model: "solaria-1"`: é o único modelo Gladia com suporte documentado a
-   code-switching/multilíngue (100+ idiomas); `solaria-3` exige idioma único no
-   `language_config.languages`, incompatível com o requisito de PT/ES no meio do inglês.
-   Resposta traz `id` do job.
-3. Poll em `GET https://api.gladia.io/v2/pre-recorded/{id}` a cada 5s (sleep fixo, sem backoff)
-   até `status == "done"`, com timeout total de 10 minutos (erro claro se estourar — aula de
-   ~30min não deve demorar tanto, é rede de segurança contra job travado).
-4. Mapeia o JSON de resposta (campo de utterances/words da Gladia) para `stt.Result`.
+   Reason for `model: "solaria-1"`: it's the only Gladia model with documented support for
+   code-switching/multilingual input (100+ languages); `solaria-3` requires a single language in
+   `language_config.languages`, incompatible with the requirement of PT/ES mixed into English.
+   Response returns the job's `id`.
+3. Poll `GET https://api.gladia.io/v2/pre-recorded/{id}` every 5s (fixed sleep, no backoff)
+   until `status == "done"`, with a 10-minute total timeout (clear error if exceeded — a ~30min
+   lesson shouldn't take that long, this is a safety net against a stuck job).
+4. Maps the response JSON (Gladia's utterances/words field) to `stt.Result`.
 
-Autenticação: header `x-gladia-key: <GLADIA_API_KEY>`, lida de variável de ambiente. Se a
-variável estiver vazia, falha imediatamente com mensagem clara, sem tentar a chamada HTTP.
+Authentication: `x-gladia-key: <GLADIA_API_KEY>` header, read from an environment variable. If the
+variable is empty, fails immediately with a clear message, without attempting the HTTP call.
 
-Cliente HTTP: `net/http` da stdlib, sem lib de terceiros.
+HTTP client: stdlib `net/http`, no third-party lib.
 
 ### `cmd/spike/main.go`
 
-Descartável, paths hardcoded (sem flags), conforme regra do spike:
+Disposable, hardcoded paths (no flags), per the spike rule:
 
 ```go
 videoPath := "local/input/aula-01.mp4"
@@ -125,58 +125,59 @@ audioPath := "local/output/aula-01/audio.wav"
 outDir    := "local/output/aula-01/"
 ```
 
-Passos:
-1. `media.ExtractAudio` — gera o WAV.
-2. Instancia `stt.NewGladiaProvider(os.Getenv("GLADIA_API_KEY"))` e chama `Transcribe`.
-3. Grava `outDir/gladia.json` com `Result.RawResponse` (bruto, indentado ou não — como veio).
-4. Gera e grava `outDir/gladia.txt`, uma linha por utterance:
-   `[00:12.3 - 00:18.9] speaker_0: texto da fala...`
-5. Loga cada etapa via `log/slog` (stdout), incluindo timing de cada chamada externa.
+Steps:
+1. `media.ExtractAudio` — generates the WAV.
+2. Instantiates `stt.NewGladiaProvider(os.Getenv("GLADIA_API_KEY"))` and calls `Transcribe`.
+3. Writes `outDir/gladia.json` with `Result.RawResponse` (raw, indented or not — as received).
+4. Generates and writes `outDir/gladia.txt`, one line per utterance:
+   `[00:12.3 - 00:18.9] speaker_0: utterance text...`
+5. Logs each step via `log/slog` (stdout), including timing of each external call.
 
-Erros em qualquer etapa interrompem o programa com `log.Fatal`-equivalente (exit code != 0,
-mensagem clara) — sem retry, conforme regra de escopo do spike.
+Errors at any step halt the program with a `log.Fatal`-equivalent (non-zero exit code, clear
+message) — no retry, per the spike's scope rule.
 
-## Fluxo de dados
+## Data flow
 
 ```
-aula.mp4 --ffmpeg--> audio.wav --upload+POST+poll--> Gladia JSON --map--> stt.Result
+lesson.mp4 --ffmpeg--> audio.wav --upload+POST+poll--> Gladia JSON --map--> stt.Result
                                                           |                    |
                                                           v                    v
                                                     local/.../gladia.json  local/.../gladia.txt
 ```
 
-## Tratamento de erro
+## Error handling
 
-| Situação | Comportamento |
+| Situation | Behavior |
 |---|---|
-| `ffmpeg` ausente do PATH | Erro claro antes de tentar rodar, sem stack trace genérica |
-| `ffmpeg` falha (arquivo corrompido, etc.) | Erro inclui stderr do processo |
-| `GLADIA_API_KEY` vazia | Erro claro antes de qualquer chamada HTTP |
-| Upload ou POST retornam status != 2xx | Erro inclui status code e corpo da resposta (para depuração) |
-| Polling estoura 10 minutos | Erro de timeout explícito |
-| JSON de resposta não parseia como esperado | Erro claro; `RawResponse` já deve ter sido capturado antes do parse, para não perder o dado mesmo se o mapeamento falhar |
+| `ffmpeg` missing from PATH | Clear error before attempting to run, no generic stack trace |
+| `ffmpeg` fails (corrupted file, etc.) | Error includes the process's stderr |
+| `GLADIA_API_KEY` empty | Clear error before any HTTP call |
+| Upload or POST return status != 2xx | Error includes status code and response body (for debugging) |
+| Polling exceeds 10 minutes | Explicit timeout error |
+| Response JSON doesn't parse as expected | Clear error; `RawResponse` must already have been captured before parsing, so the data isn't lost even if mapping fails |
 
-## Testes
+## Tests
 
-- `internal/media`: teste de que `ExtractAudio` retorna erro claro quando `ffmpeg` não está no
-  PATH (via `PATH` manipulado no teste). Extração real fica para verificação manual via CLI
-  (depende de ffmpeg + arquivo real).
-- `internal/stt`: teste da função de mapeamento JSON→`stt.Result` usando fixture sintética em
-  `testdata/gladia_response.json` — conversa inventada, sem nomes reais nem trechos de aulas
-  reais, no formato de resposta documentado da Gladia (diarização + words). A chamada HTTP real
-  (upload, POST, polling) é exercitada manualmente via `go run ./cmd/spike` contra a aula de
-  amostra local — não há mock de rede nesta fase, conforme regra de escopo do spike.
-- `go vet ./...` antes de qualquer commit (já exigido pelo `CLAUDE.md`).
+- `internal/media`: test that `ExtractAudio` returns a clear error when `ffmpeg` is not on the
+  PATH (via a manipulated `PATH` in the test). Real extraction is left for manual verification via
+  the CLI (depends on ffmpeg + a real file).
+- `internal/stt`: test of the JSON→`stt.Result` mapping function using a synthetic fixture at
+  `testdata/gladia_response.json` — an invented conversation, with no real names or excerpts from
+  real lessons, in Gladia's documented response format (diarization + words). The real HTTP call
+  (upload, POST, polling) is exercised manually via `go run ./cmd/spike` against the local sample
+  lesson — there is no network mock at this stage, per the spike's scope rule.
+- `go vet ./...` before any commit (already required by `CLAUDE.md`).
 
-## Privacidade
+## Privacy
 
-- `local/` inteiro entra no `.gitignore` (áudio extraído, JSON bruto real, txt legível de aula
-  real) — ainda não existe `.gitignore` no repo, será criado como parte da implementação.
-- `testdata/gladia_response.json` é fixture sintética, nunca um JSON real salvo em `local/`.
-- `GLADIA_API_KEY` somente em variável de ambiente, nunca commitada.
+- The entire `local/` directory goes into `.gitignore` (extracted audio, real raw JSON, real
+  readable lesson txt) — a `.gitignore` doesn't yet exist in the repo, it will be created as part
+  of the implementation.
+- `testdata/gladia_response.json` is a synthetic fixture, never a real JSON saved from `local/`.
+- `GLADIA_API_KEY` only in an environment variable, never committed.
 
-## Próximas fatias (não implementar agora)
+## Next slices (not implemented now)
 
-- Repetir a mesma interface `stt.Provider` para AssemblyAI, Deepgram e ElevenLabs Scribe.
-- Rodar as 3-5 aulas da amostra (História 1 completa).
-- Comparação lado a lado e decisão de STT (História 2).
+- Repeat the same `stt.Provider` interface for AssemblyAI, Deepgram, and ElevenLabs Scribe.
+- Run the 3-5 sample lessons (Story 1 complete).
+- Side-by-side comparison and STT decision (Story 2).

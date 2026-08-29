@@ -1,192 +1,203 @@
-# História 3b — Importar aula manualmente (drag-and-drop): design
+# Story 3b — Manually importing a lesson (drag-and-drop): design
 
-> Cobre a História 3b completa (`docs/fase-1-mvp.md`) e resolve o **risco técnico 2** do projeto
-> ("Drag-and-drop de arquivo no Wails v3: confirmar a API de DnD nativa da versão pinada — área
-> instável do alpha"). Reaproveita sem alteração o fluxo de confirmação da História 3
-> (`ImportConfirmModal.svelte`, `ImportService.ConfirmImport`, `pending_imports`) — ver
+> Covers the full Story 3b (`docs/fase-1-mvp.md`) and resolves the project's **technical risk 2**
+> ("File drag-and-drop in Wails v3: confirm the native DnD API of the pinned version — an
+> unstable alpha area"). Reuses the Story 3 confirmation flow
+> (`ImportConfirmModal.svelte`, `ImportService.ConfirmImport`, `pending_imports`) unchanged — see
 > `docs/superpowers/specs/2026-07-22-historia-3-importar-aula-design.md`.
 
-## Contexto e motivação
+## Context and motivation
 
-A varredura da pasta (História 3) cobre o caso "a pasta de armazenamento já tem aulas soltas
-nela". Falta o caso "uma aula nova chegou agora (download do Cambly) e o usuário quer registrá-la
-sem esperar a próxima varredura" — arrastar o arquivo pro app.
+The folder scan (Story 3) covers the case "the storage root already has loose lessons in it".
+What's missing is the case "a new lesson just arrived (a Cambly download) and the user wants to
+register it without waiting for the next scan" — dragging the file into the app.
 
-## Risco técnico 2: resolvido
+## Technical risk 2: resolved
 
-O Wails v3 `v3.0.0-alpha2.117` (versão pinada) tem suporte nativo a drag-and-drop de arquivos,
-implementado nas três plataformas (`webview_window_darwin.go`, `webview_window_linux.go`,
-`webview_window_windows.go`) — **não é HTML5 File API**, é drop a nível de SO entregue à janela:
+Wails v3 `v3.0.0-alpha2.117` (the pinned version) has native support for file drag-and-drop,
+implemented on all three platforms (`webview_window_darwin.go`, `webview_window_linux.go`,
+`webview_window_windows.go`) — **it is not the HTML5 File API**, it's an OS-level drop delivered
+to the window:
 
-- `application.WebviewWindowOptions{EnableFileDrop: true}` habilita o recurso na janela.
+- `application.WebviewWindowOptions{EnableFileDrop: true}` enables the feature on the window.
 - `win.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {...})`
-  recebe `e.Context().DroppedFiles() []string` — caminhos absolutos no disco, prontos pra
-  `os.Open`/`os.Stat`, sem limite de tamanho de payload (ao contrário de ler bytes via `<input
-  type="file">` num webview).
-- O drop só é reconhecido se o cursor soltar sobre um elemento HTML marcado com o atributo
-  `data-file-drop-target` — o runtime injetado pelo Wails já cuida do feedback visual (adiciona a
-  classe `file-drop-target-active` nesse elemento durante o hover do drag, sem código nosso).
+  receives `e.Context().DroppedFiles() []string` — absolute paths on disk, ready for
+  `os.Open`/`os.Stat`, with no payload size limit (unlike reading bytes via `<input
+  type="file">` in a webview).
+- The drop is only recognized if the cursor releases over an HTML element marked with the
+  `data-file-drop-target` attribute — the runtime injected by Wails already handles the visual
+  feedback (adding the `file-drop-target-active` class to that element during drag hover, with
+  no code of our own).
 
-Fallback de file dialog (cotado como aceitável no documento de riscos) **não é necessário** — a
-API nativa funciona nas três plataformas na versão pinada.
+The file-dialog fallback (deemed acceptable in the risk document) **is not needed** — the native
+API works on all three platforms in the pinned version.
 
-## Decisões de escopo
+## Scope decisions
 
-- **Abertura do modal:** soltar o vídeo abre `ImportConfirmModal` na hora (não fica só na lista de
-  pendentes esperando clique em "Revisar").
-- **Área de drop:** a tela Biblioteca inteira (`Library.svelte`), não uma zona dedicada nem a
-  janela inteira do app.
-- **Múltiplos arquivos:** todos são processados; cada um vira um candidato pendente, e o modal de
-  confirmação abre um de cada vez, em sequência.
-- **Pasta de destino da cópia:** direto na raiz de armazenamento, sem subpasta — mesmo princípio
-  da História 3 de não impor estrutura de diretórios.
-- **Origem já dentro da raiz de armazenamento:** não copia; registra no lugar (mesmo tratamento
-  que a varredura já dá a um arquivo existente).
-- **Colisão de nome no destino:** sufixo automático (`nome-2.mp4`, `nome-3.mp4`, ...), sem
-  perguntar nada ao usuário — mesmo padrão já usado na renomeação pós-confirmação
+- **Opening the modal:** dropping the video opens `ImportConfirmModal` immediately (it doesn't
+  just sit in the pending list waiting for a click on "Review").
+- **Drop area:** the whole Library screen (`Library.svelte`), not a dedicated zone nor the app's
+  entire window.
+- **Multiple files:** all are processed; each becomes a pending candidate, and the confirmation
+  modal opens one at a time, in sequence.
+- **Copy destination folder:** straight into the storage root, no subfolder — the same principle
+  as Story 3 of not imposing a directory structure.
+- **Source already inside the storage root:** doesn't copy; registers it in place (the same
+  treatment the scan already gives an existing file).
+- **Name collision at the destination:** an automatic suffix (`name-2.mp4`, `name-3.mp4`, ...),
+  without asking the user anything — the same pattern already used for the post-confirmation
+  rename
   (`docs/superpowers/specs/2026-07-23-historia-3-renomeacao-padronizada-design.md`).
-- **Extensão não reconhecida ou arquivo já importado (mesmo hash):** rejeitado com mensagem de
-  erro clara, sem copiar nem hashear à toa.
+- **Unrecognized extension or file already imported (same hash):** rejected with a clear error
+  message, without copying or hashing needlessly.
 
-## Arquitetura
+## Architecture
 
 ```
-main.go                    # EnableFileDrop: true; handler fino repassa DroppedFiles() pro service
-services/import.go         # ImportService.DropImport(paths []string) []DropResult — novo método
+main.go                    # EnableFileDrop: true; a thin handler forwards DroppedFiles() to the service
+services/import.go         # ImportService.DropImport(paths []string) []DropResult — new method
 internal/importer/
-  importer.go              # dedupe/hash reaproveitados (LessonByHash, PendingExists)
-  copy.go                  # novo: CopyIntoStorageRoot — cópia + resolução de colisão, sem DnD/Wails
+  importer.go              # dedupe/hash reused (LessonByHash, PendingExists)
+  copy.go                  # new: CopyIntoStorageRoot — copy + collision resolution, no DnD/Wails
 frontend/src/lib/
-  screens/Library.svelte   # data-file-drop-target na raiz; assina "import:dropped"; fila de
-                            # PendingImport pra abrir o modal um de cada vez
-  ImportConfirmModal.svelte # inalterado — já recebe qualquer PendingImport
+  screens/Library.svelte   # data-file-drop-target at the root; subscribes to "import:dropped"; a
+                            # PendingImport queue to open the modal one at a time
+  ImportConfirmModal.svelte # unchanged — already accepts any PendingImport
 ```
 
-`internal/importer/copy.go` não sabe de Wails nem de banco — só faz I/O de arquivo (cópia +
-sufixo de colisão), mesmo princípio de camada fina do resto do `internal/`. `ImportService` (em
-`services/`, que já conhece `storage_root`, banco e Wails events) orquestra: decide se copia ou
-não, chama o hash, insere `pending_imports`, emite o evento.
+`internal/importer/copy.go` doesn't know about Wails or the database — it only does file I/O
+(copy + collision suffix), the same thin-layer principle as the rest of `internal/`.
+`ImportService` (in `services/`, which already knows about `storage_root`, the database, and
+Wails events) orchestrates: decides whether to copy or not, calls the hash, inserts into
+`pending_imports`, emits the event.
 
 ### `main.go`
 
 ```go
 win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-    // ... opções existentes ...
+    // ... existing options ...
     EnableFileDrop: true,
 })
 win.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
     results := importService.DropImport(e.Context().DroppedFiles())
-    // DropImport já emite um evento por candidato bem-sucedido; results (erros por arquivo)
-    // não tem consumidor síncrono aqui — ver "Erros" abaixo.
+    // DropImport already emits an event per successful candidate; results (per-file errors)
+    // has no synchronous consumer here — see "Errors" below.
 })
 ```
 
 ### `ImportService.DropImport`
 
 ```go
-// DropResult é o resultado de processar um único caminho recebido do drop —
-// exposto ao frontend via evento pra exibir erro por arquivo sem travar os
-// demais.
+// DropResult is the outcome of processing a single path received from the drop —
+// exposed to the frontend via an event to show a per-file error without blocking
+// the others.
 type DropResult struct {
-    Path  string `json:"path"`  // caminho original solto (absoluto, só pra identificar na mensagem)
-    Error string `json:"error"` // vazio se deu certo
+    Path  string `json:"path"`  // original dropped path (absolute, only to identify it in the message)
+    Error string `json:"error"` // empty if it succeeded
 }
 
 func (s *ImportService) DropImport(paths []string) []DropResult
 ```
 
-Para cada `path` em `paths`, na ordem recebida:
+For each `path` in `paths`, in the order received:
 
-1. **Extensão:** se não `.mp4` (mesma lista de `internal/importer.videoExtensions`) → `DropResult`
-   com erro "tipo de arquivo não suportado (só .mp4)", segue pro próximo.
-2. **Hash** (`sha256`, mesmo helper que `importer.Scan` usa — extraído pra ser reaproveitável sem
-   duplicar código).
+1. **Extension:** if not `.mp4` (same list as `internal/importer.videoExtensions`) → `DropResult`
+   with error "tipo de arquivo não suportado (só .mp4)", move on to the next.
+2. **Hash** (`sha256`, the same helper `importer.Scan` uses — extracted so it can be reused
+   without duplicating code).
 3. **Dedup:**
-   - já existe uma `lesson` com esse hash → erro "esta aula já foi importada".
-   - já existe um `pending_imports` com esse hash → erro "esta aula já está aguardando revisão".
-4. **Posicionamento:**
-   - se `path` resolve (via `filepath.Abs` + comparação de prefixo, considerando symlinks via
-     `filepath.EvalSymlinks` de ambos os lados) para dentro de `storage_root` → usa o path relativo
-     a `storage_root` diretamente, sem copiar.
-   - senão → `importer.CopyIntoStorageRoot(path, storageRoot)`: copia o conteúdo (`io.Copy` pra um
-     arquivo temporário no destino + rename atômico, não escreve direto no nome final — evita um
-     candidato consumir um arquivo parcialmente copiado se a cópia falhar no meio) resolvendo
-     colisão de nome com sufixo `-2`, `-3`, ... antes da extensão; retorna o path relativo
-     resultante. Falha de cópia (disco cheio, permissão) → `DropResult` com o erro, **não** insere
-     `pending_imports` (diferente do rename best-effort pós-confirmação — aqui a cópia é o único
-     jeito de o arquivo existir rastreável, então falha tem que ser visível).
-5. **`suggestedDate`** via a mesma `suggestDate(filepath.Base(path), mtime)` já usada pela
-   varredura.
-6. **Insere `pending_imports`** (mesma tabela, mesmo shape que `InsertPending` do scanner grava).
-   Se o insert falhar depois de uma cópia bem-sucedida (erro de banco, raro), o arquivo copiado
-   fica órfão em `storage_root` sem registro — não é revertido (cópia já é best-effort quanto a
-   rollback). Não é um estado permanente: a próxima "Sincronizar pasta" (varredura, História 3) o
-   encontra como candidato novo, já que ele está dentro da raiz de armazenamento sem hash
-   conhecido. `DropResult` reporta o erro do insert normalmente.
-7. **Emite evento Wails** `import:dropped` com o `PendingImport{id, path, suggestedDate}` recém-
-   criado (mesmo shape que `ListPendingImports` já expõe — o frontend não precisa de um tipo novo).
+   - a `lesson` with that hash already exists → error "esta aula já foi importada".
+   - a `pending_imports` row with that hash already exists → error "esta aula já está aguardando
+     revisão".
+4. **Placement:**
+   - if `path` resolves (via `filepath.Abs` + prefix comparison, accounting for symlinks via
+     `filepath.EvalSymlinks` on both sides) to inside `storage_root` → uses the path relative to
+     `storage_root` directly, without copying.
+   - otherwise → `importer.CopyIntoStorageRoot(path, storageRoot)`: copies the content
+     (`io.Copy` into a temp file at the destination + atomic rename, doesn't write directly to
+     the final name — this avoids a candidate ending up pointing at a partially-copied file if
+     the copy fails midway), resolving name collisions with a `-2`, `-3`, ... suffix before the
+     extension; returns the resulting relative path. A copy failure (disk full, permission) →
+     `DropResult` with the error, **does not** insert into `pending_imports` (unlike the
+     best-effort post-confirmation rename — here the copy is the only way the file exists in a
+     trackable form, so a failure has to be visible).
+5. **`suggestedDate`** via the same `suggestDate(filepath.Base(path), mtime)` already used by the
+   scan.
+6. **Inserts into `pending_imports`** (same table, same shape the scanner's `InsertPending`
+   writes). If the insert fails after a successful copy (a database error, rare), the copied
+   file is left orphaned in `storage_root` with no record — it is not rolled back (the copy is
+   already best-effort with respect to rollback). It's not a permanent state: the next "Sync
+   folder" (scan, Story 3) picks it up as a new candidate, since it's inside the storage root
+   with no known hash. `DropResult` reports the insert's error normally.
+7. **Emits a Wails event** `import:dropped` with the newly-created
+   `PendingImport{id, path, suggestedDate}` (the same shape `ListPendingImports` already exposes
+   — the frontend doesn't need a new type).
 
-### Erros: como chegam ao frontend
+### Errors: how they reach the frontend
 
-`DropImport` roda dentro do handler síncrono de `OnWindowEvent`, sem chamada direta do frontend
-(o drop é iniciado pelo SO, não por um clique) — não há uma promise no frontend esperando o
-retorno. Por isso os erros por arquivo também vão por evento, não pelo retorno de `DropResult`
-usado só internamente/em teste: `DropImport` emite um evento adicional `import:drop-error` por
-`DropResult` com `Error != ""`, com `{path, error}`. `Library.svelte` assina os dois eventos.
+`DropImport` runs inside `OnWindowEvent`'s synchronous handler, with no direct call from the
+frontend (the drop is initiated by the OS, not a click) — there's no promise on the frontend
+waiting for the return value. That's why per-file errors also go out via an event, not through
+the `DropResult` return value, which is used only internally/in tests: `DropImport` emits an
+additional `import:drop-error` event per `DropResult` with `Error != ""`, with `{path, error}`.
+`Library.svelte` subscribes to both events.
 
 ## Frontend: `Library.svelte`
 
-- Raiz do componente ganha `data-file-drop-target`; CSS local pro estado `.file-drop-target-active`
-  usando as cores do tema já importado (`colors.blue`/borda tracejada, consistente com o resto da
-  UI — não a marcação verde do exemplo do Wails).
-- `onMount` (junto do `loadAll` existente) assina:
+- The component root gains `data-file-drop-target`; local CSS for the `.file-drop-target-active`
+  state uses the already-imported theme colors (`colors.blue`/dashed border, consistent with the
+  rest of the UI — not the Wails example's green marker).
+- `onMount` (alongside the existing `loadAll`) subscribes to:
   - `Events.On("import:dropped", (pending) => { pendingQueue.push(pending); maybeOpenNext(); loadPending(); })`
   - `Events.On("import:drop-error", ({path, error}) => { dropErrors = [...dropErrors, \`${path}: ${error}\`]; })`
-- Fila local (`let pendingQueue: PendingImport[] = $state([])`) drena um item por vez pro mesmo
-  `reviewing` que a Biblioteca já usa pra abrir `ImportConfirmModal` — se `reviewing` já está
-  ocupado (usuário revisando outro candidato), o novo item espera na fila; ao fechar/confirmar,
-  `maybeOpenNext()` pega o próximo. Isso cobre "múltiplos arquivos: processa todos, abre confirmação
-  um de cada vez" sem duplicar lógica de exibição do modal.
-- Erros de drop (`dropErrors`) aparecem no mesmo estilo de aviso que `error`/`syncMessage` já usam,
-  listados (pode ser mais de um arquivo com problema no mesmo drop).
+- A local queue (`let pendingQueue: PendingImport[] = $state([])`) drains one item at a time into
+  the same `reviewing` state the Library already uses to open `ImportConfirmModal` — if
+  `reviewing` is already occupied (the user is reviewing another candidate), the new item waits
+  in the queue; on close/confirm, `maybeOpenNext()` picks up the next one. This covers "multiple
+  files: process all, open confirmation one at a time" without duplicating the modal-display
+  logic.
+- Drop errors (`dropErrors`) appear in the same warning style already used by
+  `error`/`syncMessage`, listed (there can be more than one problem file in the same drop).
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-- Zona de drop dedicada com instrução visual ("solte aqui") — a tela inteira já reage.
-- Funcionar fora da tela Biblioteca (Fila, Progresso, Detalhe) — decisão explícita, não a janela
-  inteira.
-- Extensões além de `.mp4` — mesma limitação da História 3, sem mudança aqui.
-- Cancelar uma cópia em andamento — arquivos de aula são de minutos, não horas; não há barra de
-  progresso nem cancelamento nesta fatia.
+- A dedicated drop zone with visual instructions ("drop here") — the whole screen already
+  reacts.
+- Working outside the Library screen (Queue, Progress, Detail) — an explicit decision, not the
+  whole window.
+- Extensions beyond `.mp4` — same limitation as Story 3, no change here.
+- Cancelling a copy in progress — lesson files are minutes long, not hours; there's no progress
+  bar or cancellation in this slice.
 
-## Testes
+## Tests
 
-- `internal/importer/copy_test.go`: cópia pra destino vazio; colisão de nome (sufixo `-2`,
-  `-3`); origem inexistente (erro claro); cópia interrompida no meio (simulada) não deixa arquivo
-  parcial com o nome final (fica só o temporário, ou nada).
+- `internal/importer/copy_test.go`: copy to an empty destination; name collision (`-2`,
+  `-3` suffix); nonexistent source (clear error); a copy interrupted midway (simulated) doesn't
+  leave a partial file under the final name (only the temp file remains, or nothing).
 - `services/import_test.go` (`DropImport`):
-  - extensão não `.mp4` → `DropResult` com erro, nada no banco, nada no disco.
-  - hash já existe como `lesson` → erro "já foi importada", sem cópia.
-  - hash já existe como `pending_imports` → erro "já aguardando revisão", sem cópia.
-  - path já dentro de `storage_root` → sem cópia (mesmo conteúdo, mesmo `os.SameFile`), só grava
-    `pending_imports` com o path relativo correto.
-  - path fora de `storage_root` → copiado, `pending_imports` aponta pro path relativo novo,
-    arquivo original permanece intacto na origem.
-  - dois paths no mesmo `DropImport` com nomes-base iguais mas hashes diferentes → o segundo grava
-    com sufixo `-2`.
-  - falha de cópia simulada (ex.: destino sem permissão de escrita) → `DropResult` com erro, nada
-    em `pending_imports`.
+  - non-`.mp4` extension → `DropResult` with an error, nothing in the database, nothing on disk.
+  - hash already exists as a `lesson` → "already imported" error, no copy.
+  - hash already exists as `pending_imports` → "already awaiting review" error, no copy.
+  - path already inside `storage_root` → no copy (same content, same `os.SameFile`), only writes
+    `pending_imports` with the correct relative path.
+  - path outside `storage_root` → copied, `pending_imports` points to the new relative path,
+    the original file remains intact at the source.
+  - two paths in the same `DropImport` call with equal base names but different hashes → the
+    second is written with a `-2` suffix.
+  - simulated copy failure (e.g. a destination with no write permission) → `DropResult` with an
+    error, nothing in `pending_imports`.
 
-## Critério de aceite (História 3b, `docs/fase-1-mvp.md`)
+## Acceptance criteria (Story 3b, `docs/fase-1-mvp.md`)
 
-- [ ] Drag-and-drop nativo (Wails v3, `EnableFileDrop` + `WindowFilesDropped`) na tela Biblioteca
-      abre o `ImportConfirmModal` (data pré-preenchida do nome/mtime do arquivo, tutor texto
-      livre) — um modal por arquivo solto, em sequência se mais de um for solto junto.
-- [ ] O vídeo é copiado pra raiz de armazenamento (sem subpasta, sufixo de colisão se necessário)
-      quando ainda não está lá; se já estiver dentro da raiz de armazenamento, é registrado no
-      lugar sem cópia. O banco guarda apenas o path relativo.
-- [ ] Registro em `pending_imports` reaproveita a confirmação/dedup por hash já existente
-      (História 3) — confirmar grava `lessons` + jobs `extract_audio`/`transcribe` como
-      `pending`, sem mudança no `ConfirmImport` existente.
-- [ ] Extensão não reconhecida ou arquivo já importado (mesmo hash, como `lesson` ou como
-      `pending_imports`) é rejeitado com mensagem de erro clara, sem copiar nem duplicar.
+- [ ] Native drag-and-drop (Wails v3, `EnableFileDrop` + `WindowFilesDropped`) on the Library
+      screen opens `ImportConfirmModal` (date pre-filled from the file's name/mtime, tutor as
+      free text) — one modal per dropped file, in sequence if more than one is dropped together.
+- [ ] The video is copied to the storage root (no subfolder, collision suffix if needed) when
+      it isn't already there; if it's already inside the storage root, it's registered in place
+      without copying. The database stores only the relative path.
+- [ ] Registration in `pending_imports` reuses the existing hash-based confirmation/dedup
+      (Story 3) — confirming writes `lessons` + `extract_audio`/`transcribe` jobs as
+      `pending`, with no change to the existing `ConfirmImport`.
+- [ ] An unrecognized extension or an already-imported file (same hash, whether as a `lesson` or
+      as `pending_imports`) is rejected with a clear error message, without copying or
+      duplicating.

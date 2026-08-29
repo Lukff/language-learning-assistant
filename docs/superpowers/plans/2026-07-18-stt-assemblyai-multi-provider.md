@@ -12,7 +12,7 @@
 
 - `internal/stt` stays production-quality and permanent; `cmd/spike/main.go` stays disposable.
 - `ASSEMBLYAI_API_KEY` read only from environment (or `.env` via the existing `loadDotEnv`), never hardcoded/committed.
-- AssemblyAI auth header is `Authorization: <chave>` — raw key, no `Bearer` prefix.
+- AssemblyAI auth header is `Authorization: <key>` — raw key, no `Bearer` prefix.
 - AssemblyAI upload is `POST /v2/upload` with a raw binary body (`application/octet-stream`), NOT multipart (this differs from Gladia's multipart upload).
 - Model: `speech_models: ["universal-3-pro"]`, with `speaker_labels: true` and `language_detection: true` in the submit request — `universal-3-pro` is the AssemblyAI model with documented native code-switching support across EN/PT/ES (among others), matching the project's PT/ES-in-English requirement.
 - AssemblyAI status values: `"completed"` (not `"done"` like Gladia) and `"error"`; timestamps are integer **milliseconds** (not float seconds like Gladia) — no rounding needed, direct `time.Duration(ms) * time.Millisecond` conversion.
@@ -22,7 +22,7 @@
 - Output layout: `local/output/aula-01/<provider.Name()>/raw.json` and `.../transcript.txt` — one subdirectory per provider, so running one provider never touches another's files.
 - A single provider's failure during a multi-provider run is logged and does NOT abort the run — the CLI proceeds to the next provider, and only exits with a non-zero status at the end if at least one provider failed.
 - No elaborate flags beyond `-providers`, no parallelism, no sophisticated retry.
-- Commit messages: one line, semantic format (`tipo: descrição`) — do not run `git commit` automatically; stage only (`git add`), per this project's established workflow preference.
+- Commit messages: one line, semantic format (`type: description`) — do not run `git commit` automatically; stage only (`git add`), per this project's established workflow preference.
 
 ---
 
@@ -199,10 +199,10 @@ type assemblyAIWord struct {
 	End   int64  `json:"end"`
 }
 
-// mapAssemblyAIResponse converte o JSON bruto do endpoint
-// GET /v2/transcript/{id} do AssemblyAI para o domínio comum stt.Result.
-// Mantida separada das chamadas HTTP (assemblyai.go) para ser testável com
-// fixture, sem precisar de rede.
+// mapAssemblyAIResponse converts the raw JSON from AssemblyAI's
+// GET /v2/transcript/{id} endpoint into the common stt.Result domain. Kept
+// separate from the HTTP calls (assemblyai.go) so it's fixture-testable,
+// with no network needed.
 func mapAssemblyAIResponse(raw []byte) (*Result, error) {
 	var parsed assemblyAIResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -237,9 +237,9 @@ func mapAssemblyAIResponse(raw []byte) (*Result, error) {
 	}, nil
 }
 
-// millisToDuration converte milissegundos inteiros (formato do AssemblyAI)
-// para time.Duration. Sem arredondamento necessário — ao contrário da
-// Gladia (float64 segundos), o AssemblyAI já entrega inteiros.
+// millisToDuration converts integer milliseconds (AssemblyAI's format)
+// into time.Duration. No rounding needed — unlike Gladia (float64
+// seconds), AssemblyAI already delivers integers.
 func millisToDuration(ms int64) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
@@ -294,11 +294,11 @@ import (
 
 const assemblyAIBaseURL = "https://api.assemblyai.com"
 
-// AssemblyAIProvider implementa stt.Provider usando a API do AssemblyAI.
+// AssemblyAIProvider implements stt.Provider using the AssemblyAI API.
 //
-// Modelo usado: "universal-3-pro" — suporta code-switching nativo em
-// EN/PT/ES/FR/DE/IT, cobrindo exatamente o caso do projeto (aluno fala
-// inglês com trechos em português/espanhol).
+// Model used: "universal-3-pro" — supports native code-switching in
+// EN/PT/ES/FR/DE/IT, covering exactly the project's case (the student
+// speaks English with snippets in Portuguese/Spanish).
 type AssemblyAIProvider struct {
 	apiKey string
 	client *http.Client
@@ -308,10 +308,10 @@ func NewAssemblyAIProvider(apiKey string) (*AssemblyAIProvider, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("stt: ASSEMBLYAI_API_KEY vazia")
 	}
-	// Timeout generoso: o upload envia o WAV inteiro da aula (dezenas de MB),
-	// cuja duração real depende da banda de upload do usuário, não só do
-	// processamento do servidor. O poll (chamadas pequenas e repetidas) usa
-	// seu próprio timeout curto por chamada — ver poll().
+	// Generous timeout: the upload sends the lesson's entire WAV (tens of MB),
+	// whose real duration depends on the user's upload bandwidth, not just
+	// server processing. The poll (small, repeated calls) uses its own short
+	// per-call timeout — see poll().
 	return &AssemblyAIProvider{apiKey: apiKey, client: &http.Client{Timeout: 10 * time.Minute}}, nil
 }
 
@@ -335,9 +335,10 @@ func (p *AssemblyAIProvider) Transcribe(ctx context.Context, audioPath string) (
 
 	result, err := mapAssemblyAIResponse(raw)
 	if err != nil {
-		// Preserva o JSON bruto mesmo em falha de parse: a chamada à API já foi
-		// feita (custa dinheiro e minutos de transcrição), então o chamador deve
-		// conseguir salvar result.RawResponse em disco mesmo com err != nil.
+		// Preserves the raw JSON even on a parse failure: the API call was
+		// already made (it costs money and transcription minutes), so the
+		// caller must be able to save result.RawResponse to disk even with
+		// err != nil.
 		return &Result{RawResponse: raw}, fmt.Errorf("stt: parsear resposta assemblyai: %w", err)
 	}
 	return result, nil
@@ -411,10 +412,10 @@ func (p *AssemblyAIProvider) poll(ctx context.Context, jobID string) ([]byte, er
 			return nil, fmt.Errorf("timeout de 10 minutos aguardando job %s", jobID)
 		}
 
-		// Timeout curto por chamada (bem menor que o orçamento de 10 minutos e
-		// menor que o timeout generoso do cliente para o upload), para que uma
-		// única requisição de poll travada não impeça o loop de checar o
-		// deadline geral na próxima iteração. Mesmo padrão de internal/stt/gladia.go.
+		// Short per-call timeout (much smaller than the 10-minute budget and
+		// smaller than the client's generous upload timeout), so that a single
+		// stuck poll request doesn't stop the loop from checking the overall
+		// deadline on the next iteration. Same pattern as internal/stt/gladia.go.
 		reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 		if err != nil {
@@ -451,8 +452,8 @@ func (p *AssemblyAIProvider) poll(ctx context.Context, jobID string) ([]byte, er
 	}
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if
+// the status isn't 2xx (the message includes status and body, for debugging).
 func (p *AssemblyAIProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -576,9 +577,10 @@ func main() {
 	}
 }
 
-// runProvider roda um único provedor de STT e salva suas saídas. Retorna
-// false se o provedor falhou (erro já logado) — o chamador decide se isso
-// deve interromper o processo ou apenas seguir para o próximo provedor.
+// runProvider runs a single STT provider and saves its outputs. Returns
+// false if the provider failed (error already logged) — the caller decides
+// whether that should stop the process or just move on to the next
+// provider.
 func runProvider(ctx context.Context, logger *slog.Logger, factory func() (stt.Provider, error), name, audioPath, outDir string) bool {
 	provider, err := factory()
 	if err != nil {
@@ -623,10 +625,10 @@ func runProvider(ctx context.Context, logger *slog.Logger, factory func() (stt.P
 	return true
 }
 
-// loadDotEnv lê pares CHAVE=VALOR de path e os define como variáveis de
-// ambiente, sem sobrescrever variáveis já definidas no processo. Arquivo
-// ausente não é erro (uso do .env é opcional — export manual continua
-// funcionando).
+// loadDotEnv reads KEY=VALUE pairs from path and sets them as environment
+// variables, without overwriting variables already set in the process. A
+// missing file is not an error (using .env is optional — manual export
+// still works).
 func loadDotEnv(path string) error {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -654,7 +656,7 @@ func loadDotEnv(path string) error {
 	return nil
 }
 
-// saveRawResponse grava o JSON bruto do provedor em outDir/raw.json.
+// saveRawResponse writes the provider's raw JSON to outDir/raw.json.
 func saveRawResponse(outDir string, result *stt.Result) error {
 	rawPath := filepath.Join(outDir, "raw.json")
 	return os.WriteFile(rawPath, result.RawResponse, 0o644)
@@ -710,8 +712,8 @@ Running `go.exe run ./cmd/spike -providers=gladia,assemblyai` against the real s
 
 ---
 
-## Após este plano
+## After this plan
 
-- Repetir o mesmo padrão (mapping + client) para Deepgram e ElevenLabs Scribe.
-- Rodar as 3–5 aulas da amostra com todos os candidatos ainda não eliminados (resto da História 1).
-- Comparação lado a lado e decisão de STT (História 2), usando `docs/notas-stt.md` como insumo.
+- Repeat the same pattern (mapping + client) for Deepgram and ElevenLabs Scribe.
+- Run the 3–5 sample lessons against all candidates not yet eliminated (the rest of Story 1).
+- Side-by-side comparison and STT decision (Story 2), using `docs/notas-stt.md` as input.

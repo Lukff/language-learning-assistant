@@ -1,66 +1,66 @@
-# Fase 0 — Quarto (e último) provedor STT (ElevenLabs Scribe) — Design
+# Phase 0 — Fourth (and last) STT provider (ElevenLabs Scribe) — Design
 
-> Quarta fatia da História 1 (`docs/fase-0-validacao.md`), atrás da mesma interface
-> `stt.Provider` já validada nas fatias da Gladia
-> (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`), da AssemblyAI
-> (`docs/superpowers/specs/2026-07-18-stt-assemblyai-multi-provider-design.md`) e do Deepgram
-> (`docs/superpowers/specs/2026-07-19-stt-deepgram-design.md`). Fecha os 4 candidatos listados em
-> `docs/fase-0-validacao.md` — a partir daqui a História 1 está pronta para virar a comparação da
-> História 2.
+> Fourth slice of Story 1 (`docs/fase-0-validacao.md`), behind the same `stt.Provider` interface
+> already validated in the Gladia slice
+> (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`), the AssemblyAI slice
+> (`docs/superpowers/specs/2026-07-18-stt-assemblyai-multi-provider-design.md`), and the Deepgram
+> slice (`docs/superpowers/specs/2026-07-19-stt-deepgram-design.md`). Closes out the 4 candidates
+> listed in `docs/fase-0-validacao.md` — from here on, Story 1 is ready to turn into Story 2's
+> comparison.
 
-## Objetivo
+## Goal
 
-Implementar `stt.Provider` para o ElevenLabs Scribe (chamada HTTP síncrona, mapeamento para o
-domínio comum), e registrá-lo em `cmd/spike` como um quarto provedor selecionável via
-`-providers`, ao lado de Gladia, AssemblyAI e Deepgram.
+Implement `stt.Provider` for ElevenLabs Scribe (synchronous HTTP call, mapping to the common
+domain), and register it in `cmd/spike` as a fourth provider selectable via `-providers`,
+alongside Gladia, AssemblyAI, and Deepgram.
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-- Comparação entre provedores e decisão de STT (História 2) — esta fatia só produz o cliente e as
-  saídas brutas/legíveis.
-- Qualquer flag além de `-providers` (já existe) — sem paralelismo, sem retry sofisticado.
-- Segmentação de utterances por pausa de silêncio dentro do mesmo locutor (ver seção de
-  mapeamento) — decisão explícita do usuário por não fazer essa heurística nesta fatia.
-- Recursos avançados da API não relacionados aos requisitos do projeto: `entity_detection`/
-  `entity_redaction` (PII), `use_speaker_library`, `keyterms`, `webhook`, multicanal
-  (`use_multi_channel`), `additional_formats`. Nenhum tem relação com diarização/timestamps/
+- Comparison between providers and the STT decision (Story 2) — this slice only produces the
+  client and the raw/readable outputs.
+- Any flag beyond `-providers` (already exists) — no parallelism, no sophisticated retry.
+- Segmenting utterances by silence gap within the same speaker (see mapping section) — an
+  explicit user decision not to do this heuristic in this slice.
+- Advanced API features unrelated to the project's requirements: `entity_detection`/
+  `entity_redaction` (PII), `use_speaker_library`, `keyterms`, `webhook`, multichannel
+  (`use_multi_channel`), `additional_formats`. None of these relate to diarization/timestamps/
   code-switching — YAGNI.
 
-## Contrato da API ElevenLabs Scribe (referência: `elevenlabs.io/docs`, verificado em 19/07/2026)
+## ElevenLabs Scribe API contract (reference: `elevenlabs.io/docs`, checked on 2026-07-19)
 
-Diferença arquitetural central em relação aos outros 3: a resposta **não vem agrupada em
-utterances**. A API devolve um array plano `words[]`, onde cada entrada tem um `type`
-(`word` | `spacing` | `audio_event`) e, com diarização ligada, um `speaker_id` — o agrupamento em
-turnos de fala fica por conta do cliente (mapeamento descrito abaixo). Nos outros 3 provedores,
-o próprio serviço já entrega `utterances[]` prontas.
+Central architectural difference from the other 3: the response **does not come grouped into
+utterances**. The API returns a flat `words[]` array, where each entry has a `type`
+(`word` | `spacing` | `audio_event`) and, with diarization on, a `speaker_id` — grouping into
+speech turns is left to the client (mapping described below). In the other 3 providers, the
+service itself already delivers ready-made `utterances[]`.
 
-| Aspecto | Gladia / AssemblyAI / Deepgram | ElevenLabs Scribe |
+| Aspect | Gladia / AssemblyAI / Deepgram | ElevenLabs Scribe |
 |---|---|---|
-| Padrão de chamada | ver specs anteriores | uma única chamada síncrona (igual ao Deepgram) |
+| Call pattern | see previous specs | a single synchronous call (same as Deepgram) |
 | Endpoint | — | `POST /v1/speech-to-text` |
-| Header de auth | `x-gladia-key` / `Authorization` / `Authorization: Token` | `xi-api-key` |
-| Corpo do áudio | multipart (Gladia) / binário puro (AssemblyAI, Deepgram) | multipart (`file`) |
-| Agrupamento por locutor | nativo (`utterances[]`) | **não nativo** — array plano `words[]` com `speaker_id` por entrada |
-| Timestamps | float64, segundos | float64, segundos |
-| Locutor | inteiro/string, conforme provedor | string (`"speaker_0"`, `"speaker_1"`, ...) |
-| Modelo multilíngue/code-switching | `solaria-1` / `universal-3-5-pro` / `nova-3` + `language=multi` | `scribe_v2` — multilíngue nativo (90+ idiomas); API não documenta um parâmetro explícito de "modo multi/code-switching" como o Deepgram, então nenhum `language_code` é enviado (deixa a detecção automática cobrir troca de idioma no meio da fala) |
+| Auth header | `x-gladia-key` / `Authorization` / `Authorization: Token` | `xi-api-key` |
+| Audio body | multipart (Gladia) / raw binary (AssemblyAI, Deepgram) | multipart (`file`) |
+| Grouping by speaker | native (`utterances[]`) | **not native** — flat `words[]` array with a `speaker_id` per entry |
+| Timestamps | float64, seconds | float64, seconds |
+| Speaker | integer/string, depending on provider | string (`"speaker_0"`, `"speaker_1"`, ...) |
+| Multilingual/code-switching model | `solaria-1` / `universal-3-5-pro` / `nova-3` + `language=multi` | `scribe_v2` — natively multilingual (90+ languages); the API doesn't document an explicit "multi/code-switching mode" parameter like Deepgram, so no `language_code` is sent (letting automatic detection cover the language switch mid-speech) |
 
-Requisição:
+Request:
 ```
 POST https://api.elevenlabs.io/v1/speech-to-text
 Content-Type: multipart/form-data
-Header: xi-api-key: <chave>
+Header: xi-api-key: <key>
 
-Campos do form:
-  file                    = bytes do WAV
+Form fields:
+  file                    = WAV bytes
   model_id                = "scribe_v2"
   diarize                 = "true"
-  num_speakers            = "2"     (Cambly é sempre 1:1 aluno-tutor)
-  timestamps_granularity  = "word"  (já é o default, mas explicitado por clareza —
-                                      mesma convenção usada nos outros provedores)
+  num_speakers            = "2"     (Cambly is always 1:1 student-tutor)
+  timestamps_granularity  = "word"  (already the default, but made explicit for clarity —
+                                      same convention used for the other providers)
 ```
 
-Resposta (200, um único canal — não usamos `use_multi_channel`):
+Response (200, a single channel — we don't use `use_multi_channel`):
 ```json
 {
   "language_code": "en",
@@ -74,54 +74,56 @@ Resposta (200, um único canal — não usamos `use_multi_channel`):
   "transcription_id": "..."
 }
 ```
-Sem campo de status: como no Deepgram, a resposta síncrona só existe quando a transcrição já
-terminou com sucesso — erro chega como HTTP não-2xx, tratado por `do()` antes do parse.
+No status field: as with Deepgram, the synchronous response only exists once the transcription
+has already finished successfully — an error arrives as a non-2xx HTTP status, handled by `do()`
+before parsing.
 
-## Componentes
+## Components
 
 ### `internal/stt/elevenlabs_mapping.go`
 
-Função pura, mesmo padrão dos três provedores anteriores: `mapElevenLabsResponse(raw []byte) (*Result, error)`.
+A pure function, same pattern as the three previous providers: `mapElevenLabsResponse(raw []byte) (*Result, error)`.
 
-Diferença central: precisa **agrupar** o array plano `words[]` em `[]Utterance` (os outros três só
-convertem um `utterances[]` que a API já entrega pronto). Algoritmo (decisão registrada em
-conversa com o usuário — ver "Alternativas consideradas"):
+Central difference: it needs to **group** the flat `words[]` array into `[]Utterance` (the other
+three only convert an `utterances[]` the API already delivers ready-made). Algorithm (decision
+recorded in conversation with the user — see "Alternatives considered"):
 
-- Percorre `words[]` em ordem; abre uma nova `Utterance` sempre que o `speaker_id` muda em relação
-  à entrada anterior.
-- `Utterance.Speaker` = `speaker_id` da entrada (já vem no formato `"speaker_N"`, sem precisar de
-  `fmt.Sprintf` como nos outros três).
-- `Utterance.Text` = concatenação bruta de `text` de **todas** as entradas do grupo, na ordem
-  (`word` + `spacing` + `audio_event`) — preserva o espaçamento exato entregue pela API e mantém
-  marcadores de eventos não-verbais (ex.: `"(laughter)"`) como contexto de leitura da transcrição
-  bruta (decisão do usuário: incluir, não filtrar).
-- `Utterance.Words` = só as entradas com `type == "word"` viram `stt.Word` (mesmo critério dos
-  outros três: a lista de palavras clicáveis do domínio é só fala real, não pausas/eventos).
-- `Utterance.Start`/`End` = `start` da primeira entrada do grupo / `end` da última.
-- Timestamps em float64 segundos, igual à Gladia/Deepgram — reaproveita `secondsToDuration` já
-  definida em `internal/stt/gladia_mapping.go` (mesmo pacote `stt`).
-- Erro de mapeamento aqui é só JSON malformado (não há campo de status a validar).
+- Walks `words[]` in order; opens a new `Utterance` whenever `speaker_id` changes relative to the
+  previous entry.
+- `Utterance.Speaker` = the entry's `speaker_id` (already comes in `"speaker_N"` format, no need
+  for `fmt.Sprintf` like the other three).
+- `Utterance.Text` = raw concatenation of `text` from **all** entries in the group, in order
+  (`word` + `spacing` + `audio_event`) — preserves the exact spacing delivered by the API and
+  keeps non-verbal event markers (e.g. `"(laughter)"`) as reading context for the raw transcript
+  (user decision: include, don't filter).
+- `Utterance.Words` = only entries with `type == "word"` become `stt.Word` (same criterion as
+  the other three: the domain's clickable word list is only actual speech, not pauses/events).
+- `Utterance.Start`/`End` = `start` of the group's first entry / `end` of its last.
+- Timestamps in float64 seconds, same as Gladia/Deepgram — reuses `secondsToDuration` already
+  defined in `internal/stt/gladia_mapping.go` (same `stt` package).
+- Mapping errors here are only malformed JSON (there's no status field to validate).
 
 ### `internal/stt/elevenlabs.go`
 
-Uma única função HTTP (via `do()` próprio, mesmo helper de status 2xx dos outros três), sem upload
-nem poll separados — mas com corpo multipart (diferente do Deepgram, que manda o WAV cru):
+A single HTTP function (via its own `do()`, the same 2xx-status helper as the other three), with
+no separate upload and poll — but with a multipart body (unlike Deepgram, which sends the raw
+WAV):
 
-1. Abre o arquivo de áudio, monta o multipart com o campo `file` e os campos de configuração
-   listados acima.
-2. `POST` com o multipart no corpo, headers `xi-api-key: <chave>` e
-   `Content-Type: <boundary do multipart>`.
-3. Preserva `RawResponse` mesmo em falha de mapeamento, mesmo padrão dos outros três.
+1. Opens the audio file, builds the multipart with the `file` field and the config fields listed
+   above.
+2. `POST`s with the multipart body, headers `xi-api-key: <key>` and
+   `Content-Type: <multipart boundary>`.
+3. Preserves `RawResponse` even on a mapping failure, same pattern as the other three.
 
-Timeout do `http.Client`: 10 minutos, por consistência com os outros três (mesmo sem precisar do
-timeout curto por chamada de poll que Gladia/AssemblyAI têm — não há poll aqui).
+`http.Client` timeout: 10 minutes, for consistency with the other three (even without needing the
+short per-poll-call timeout that Gladia/AssemblyAI have — there's no polling here).
 
-Chave lida de `ELEVENLABS_API_KEY` (variável de ambiente, já prevista em `CLAUDE.md`), falha rápido
-se vazia.
+Key read from `ELEVENLABS_API_KEY` (environment variable, already documented in `CLAUDE.md`),
+fails fast if empty.
 
 ### `cmd/spike/main.go`
 
-`providerFactories` só ganha uma entrada:
+`providerFactories` only gains one entry:
 
 ```go
 "elevenlabs": func() (stt.Provider, error) {
@@ -129,18 +131,18 @@ se vazia.
 },
 ```
 
-Nenhuma outra mudança no arquivo: seleção via `-providers`, saída por provedor
-(`local/output/aula-01/elevenlabs/{raw.json,transcript.txt}`), erro por provedor não aborta o run —
-tudo já existe e funciona sem alteração.
+No other change to the file: selection via `-providers`, per-provider output
+(`local/output/aula-01/elevenlabs/{raw.json,transcript.txt}`), a per-provider error doesn't abort
+the run — all of this already exists and works without changes.
 
 ### `.env.example`
 
-Adicionar `ELEVENLABS_API_KEY=` (mesma convenção usada para os outros três).
+Add `ELEVENLABS_API_KEY=` (same convention used for the other three).
 
-## Fluxo de dados
+## Data flow
 
 ```
-aula.mp4 --ffmpeg--> audio.wav
+lesson.mp4 --ffmpeg--> audio.wav
                         |
        +----------------+----------------+----------------+
        v                v                v                v
@@ -153,46 +155,47 @@ GladiaProvider   AssemblyAIProvider  DeepgramProvider  ElevenLabsProvider
   transcript.txt    transcript.txt        transcript.txt     transcript.txt
 ```
 
-## Tratamento de erro
+## Error handling
 
-Mesma tabela das fatias anteriores (`ffmpeg` ausente, chave vazia, status HTTP não-2xx com corpo,
-JSON que não parseia — raw preservado). Como no Deepgram, não há poll nem "status de erro no corpo
-de uma resposta de status" — um erro de transcrição aparece só como HTTP não-2xx na própria
-chamada síncrona, já coberto pelo `do()` genérico.
+Same table as the previous slices (missing `ffmpeg`, empty key, non-2xx HTTP status with body,
+JSON that fails to parse — raw preserved). As with Deepgram, there's no polling nor "error status
+inside a status response body" — a transcription error only ever shows up as a non-2xx HTTP
+status on the synchronous call itself, already covered by the generic `do()`.
 
-## Testes
+## Tests
 
-- `internal/stt/elevenlabs_mapping_test.go`: TDD (teste antes do código).
-  - `TestMapElevenLabsResponse`: fixture sintética `testdata/elevenlabs_response.json` (mesma
-    conversa inventada dos outros três fixtures — "Hi, how was your week?" / "...saudade..." — para
-    leitura lado a lado), testando: 2 utterances agrupadas corretamente por `speaker_id`,
-    `Speaker`/`Text`/`Start` de cada uma, contagem e conteúdo de `Words` (`Words[8] == "saudade"`,
-    mesmo índice usado nos outros três fixtures), e preservação de `RawResponse`.
-  - `TestMapElevenLabsResponse_InvalidJSON`: JSON malformado retorna erro.
-  - Um teste dedicado (JSON inline, não a fixture) cobrindo a decisão sobre `audio_event`/
-    `spacing`: confirma que essas entradas aparecem concatenadas em `Utterance.Text` mas **não**
-    entram em `Utterance.Words`.
-- `internal/stt/elevenlabs.go`: sem testes unitários, mesma justificativa dos outros três (chamada
-  de rede real, verificada manualmente via CLI).
-- `cmd/spike/main.go`: continua sem testes (descartável); a mudança aqui é a adição de uma entrada
-  no mapa `providerFactories`, verificação manual via
+- `internal/stt/elevenlabs_mapping_test.go`: TDD (test before code).
+  - `TestMapElevenLabsResponse`: synthetic fixture `testdata/elevenlabs_response.json` (the same
+    invented conversation as the other three fixtures — "Hi, how was your week?" / "...saudade..."
+    — for side-by-side reading), testing: 2 utterances correctly grouped by `speaker_id`, each
+    one's `Speaker`/`Text`/`Start`, `Words` count and content (`Words[8] == "saudade"`, the same
+    index used in the other three fixtures), and preservation of `RawResponse`.
+  - `TestMapElevenLabsResponse_InvalidJSON`: malformed JSON returns an error.
+  - A dedicated test (inline JSON, not the fixture) covering the `audio_event`/`spacing`
+    decision: confirms these entries appear concatenated in `Utterance.Text` but **do not** end
+    up in `Utterance.Words`.
+- `internal/stt/elevenlabs.go`: no unit tests, same justification as the other three (real
+  network call, verified manually via CLI).
+- `cmd/spike/main.go`: still no tests (disposable); the change here is adding one entry to the
+  `providerFactories` map, manual verification via
   `go.exe run ./cmd/spike -providers=elevenlabs`.
 
-## Alternativas consideradas (agrupamento de utterances)
+## Alternatives considered (utterance grouping)
 
-- **Agrupar só por troca de `speaker_id` (escolhida):** tradução direta do dado bruto para o
-  domínio, sem heurística nova. Um locutor que fala por muito tempo seguido vira uma única
-  `Utterance` longa — é só um detalhe de exibição no `transcript.txt`, não afeta os timestamps por
-  palavra (usados no futuro clique-na-fala) nem a comparação da História 2.
-- **Agrupar por `speaker_id` + gap de silêncio (rejeitada):** aproximaria do comportamento de
-  segmentação que os outros três já fazem no servidor deles, mas exige inventar e calibrar um
-  limiar de pausa — exatamente o tipo de complexidade que a regra de escopo do spike manda recusar
-  ativamente (`CLAUDE.md`: "sem flags elaboradas... recusar over-engineering").
-- **Uma única Utterance por arquivo, ignorando `speaker_id` (descartada):** quebra o requisito
-  central de diarização aluno×tutor.
+- **Group only by `speaker_id` change (chosen):** a direct translation of the raw data into the
+  domain, with no new heuristic. A speaker talking for a long uninterrupted stretch becomes a
+  single long `Utterance` — this is only a display detail in `transcript.txt`, it doesn't affect
+  per-word timestamps (used in the future click-to-seek) nor Story 2's comparison.
+- **Group by `speaker_id` + silence gap (rejected):** would come closer to the segmentation
+  behavior the other three already do on their own servers, but requires inventing and
+  calibrating a pause threshold — exactly the kind of complexity the spike's scope rule says to
+  actively refuse (`CLAUDE.md`: "no elaborate flags... refuse over-engineering").
+- **A single Utterance per file, ignoring `speaker_id` (discarded):** breaks the core
+  student×tutor diarization requirement.
 
-## Privacidade
+## Privacy
 
-Mesmas regras já em vigor (`local/` fora do git, fixture sintética em `testdata/`,
-`ELEVENLABS_API_KEY` só em variável de ambiente / `.env` gitignored — adicionar ao `.env.example`
-nesta fatia).
+Same rules already in effect (`local/` outside git, synthetic fixture in `testdata/`,
+`ELEVENLABS_API_KEY` only via environment variable / gitignored `.env` — add it to
+`.env.example` in this slice).
+</content>

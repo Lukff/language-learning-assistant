@@ -1,4 +1,4 @@
-# História 3 — Importar aula: varredura da pasta existente: Implementation Plan
+# Story 3 — Import Lesson: Scanning the Existing Folder: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -15,12 +15,12 @@ on `video_hash`, and the `pending_imports` staging table). `services/import.go` 
 Wails-facing bridge: it adapts `internal/db`'s hash-oriented repository functions to
 `internal/importer.Repo`, and exposes `ScanFolder`/`ListPendingImports`/`ConfirmImport` to the
 frontend. The frontend gets a new `ImportConfirmModal.svelte` (reused by the future drag-and-drop
-story, História 3b), a "N aulas aguardando revisão" section + "Sincronizar pasta" button in
+story, Story 3b), a "N aulas aguardando revisão" section + "Sincronizar pasta" button in
 `Library.svelte`, and a third wizard step in `SetupWizard.svelte` that runs the first scan
 automatically right after `CompleteSetup` succeeds.
 
 **Tech Stack:** No new external dependencies — `internal/importer` uses only `crypto/sha256`,
-`io/fs`, `path/filepath`, `regexp`, stdlib. Same `modernc.org/sqlite`/`goose` from História 2.
+`io/fs`, `path/filepath`, `regexp`, stdlib. Same `modernc.org/sqlite`/`goose` from Story 2.
 Svelte 5 runes, Wails v3 `v3.0.0-alpha2.117` (already pinned).
 
 Every piece of code in this plan — the Go packages, the migration, the generated bindings, and
@@ -42,18 +42,18 @@ binary. The code in each step is the exact code that was verified, not a sketch.
 - No "descartar"/"ignorar" action on a pending candidate — decided during brainstorming: the
   storage folder is expected to contain only real lessons, so every video found is a genuine
   candidate. Don't add a dismiss/ignore path.
-- Drag-and-drop manual import is **out of scope** (História 3b, future). Don't add a drop zone or
-  a "cópia pra `aulas/AAAA/AAAA-MM-DD/`" step in this story.
+- Drag-and-drop manual import is **out of scope** (Story 3b, future). Don't add a drop zone or
+  a "copy into `aulas/AAAA/AAAA-MM-DD/`" step in this story.
 - `updated_at` on `lessons` and `created_at` on `pending_imports` are always "now"
   (`time.Now().UTC().Format(time.RFC3339)`), computed inside `internal/db` — never the file's own
   `mtime`, which is a separate, independently-tracked column (`file_mtime`) used only for the
   stat-cache comparison.
 - SQL in `internal/db/migrations/*.sql` stays portable across SQLite drivers (no
-  `modernc.org`-specific syntax) — same rule as História 2's migration.
+  `modernc.org`-specific syntax) — same rule as Story 2's migration.
 - Svelte 5 runes only (`$state`, `$props`) — no legacy syntax.
 - **Toolchain prerequisites confirmed during planning (fresh Linux environment):**
   - `CGO_ENABLED=1` + `libgtk-4-dev libwebkitgtk-6.0-dev pkg-config build-essential` (gtk4 /
-    webkitgtk-6.0, **not** gtk3) — same as História 2's plan, needed by any package importing
+    webkitgtk-6.0, **not** gtk3) — same as Story 2's plan, needed by any package importing
     Wails (`services/`, `main.go`).
   - The `wails3` CLI itself is **not** a project dependency (it's not in `go.mod`) — on a machine
     that doesn't already have it, install the exact pinned version before generating bindings or
@@ -69,7 +69,7 @@ binary. The code in each step is the exact code that was verified, not a sketch.
   from this plan; scope your `go build`/`go vet` checks to `./internal/... ./services/... .` to
   avoid the noise, as the steps below do.)
 - Implementers **stage** (`git add`) their changes at the end of each task but do **not**
-  commit — the user controls commit timing (same convention as Histórias 1–2).
+  commit — the user controls commit timing (same convention as Stories 1–2).
 
 ---
 
@@ -115,12 +115,12 @@ import (
 	"testing"
 )
 
-// fakeRepo é um Repo em memória — os testes deste pacote nunca tocam banco
-// de verdade, só a lógica de decisão de Scan.
+// fakeRepo is an in-memory Repo — this package's tests never touch a real
+// database, only Scan's decision logic.
 type fakeRepo struct {
-	lessonPathByHash map[string]string // hash -> path já registrado como lesson
-	lessonStat       map[string]string // path -> "size:mtime" da lesson registrada nesse path
-	pending          map[string]bool   // hash -> já está em pending_imports
+	lessonPathByHash map[string]string // hash -> path already registered as a lesson
+	lessonStat       map[string]string // path -> "size:mtime" of the lesson registered at that path
+	pending          map[string]bool   // hash -> already in pending_imports
 
 	statMatchCalls int
 	updatedPaths   map[string]string // hash -> novo path (chamadas de UpdateLessonPath)
@@ -211,147 +211,147 @@ func TestScan_NewVideoBecomesCandidate(t *testing.T) {
 
 	sum, err := Scan(root, repo)
 	if err != nil {
-		t.Fatalf("Scan() erro inesperado: %v", err)
+		t.Fatalf("Scan() unexpected error: %v", err)
 	}
 	if sum.New != 1 || sum.Skipped != 0 || sum.Updated != 0 || sum.Errors != 0 {
-		t.Errorf("Summary = %+v, esperado {New:1}", sum)
+		t.Errorf("Summary = %+v, expected {New:1}", sum)
 	}
 	if len(repo.inserted) != 1 {
-		t.Fatalf("candidatos inseridos = %d, esperado 1", len(repo.inserted))
+		t.Fatalf("inserted candidates = %d, expected 1", len(repo.inserted))
 	}
 	got := repo.inserted[0]
 	if got.Path != "aula-2026-07-15.mp4" {
-		t.Errorf("Path = %q, esperado aula-2026-07-15.mp4", got.Path)
+		t.Errorf("Path = %q, expected aula-2026-07-15.mp4", got.Path)
 	}
 	if got.SuggestedDate != "2026-07-15" {
-		t.Errorf("SuggestedDate = %q, esperado 2026-07-15 (extraído do nome)", got.SuggestedDate)
+		t.Errorf("SuggestedDate = %q, expected 2026-07-15 (extracted from the name)", got.SuggestedDate)
 	}
 	if got.SHA256 == "" {
-		t.Error("SHA256 vazio, esperado hash calculado")
+		t.Error("SHA256 empty, expected a computed hash")
 	}
 }
 
 func TestScan_IgnoresNonVideoFiles(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "notas.txt"), "não é vídeo")
-	writeFile(t, filepath.Join(root, "aula.mov"), "extensão não suportada nesta fatia")
+	writeFile(t, filepath.Join(root, "notas.txt"), "not a video")
+	writeFile(t, filepath.Join(root, "aula.mov"), "extension not supported in this slice")
 	repo := newFakeRepo()
 
 	sum, err := Scan(root, repo)
 	if err != nil {
-		t.Fatalf("Scan() erro inesperado: %v", err)
+		t.Fatalf("Scan() unexpected error: %v", err)
 	}
 	if sum.New != 0 {
-		t.Errorf("Summary.New = %d, esperado 0 (nenhum .mp4 na pasta)", sum.New)
+		t.Errorf("Summary.New = %d, expected 0 (no .mp4 in the folder)", sum.New)
 	}
 }
 
 func TestScan_KnownHashIsSkipped(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "aula.mp4"), "conteudo-conhecido")
+	writeFile(t, filepath.Join(root, "aula.mp4"), "known-content")
 	repo := newFakeRepo()
 
-	// primeira varredura: descobre e cria o candidato
+	// first scan: discovers and creates the candidate
 	if _, err := Scan(root, repo); err != nil {
-		t.Fatalf("primeira Scan() erro inesperado: %v", err)
+		t.Fatalf("first Scan() unexpected error: %v", err)
 	}
 	if len(repo.inserted) != 1 {
-		t.Fatalf("setup: esperava 1 candidato após a primeira varredura, veio %d", len(repo.inserted))
+		t.Fatalf("setup: expected 1 candidate after the first scan, got %d", len(repo.inserted))
 	}
 	hash := repo.inserted[0].SHA256
 
-	// simula confirmação: candidato virou lesson, sai de pending
+	// simulates confirmation: the candidate became a lesson, leaves pending
 	repo.lessonPathByHash[hash] = "aula.mp4"
 	delete(repo.pending, hash)
 
 	sum, err := Scan(root, repo)
 	if err != nil {
-		t.Fatalf("segunda Scan() erro inesperado: %v", err)
+		t.Fatalf("second Scan() unexpected error: %v", err)
 	}
 	if sum.Skipped != 1 || sum.New != 0 {
-		t.Errorf("Summary = %+v, esperado {Skipped:1} (mesmo hash, mesmo path)", sum)
+		t.Errorf("Summary = %+v, expected {Skipped:1} (same hash, same path)", sum)
 	}
 }
 
 func TestScan_StatCacheSkipsHashingUnchangedFile(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "aula.mp4")
-	writeFile(t, path, "conteudo-estavel")
+	writeFile(t, path, "stable-content")
 	info, err := os.Stat(path)
 	if err != nil {
-		t.Fatalf("Stat() erro inesperado: %v", err)
+		t.Fatalf("Stat() unexpected error: %v", err)
 	}
 
 	repo := newFakeRepo()
-	repo.lessonPathByHash["hash-ja-conhecido"] = "aula.mp4"
+	repo.lessonPathByHash["already-known-hash"] = "aula.mp4"
 	repo.lessonStat["aula.mp4"] = statKey(info.Size(), info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00"))
 
 	sum, err := Scan(root, repo)
 	if err != nil {
-		t.Fatalf("Scan() erro inesperado: %v", err)
+		t.Fatalf("Scan() unexpected error: %v", err)
 	}
 	if sum.Skipped != 1 || sum.New != 0 || sum.Updated != 0 {
-		t.Errorf("Summary = %+v, esperado {Skipped:1} via stat-cache", sum)
+		t.Errorf("Summary = %+v, expected {Skipped:1} via stat-cache", sum)
 	}
 	if repo.statMatchCalls != 1 {
-		t.Errorf("StatMatch chamado %d vezes, esperado 1", repo.statMatchCalls)
+		t.Errorf("StatMatch called %d times, expected 1", repo.statMatchCalls)
 	}
 	if len(repo.inserted) != 0 {
-		t.Error("nenhum candidato deveria ter sido inserido — stat-cache deveria ter evitado o hash")
+		t.Error("no candidate should have been inserted — the stat-cache should have avoided hashing")
 	}
 }
 
 func TestScan_SameHashDifferentPathUpdatesLessonInsteadOfDuplicating(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "nova-pasta", "aula.mp4"), "conteudo-movido")
+	writeFile(t, filepath.Join(root, "nova-pasta", "aula.mp4"), "moved-content")
 	repo := newFakeRepo()
 
-	// primeira varredura noutro path pra descobrir o hash real do conteúdo
+	// first scan at a different path, to discover the content's real hash
 	if _, err := Scan(root, repo); err != nil {
-		t.Fatalf("primeira Scan() erro inesperado: %v", err)
+		t.Fatalf("first Scan() unexpected error: %v", err)
 	}
 	hash := repo.inserted[0].SHA256
 
-	// simula: essa lesson já existia registrada num path antigo
+	// simulates: this lesson already existed, registered at an old path
 	repo.pending = map[string]bool{}
 	repo.inserted = nil
 	repo.lessonPathByHash[hash] = "pasta-antiga/aula.mp4"
 
 	sum, err := Scan(root, repo)
 	if err != nil {
-		t.Fatalf("segunda Scan() erro inesperado: %v", err)
+		t.Fatalf("second Scan() unexpected error: %v", err)
 	}
 	if sum.Updated != 1 || sum.New != 0 {
-		t.Errorf("Summary = %+v, esperado {Updated:1} (mesmo hash, path novo)", sum)
+		t.Errorf("Summary = %+v, expected {Updated:1} (same hash, new path)", sum)
 	}
 	if got := repo.updatedPaths[hash]; got != "nova-pasta/aula.mp4" {
-		t.Errorf("UpdateLessonPath chamado com path = %q, esperado nova-pasta/aula.mp4", got)
+		t.Errorf("UpdateLessonPath called with path = %q, expected nova-pasta/aula.mp4", got)
 	}
 	if len(repo.inserted) != 0 {
-		t.Error("não deveria ter criado candidato novo — é o mesmo arquivo, só moveu")
+		t.Error("should not have created a new candidate — it's the same file, just moved")
 	}
 }
 
 func TestScan_ErrorOnOneFileDoesNotAbortTheRest(t *testing.T) {
 	root := t.TempDir()
 	unreadable := filepath.Join(root, "sem-permissao.mp4")
-	writeFile(t, unreadable, "conteudo")
+	writeFile(t, unreadable, "content")
 	if err := os.Chmod(unreadable, 0o000); err != nil {
-		t.Fatalf("Chmod() falhou: %v", err)
+		t.Fatalf("Chmod() failed: %v", err)
 	}
 	t.Cleanup(func() { os.Chmod(unreadable, 0o644) })
-	writeFile(t, filepath.Join(root, "ok.mp4"), "conteudo-ok")
+	writeFile(t, filepath.Join(root, "ok.mp4"), "ok-content")
 	repo := newFakeRepo()
 
 	sum, err := Scan(root, repo)
 	if err != nil {
-		t.Fatalf("Scan() não deveria retornar erro fatal: %v", err)
+		t.Fatalf("Scan() should not have returned a fatal error: %v", err)
 	}
 	if sum.Errors != 1 {
-		t.Errorf("Summary.Errors = %d, esperado 1 (arquivo sem permissão)", sum.Errors)
+		t.Errorf("Summary.Errors = %d, expected 1 (file with no permission)", sum.Errors)
 	}
 	if sum.New != 1 {
-		t.Errorf("Summary.New = %d, esperado 1 (ok.mp4 ainda processado)", sum.New)
+		t.Errorf("Summary.New = %d, expected 1 (ok.mp4 still processed)", sum.New)
 	}
 }
 ```
@@ -372,11 +372,11 @@ far).
 - [ ] **Step 3: Write `internal/importer/importer.go`**
 
 ```go
-// Package importer varre a pasta de armazenamento em busca de vídeos de
-// aula que ainda não estão no banco (História 3, docs/fase-1-mvp.md). Não
-// assume nenhuma estrutura de subpastas: identificação e dedupe são sempre
-// por nome do arquivo + SHA-256, nunca por convenção de path. Não importa
-// nada do Wails (camada fina).
+// Package importer scans the storage folder looking for lesson videos that
+// aren't in the database yet (Story 3, docs/fase-1-mvp.md). It doesn't
+// assume any subfolder structure: identification and dedup are always by
+// filename + SHA-256, never by path convention. It doesn't import anything
+// from Wails (thin layer).
 package importer
 
 import (
@@ -392,59 +392,59 @@ import (
 	"time"
 )
 
-// videoExtensions lista as extensões reconhecidas como vídeo de aula.
-// Fatia deliberadamente curta nesta fatia da História 3 (só .mp4, o formato
-// mais comum do Cambly/navegador) — estender é só adicionar aqui.
+// videoExtensions lists the extensions recognized as a lesson video.
+// Deliberately short in this Story 3 slice (only .mp4, the most common
+// format from Cambly/browser) — extending it is just adding to this list.
 var videoExtensions = []string{".mp4"}
 
-// Candidate é um vídeo novo achado pela varredura, ainda sem lesson
-// registrada nem candidato pendente com o mesmo hash.
+// Candidate is a new video found by the scan, still with no lesson
+// registered nor a pending candidate with the same hash.
 type Candidate struct {
-	Path          string // relativo à raiz da varredura, sempre com "/" (filepath.ToSlash)
+	Path          string // relative to the scan root, always "/" (filepath.ToSlash)
 	Size          int64
 	MTime         string // RFC3339 (UTC)
 	SHA256        string
-	SuggestedDate string // AAAA-MM-DD, extraído do nome do arquivo ou do mtime
+	SuggestedDate string // YYYY-MM-DD, extracted from the filename or the mtime
 }
 
-// Summary resume o resultado de uma varredura.
+// Summary summarizes the result of a scan.
 type Summary struct {
-	New     int // candidatos novos gravados em pending_imports
-	Updated int // lessons existentes com o path atualizado (arquivo movido/renomeado)
-	Skipped int // arquivos já conhecidos (lesson ou pending existente), nada mudou
-	Errors  int // arquivos que falharam ao ler/statar/hashear — não interrompem a varredura
+	New     int // new candidates written to pending_imports
+	Updated int // existing lessons with an updated path (file moved/renamed)
+	Skipped int // already-known files (lesson or existing pending), nothing changed
+	Errors  int // files that failed to read/stat/hash — don't interrupt the scan
 }
 
-// Repo é o que Scan precisa do banco. Implementado por um adaptador sobre
-// internal/db em services/import.go; nos testes deste pacote, por um fake
-// em memória — Scan nunca importa internal/db nem database/sql diretamente.
+// Repo is what Scan needs from the database. Implemented by an adapter over
+// internal/db in services/import.go; in this package's own tests, by an
+// in-memory fake — Scan never imports internal/db nor database/sql directly.
 type Repo interface {
-	// StatMatch indica se já existe uma lesson registrada exatamente neste
-	// path, com este tamanho e mtime — se sim, o arquivo é conhecido e
-	// inalterado, e Scan pula sem calcular hash.
+	// StatMatch reports whether a lesson is already registered at exactly
+	// this path, with this size and mtime — if so, the file is known and
+	// unchanged, and Scan skips it without computing a hash.
 	StatMatch(path string, size int64, mtime string) (bool, error)
 
-	// LessonByHash retorna o path de uma lesson já registrada com este
-	// hash, se existir.
+	// LessonByHash returns the path of a lesson already registered with
+	// this hash, if one exists.
 	LessonByHash(hash string) (path string, found bool, err error)
 
-	// UpdateLessonPath atualiza o path/tamanho/mtime da lesson com este
-	// hash — usado quando o arquivo só mudou de lugar/nome.
+	// UpdateLessonPath updates the path/size/mtime of the lesson with this
+	// hash — used when the file has only moved/been renamed.
 	UpdateLessonPath(hash string, path string, size int64, mtime string) error
 
-	// PendingExists indica se já existe um candidato pendente com este
-	// hash (de uma varredura anterior ainda não confirmada).
+	// PendingExists reports whether a pending candidate with this hash
+	// already exists (from a previous scan not yet confirmed).
 	PendingExists(hash string) (bool, error)
 
-	// InsertPending grava um candidato novo.
+	// InsertPending writes a new candidate.
 	InsertPending(c Candidate) error
 }
 
-// Scan caminha root recursivamente, filtra por videoExtensions e decide,
-// para cada arquivo, se é conhecido (ignora), mudou de lugar (atualiza o
-// path da lesson) ou é candidato novo (grava em pending_imports via
-// repo.InsertPending). Erro ao processar um arquivo específico não aborta a
-// varredura — é contado em Summary.Errors e o restante continua.
+// Scan walks root recursively, filters by videoExtensions, and decides,
+// for each file, whether it's known (skip), moved (updates the lesson's
+// path), or a new candidate (writes to pending_imports via
+// repo.InsertPending). An error processing a specific file doesn't abort
+// the scan — it's counted in Summary.Errors and the rest continues.
 func Scan(root string, repo Repo) (Summary, error) {
 	var sum Summary
 
@@ -530,7 +530,7 @@ func Scan(root string, repo Repo) (Summary, error) {
 		return nil
 	})
 	if err != nil {
-		return sum, fmt.Errorf("varrer pasta de armazenamento: %w", err)
+		return sum, fmt.Errorf("scan storage folder: %w", err)
 	}
 	return sum, nil
 }
@@ -548,22 +548,22 @@ func hasVideoExtension(path string) bool {
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("abrir arquivo: %w", err)
+		return "", fmt.Errorf("open file: %w", err)
 	}
 	defer f.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return "", fmt.Errorf("ler arquivo: %w", err)
+		return "", fmt.Errorf("read file: %w", err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 var isoDateInName = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})`)
 
-// suggestDate tenta achar uma data AAAA-MM-DD no nome do arquivo; na falta
-// disso, usa a data do mtime. É só um palpite pré-preenchido no modal de
-// confirmação — o usuário sempre pode corrigir.
+// suggestDate tries to find a YYYY-MM-DD date in the filename; failing
+// that, it uses the mtime's date. It's just a pre-filled guess in the
+// confirmation modal — the user can always correct it.
 func suggestDate(filename string, mtime time.Time) string {
 	if m := isoDateInName.FindString(filename); m != "" {
 		return m
@@ -608,7 +608,7 @@ git status
 - Test: `internal/db/pending_imports_test.go`
 
 **Interfaces:**
-- Consumes: `db.Open` (existing, from História 2 — the migration is picked up automatically via
+- Consumes: `db.Open` (existing, from Story 2 — the migration is picked up automatically via
   the package's `//go:embed migrations/*.sql`, no change to `db.go` needed).
 - Produces, in package `assistente-idiomas/internal/db`:
   ```go
@@ -683,23 +683,23 @@ import (
 func TestFindLessonByPath_NotFoundReturnsNilNil(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	l, err := FindLessonByPath(conn, "aulas/nao-existe.mp4")
 	if err != nil {
-		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByPath() unexpected error: %v", err)
 	}
 	if l != nil {
-		t.Errorf("FindLessonByPath() = %+v, esperado nil", l)
+		t.Errorf("FindLessonByPath() = %+v, expected nil", l)
 	}
 }
 
 func TestFindLessonByPathAndByHash_FindExistingRow(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -713,25 +713,25 @@ func TestFindLessonByPathAndByHash_FindExistingRow(t *testing.T) {
 
 	byPath, err := FindLessonByPath(conn, "aula-01.mp4")
 	if err != nil {
-		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByPath() unexpected error: %v", err)
 	}
 	if byPath == nil || byPath.VideoHash != "hash-abc" || byPath.FileSize != 12345 {
-		t.Errorf("FindLessonByPath() = %+v, esperado hash hash-abc e file_size 12345", byPath)
+		t.Errorf("FindLessonByPath() = %+v, expected hash hash-abc e file_size 12345", byPath)
 	}
 
 	byHash, err := FindLessonByHash(conn, "hash-abc")
 	if err != nil {
-		t.Fatalf("FindLessonByHash() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByHash() unexpected error: %v", err)
 	}
 	if byHash == nil || byHash.VideoPath != "aula-01.mp4" {
-		t.Errorf("FindLessonByHash() = %+v, esperado video_path aula-01.mp4", byHash)
+		t.Errorf("FindLessonByHash() = %+v, expected video_path aula-01.mp4", byHash)
 	}
 }
 
 func TestUpdateLessonPath_ChangesPathSizeAndMTime(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -745,31 +745,31 @@ func TestUpdateLessonPath_ChangesPathSizeAndMTime(t *testing.T) {
 	lessonID, _ := res.LastInsertId()
 
 	if err := UpdateLessonPath(conn, lessonID, "new/aula-01.mp4", 200, "2026-07-20T10:00:00Z"); err != nil {
-		t.Fatalf("UpdateLessonPath() erro inesperado: %v", err)
+		t.Fatalf("UpdateLessonPath() unexpected error: %v", err)
 	}
 
 	updated, err := FindLessonByHash(conn, "hash-abc")
 	if err != nil {
-		t.Fatalf("FindLessonByHash() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByHash() unexpected error: %v", err)
 	}
 	if updated.VideoPath != "new/aula-01.mp4" || updated.FileSize != 200 || updated.FileMTime != "2026-07-20T10:00:00Z" {
-		t.Errorf("lesson após UpdateLessonPath = %+v, esperado path/size/mtime novos", updated)
+		t.Errorf("lesson after UpdateLessonPath = %+v, expected the new path/size/mtime", updated)
 	}
 }
 
 func TestLessons_VideoHashUniqueIndexRejectsDuplicate(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	insert := `INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
 	if _, err := conn.Exec(insert, "2026-07-15", "Sarah", "a.mp4", "hash-dup", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z"); err != nil {
-		t.Fatalf("primeiro insert falhou: %v", err)
+		t.Fatalf("first insert failed: %v", err)
 	}
 	if _, err := conn.Exec(insert, "2026-07-16", "Sarah", "b.mp4", "hash-dup", "2026-07-16T10:00:00Z", "2026-07-16T10:00:00Z"); err == nil {
-		t.Error("esperava erro de índice único em video_hash duplicado, veio nil")
+		t.Error("expected a unique-index error on duplicate video_hash, got nil")
 	}
 }
 ```
@@ -786,16 +786,16 @@ import (
 func TestPendingImports_InsertListFindByHashRoundTrip(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	found, err := FindPendingImportByHash(conn, "hash-new")
 	if err != nil {
-		t.Fatalf("FindPendingImportByHash() erro inesperado: %v", err)
+		t.Fatalf("FindPendingImportByHash() unexpected error: %v", err)
 	}
 	if found {
-		t.Error("FindPendingImportByHash() = true antes de inserir, esperado false")
+		t.Error("FindPendingImportByHash() = true before inserting, expected false")
 	}
 
 	err = InsertPendingImport(conn, PendingImport{
@@ -803,30 +803,30 @@ func TestPendingImports_InsertListFindByHashRoundTrip(t *testing.T) {
 		SHA256: "hash-new", SuggestedDate: "2026-07-20",
 	})
 	if err != nil {
-		t.Fatalf("InsertPendingImport() erro inesperado: %v", err)
+		t.Fatalf("InsertPendingImport() unexpected error: %v", err)
 	}
 
 	found, err = FindPendingImportByHash(conn, "hash-new")
 	if err != nil {
-		t.Fatalf("FindPendingImportByHash() erro inesperado: %v", err)
+		t.Fatalf("FindPendingImportByHash() unexpected error: %v", err)
 	}
 	if !found {
-		t.Error("FindPendingImportByHash() = false após inserir, esperado true")
+		t.Error("FindPendingImportByHash() = false after inserting, expected true")
 	}
 
 	list, err := ListPendingImports(conn)
 	if err != nil {
-		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+		t.Fatalf("ListPendingImports() unexpected error: %v", err)
 	}
 	if len(list) != 1 || list[0].Path != "aula-nova.mp4" || list[0].SuggestedDate != "2026-07-20" {
-		t.Errorf("ListPendingImports() = %+v, esperado 1 item aula-nova.mp4/2026-07-20", list)
+		t.Errorf("ListPendingImports() = %+v, expected 1 item aula-nova.mp4/2026-07-20", list)
 	}
 }
 
 func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -834,7 +834,7 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 		Path: "aula-nova.mp4", FileSize: 999, FileMTime: "2026-07-20T10:00:00Z",
 		SHA256: "hash-confirm", SuggestedDate: "2026-07-20",
 	}); err != nil {
-		t.Fatalf("InsertPendingImport() erro inesperado: %v", err)
+		t.Fatalf("InsertPendingImport() unexpected error: %v", err)
 	}
 	list, err := ListPendingImports(conn)
 	if err != nil || len(list) != 1 {
@@ -844,7 +844,7 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 
 	lessonID, err := ConfirmPendingImport(conn, pendingID, "2026-07-20", "Sarah M.")
 	if err != nil {
-		t.Fatalf("ConfirmPendingImport() erro inesperado: %v", err)
+		t.Fatalf("ConfirmPendingImport() unexpected error: %v", err)
 	}
 	if lessonID == 0 {
 		t.Fatal("ConfirmPendingImport() retornou lessonID = 0")
@@ -852,10 +852,10 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 
 	lesson, err := FindLessonByHash(conn, "hash-confirm")
 	if err != nil {
-		t.Fatalf("FindLessonByHash() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByHash() unexpected error: %v", err)
 	}
 	if lesson == nil || lesson.VideoPath != "aula-nova.mp4" {
-		t.Fatalf("lesson após confirmação = %+v, esperado video_path aula-nova.mp4", lesson)
+		t.Fatalf("lesson after confirmation = %+v, expected video_path aula-nova.mp4", lesson)
 	}
 
 	var tutor string
@@ -863,7 +863,7 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 		t.Fatalf("select tutor falhou: %v", err)
 	}
 	if tutor != "Sarah M." {
-		t.Errorf("tutor = %q, esperado \"Sarah M.\"", tutor)
+		t.Errorf("tutor = %q, expected \"Sarah M.\"", tutor)
 	}
 
 	rows, err := conn.Query(`SELECT kind, status FROM jobs WHERE lesson_id = ? ORDER BY kind`, lessonID)
@@ -881,40 +881,40 @@ func TestConfirmPendingImport_CreatesLessonAndJobsRemovesPending(t *testing.T) {
 	}
 	want := [][2]string{{"extract_audio", "pending"}, {"transcribe", "pending"}}
 	if len(jobs) != len(want) {
-		t.Fatalf("jobs criados = %+v, esperado %+v", jobs, want)
+		t.Fatalf("jobs criados = %+v, expected %+v", jobs, want)
 	}
 	for i := range want {
 		if jobs[i] != want[i] {
-			t.Errorf("jobs[%d] = %+v, esperado %+v", i, jobs[i], want[i])
+			t.Errorf("jobs[%d] = %+v, expected %+v", i, jobs[i], want[i])
 		}
 	}
 
 	list, err = ListPendingImports(conn)
 	if err != nil {
-		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+		t.Fatalf("ListPendingImports() unexpected error: %v", err)
 	}
 	if len(list) != 0 {
-		t.Errorf("ListPendingImports() após confirmar = %+v, esperado vazio", list)
+		t.Errorf("ListPendingImports() after confirming = %+v, expected empty", list)
 	}
 }
 
 func TestConfirmPendingImport_UnknownIDReturnsErrorAndTouchesNothing(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	if _, err := ConfirmPendingImport(conn, 999, "2026-07-20", "Sarah M."); err == nil {
-		t.Error("ConfirmPendingImport() com id inexistente esperava erro, veio nil")
+		t.Error("ConfirmPendingImport() with a nonexistent id expected an error, got nil")
 	}
 
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM lessons`).Scan(&count); err != nil {
-		t.Fatalf("count de lessons falhou: %v", err)
+		t.Fatalf("lessons count failed: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("lessons após ConfirmPendingImport falhar = %d linhas, esperado 0", count)
+		t.Errorf("lessons after ConfirmPendingImport fails = %d rows, expected 0", count)
 	}
 }
 ```
@@ -939,10 +939,10 @@ import (
 	"time"
 )
 
-// Lesson é uma linha de lessons relevante para o mapeamento de pasta
-// existente (História 3): identidade (path, hash) e o stat-cache
-// (tamanho/mtime) usados pela varredura para decidir se o conteúdo precisa
-// ser rehasheado.
+// Lesson is a lessons row relevant to mapping the existing folder
+// (Story 3): identity (path, hash) and the stat-cache
+// (size/mtime) used by the scan to decide whether the content needs
+// to be rehashed.
 type Lesson struct {
 	ID        int64
 	VideoPath string
@@ -951,9 +951,9 @@ type Lesson struct {
 	FileMTime string
 }
 
-// FindLessonByPath busca a lesson cujo video_path é exatamente path. Retorna
-// (nil, nil) se não houver nenhuma — path já registrado é o caso comum, não
-// um erro.
+// FindLessonByPath looks up the lesson whose video_path is exactly path.
+// Returns (nil, nil) if there isn't one — an already-registered path is the
+// common case, not an error.
 func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	var l Lesson
 	err := conn.QueryRow(
@@ -964,13 +964,13 @@ func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson por path: %w", err)
+		return nil, fmt.Errorf("find lesson by path: %w", err)
 	}
 	return &l, nil
 }
 
-// FindLessonByHash busca a lesson cujo video_hash é exatamente hash. Retorna
-// (nil, nil) se não houver nenhuma.
+// FindLessonByHash looks up the lesson whose video_hash is exactly hash.
+// Returns (nil, nil) if there isn't one.
 func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	var l Lesson
 	err := conn.QueryRow(
@@ -981,23 +981,23 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson por hash: %w", err)
+		return nil, fmt.Errorf("find lesson by hash: %w", err)
 	}
 	return &l, nil
 }
 
-// UpdateLessonPath atualiza video_path/file_size/file_mtime de uma lesson já
-// registrada — usado quando a varredura encontra o mesmo hash num path
-// diferente (o arquivo só foi movido/renomeado, não é uma aula nova).
-// file_mtime é o mtime do arquivo no disco; updated_at (a marca de quando a
-// linha do banco mudou) é sempre "agora", nunca o mtime do arquivo.
+// UpdateLessonPath updates video_path/file_size/file_mtime of an
+// already-registered lesson — used when the scan finds the same hash at a
+// different path (the file just moved/was renamed, it's not a new lesson).
+// file_mtime is the file's mtime on disk; updated_at (the mark of when the
+// database row changed) is always "now", never the file's mtime.
 func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fileMTime string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET video_path = ?, file_size = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
 		path, size, fileMTime, time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return fmt.Errorf("atualizar path da lesson: %w", err)
+		return fmt.Errorf("update lesson path: %w", err)
 	}
 	return nil
 }
@@ -1014,9 +1014,9 @@ import (
 	"time"
 )
 
-// PendingImport é um vídeo achado pela varredura da pasta de armazenamento
-// que ainda não foi confirmado (data/tutor) pelo usuário — ver História 3
-// em docs/fase-1-mvp.md.
+// PendingImport is a video found by the storage-folder scan that hasn't
+// been confirmed (date/tutor) by the user yet — see Story 3
+// in docs/fase-1-mvp.md.
 type PendingImport struct {
 	ID            int64
 	Path          string
@@ -1026,8 +1026,9 @@ type PendingImport struct {
 	SuggestedDate string
 }
 
-// FindPendingImportByHash indica se já existe um candidato pendente com
-// este hash — evita duplicar a mesma varredura em execuções sucessivas.
+// FindPendingImportByHash reports whether a pending candidate with this
+// hash already exists — avoids duplicating the same scan across successive
+// runs.
 func FindPendingImportByHash(conn *sql.DB, hash string) (bool, error) {
 	var id int64
 	err := conn.QueryRow(`SELECT id FROM pending_imports WHERE sha256 = ?`, hash).Scan(&id)
@@ -1035,31 +1036,31 @@ func FindPendingImportByHash(conn *sql.DB, hash string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("buscar pending_import por hash: %w", err)
+		return false, fmt.Errorf("find pending_import by hash: %w", err)
 	}
 	return true, nil
 }
 
-// InsertPendingImport grava um candidato novo achado pela varredura.
+// InsertPendingImport writes a new candidate found by the scan.
 func InsertPendingImport(conn *sql.DB, p PendingImport) error {
 	_, err := conn.Exec(
 		`INSERT INTO pending_imports (path, file_size, file_mtime, sha256, suggested_date, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		p.Path, p.FileSize, p.FileMTime, p.SHA256, p.SuggestedDate, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return fmt.Errorf("inserir pending_import: %w", err)
+		return fmt.Errorf("insert pending_import: %w", err)
 	}
 	return nil
 }
 
-// ListPendingImports lista os candidatos aguardando revisão, mais recentes
-// primeiro — é o que a Biblioteca lê pra montar a seção "aguardando revisão".
+// ListPendingImports lists the candidates awaiting review, most recent
+// first — this is what the Library reads to build the "awaiting review" section.
 func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 	rows, err := conn.Query(
 		`SELECT id, path, file_size, file_mtime, sha256, COALESCE(suggested_date, '') FROM pending_imports ORDER BY created_at DESC`,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("listar pending_imports: %w", err)
+		return nil, fmt.Errorf("list pending_imports: %w", err)
 	}
 	defer rows.Close()
 
@@ -1067,26 +1068,26 @@ func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 	for rows.Next() {
 		var p PendingImport
 		if err := rows.Scan(&p.ID, &p.Path, &p.FileSize, &p.FileMTime, &p.SHA256, &p.SuggestedDate); err != nil {
-			return nil, fmt.Errorf("ler pending_import: %w", err)
+			return nil, fmt.Errorf("read pending_import: %w", err)
 		}
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar pending_imports: %w", err)
+		return nil, fmt.Errorf("iterate pending_imports: %w", err)
 	}
 	return out, nil
 }
 
-// ConfirmPendingImport transforma o candidato id numa lesson real: insere em
-// lessons (com lessonDate/tutor informados pelo usuário), cria os jobs
-// extract_audio e transcribe como pending, e remove o candidato de
-// pending_imports — tudo numa única transação. Se qualquer passo falhar, o
-// candidato continua intacto em pending_imports para o usuário tentar de
-// novo.
+// ConfirmPendingImport turns candidate id into a real lesson: inserts into
+// lessons (with the lessonDate/tutor supplied by the user), creates the
+// extract_audio and transcribe jobs as pending, and removes the candidate
+// from pending_imports — all in a single transaction. If any step fails,
+// the candidate remains intact in pending_imports for the user to try
+// again.
 func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor string) (int64, error) {
 	tx, err := conn.Begin()
 	if err != nil {
-		return 0, fmt.Errorf("iniciar transação: %w", err)
+		return 0, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -1099,7 +1100,7 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor strin
 		return 0, fmt.Errorf("candidato %d não encontrado (já foi confirmado ou removido?)", id)
 	}
 	if err != nil {
-		return 0, fmt.Errorf("buscar pending_import: %w", err)
+		return 0, fmt.Errorf("find pending_import: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -1108,11 +1109,11 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor strin
 		lessonDate, tutor, p.Path, p.SHA256, p.FileSize, p.FileMTime, now, now,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("inserir lesson: %w", err)
+		return 0, fmt.Errorf("insert lesson: %w", err)
 	}
 	lessonID, err := res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("obter id da lesson: %w", err)
+		return 0, fmt.Errorf("get lesson id: %w", err)
 	}
 
 	for _, kind := range []string{"extract_audio", "transcribe"} {
@@ -1120,16 +1121,16 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor strin
 			`INSERT INTO jobs (lesson_id, kind, status, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)`,
 			lessonID, kind, now, now,
 		); err != nil {
-			return 0, fmt.Errorf("criar job %s: %w", kind, err)
+			return 0, fmt.Errorf("create job %s: %w", kind, err)
 		}
 	}
 
 	if _, err := tx.Exec(`DELETE FROM pending_imports WHERE id = ?`, id); err != nil {
-		return 0, fmt.Errorf("remover pending_import: %w", err)
+		return 0, fmt.Errorf("remove pending_import: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("confirmar transação: %w", err)
+		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
 	return lessonID, nil
 }
@@ -1141,7 +1142,7 @@ func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, tutor strin
 go test ./internal/db/... -v
 ```
 
-Expected: all tests in the package `PASS` — the 4 pre-existing História 2 tests plus the 8 new
+Expected: all tests in the package `PASS` — the 4 pre-existing Story 2 tests plus the 8 new
 ones from this task (4 in `lessons_test.go`, 4 in `pending_imports_test.go`). You'll see goose's
 migration log lines for both `00001_initial_schema.sql` and `00002_pending_imports.sql` on stdout.
 
@@ -1173,7 +1174,7 @@ git status
 - Consumes: `importer.Scan`, `importer.Candidate`, `importer.Repo` (Task 1); `db.FindLessonByPath`,
   `db.FindLessonByHash`, `db.UpdateLessonPath`, `db.PendingImport`, `db.FindPendingImportByHash`,
   `db.InsertPendingImport`, `db.ListPendingImports`, `db.ConfirmPendingImport` (Task 2);
-  `config.Load`, `config.AppConfig` (existing, from História 2).
+  `config.Load`, `config.AppConfig` (existing, from Story 2).
 - Produces, in package `assistente-idiomas/services`:
   ```go
   type ScanSummary struct{ New, Updated, Skipped, Errors int } // JSON-tagged: new/updated/skipped/errors
@@ -1210,16 +1211,16 @@ func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	storageRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(storageRoot, "aula-2026-07-15.mp4"), []byte("conteudo"), 0o644); err != nil {
-		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula-2026-07-15.mp4"), []byte("content"), 0o644); err != nil {
+		t.Fatalf("preparing fixture video failed: %v", err)
 	}
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
-		t.Fatalf("config.Save() falhou: %v", err)
+		t.Fatalf("config.Save() failed: %v", err)
 	}
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -1227,38 +1228,38 @@ func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
 
 	sum, err := svc.ScanFolder()
 	if err != nil {
-		t.Fatalf("ScanFolder() erro inesperado: %v", err)
+		t.Fatalf("ScanFolder() unexpected error: %v", err)
 	}
 	if sum.New != 1 {
-		t.Fatalf("ScanFolder() Summary = %+v, esperado New=1", sum)
+		t.Fatalf("ScanFolder() Summary = %+v, expected New=1", sum)
 	}
 
 	pending, err := svc.ListPendingImports()
 	if err != nil {
-		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+		t.Fatalf("ListPendingImports() unexpected error: %v", err)
 	}
 	if len(pending) != 1 || pending[0].Path != "aula-2026-07-15.mp4" || pending[0].SuggestedDate != "2026-07-15" {
-		t.Fatalf("ListPendingImports() = %+v, esperado 1 item aula-2026-07-15.mp4/2026-07-15", pending)
+		t.Fatalf("ListPendingImports() = %+v, expected 1 item aula-2026-07-15.mp4/2026-07-15", pending)
 	}
 
 	if err := svc.ConfirmImport(pending[0].ID, "2026-07-15", "Sarah M."); err != nil {
-		t.Fatalf("ConfirmImport() erro inesperado: %v", err)
+		t.Fatalf("ConfirmImport() unexpected error: %v", err)
 	}
 
 	pending, err = svc.ListPendingImports()
 	if err != nil {
-		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+		t.Fatalf("ListPendingImports() unexpected error: %v", err)
 	}
 	if len(pending) != 0 {
-		t.Errorf("ListPendingImports() após confirmar = %+v, esperado vazio", pending)
+		t.Errorf("ListPendingImports() after confirming = %+v, expected empty", pending)
 	}
 
 	var count int
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM lessons WHERE tutor = ?`, "Sarah M.").Scan(&count); err != nil {
-		t.Fatalf("count de lessons falhou: %v", err)
+		t.Fatalf("lessons count failed: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("lessons com tutor Sarah M. = %d, esperado 1", count)
+		t.Errorf("lessons with tutor Sarah M. = %d, expected 1", count)
 	}
 }
 
@@ -1266,38 +1267,38 @@ func TestImportService_ScanFolderTwiceDoesNotDuplicateCandidate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	storageRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("conteudo-estavel"), 0o644); err != nil {
-		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("stable-content"), 0o644); err != nil {
+		t.Fatalf("preparing fixture video failed: %v", err)
 	}
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
-		t.Fatalf("config.Save() falhou: %v", err)
+		t.Fatalf("config.Save() failed: %v", err)
 	}
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
 	svc := NewImportService(conn)
 
 	if _, err := svc.ScanFolder(); err != nil {
-		t.Fatalf("primeira ScanFolder() erro inesperado: %v", err)
+		t.Fatalf("first ScanFolder() unexpected error: %v", err)
 	}
 	sum, err := svc.ScanFolder()
 	if err != nil {
-		t.Fatalf("segunda ScanFolder() erro inesperado: %v", err)
+		t.Fatalf("second ScanFolder() unexpected error: %v", err)
 	}
 	if sum.New != 0 || sum.Skipped != 1 {
-		t.Errorf("segunda ScanFolder() Summary = %+v, esperado {Skipped:1}", sum)
+		t.Errorf("second ScanFolder() Summary = %+v, expected {Skipped:1}", sum)
 	}
 
 	pending, err := svc.ListPendingImports()
 	if err != nil {
-		t.Fatalf("ListPendingImports() erro inesperado: %v", err)
+		t.Fatalf("ListPendingImports() unexpected error: %v", err)
 	}
 	if len(pending) != 1 {
-		t.Errorf("ListPendingImports() = %+v, esperado ainda 1 candidato (não duplicado)", pending)
+		t.Errorf("ListPendingImports() = %+v, expected still 1 candidate (not duplicated)", pending)
 	}
 }
 
@@ -1305,16 +1306,16 @@ func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 	svc := NewImportService(conn)
 
 	if err := svc.ConfirmImport(1, "", "Sarah M."); err == nil {
-		t.Error("ConfirmImport() com data vazia esperava erro, veio nil")
+		t.Error("ConfirmImport() with an empty date expected an error, got nil")
 	}
 	if err := svc.ConfirmImport(1, "2026-07-15", ""); err == nil {
-		t.Error("ConfirmImport() com tutor vazio esperava erro, veio nil")
+		t.Error("ConfirmImport() with an empty tutor expected an error, got nil")
 	}
 }
 ```
@@ -1341,9 +1342,9 @@ import (
 	"assistente-idiomas/internal/importer"
 )
 
-// ImportService cobre a História 3: varrer a pasta de armazenamento em
-// busca de vídeos de aula ainda não registrados, listar os candidatos
-// pendentes de revisão e confirmar um deles (data/tutor) como lesson real.
+// ImportService covers Story 3: scanning the storage folder for
+// not-yet-registered lesson videos, listing the candidates pending review,
+// and confirming one of them (date/tutor) as a real lesson.
 type ImportService struct {
 	conn *sql.DB
 }
@@ -1352,8 +1353,8 @@ func NewImportService(conn *sql.DB) *ImportService {
 	return &ImportService{conn: conn}
 }
 
-// ScanSummary é o resultado de uma varredura, exposto ao frontend pra um
-// toast de resumo ("N novas, M atualizadas, E erros").
+// ScanSummary is the result of a scan, exposed to the frontend for a
+// summary toast ("N novas, M atualizadas, E erros").
 type ScanSummary struct {
 	New     int `json:"new"`
 	Updated int `json:"updated"`
@@ -1361,21 +1362,21 @@ type ScanSummary struct {
 	Errors  int `json:"errors"`
 }
 
-// PendingImport é um candidato aguardando revisão, no formato exposto ao
-// frontend — só o que o modal de confirmação precisa mostrar.
+// PendingImport is a candidate awaiting review, in the format exposed to
+// the frontend — only what the confirmation modal needs to show.
 type PendingImport struct {
 	ID            int64  `json:"id"`
 	Path          string `json:"path"`
 	SuggestedDate string `json:"suggestedDate"`
 }
 
-// ScanFolder varre storage_root (de config.Load) e atualiza pending_imports
-// e lessons. Chamado automaticamente ao final do wizard de first-run e sob
-// demanda pelo botão "Sincronizar pasta" da Biblioteca.
+// ScanFolder scans storage_root (from config.Load) and updates
+// pending_imports and lessons. Called automatically at the end of the
+// first-run wizard and on demand via the Library's "Sincronizar pasta" button.
 func (s *ImportService) ScanFolder() (ScanSummary, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return ScanSummary{}, fmt.Errorf("carregar configuração: %w", err)
+		return ScanSummary{}, fmt.Errorf("load configuration: %w", err)
 	}
 	sum, err := importer.Scan(cfg.StorageRoot, &dbRepo{conn: s.conn})
 	if err != nil {
@@ -1384,8 +1385,8 @@ func (s *ImportService) ScanFolder() (ScanSummary, error) {
 	return ScanSummary{New: sum.New, Updated: sum.Updated, Skipped: sum.Skipped, Errors: sum.Errors}, nil
 }
 
-// ListPendingImports lista os candidatos aguardando revisão, pra seção
-// "aguardando revisão" da Biblioteca.
+// ListPendingImports lists the candidates awaiting review, for the
+// Library's "awaiting review" section.
 func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 	rows, err := db.ListPendingImports(s.conn)
 	if err != nil {
@@ -1398,8 +1399,8 @@ func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 	return out, nil
 }
 
-// ConfirmImport grava o candidato id como lesson real (lessonDate no
-// formato AAAA-MM-DD, tutor livre) e cria os jobs de processamento.
+// ConfirmImport writes candidate id as a real lesson (lessonDate in
+// YYYY-MM-DD format, tutor free text) and creates the processing jobs.
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error {
 	if lessonDate == "" {
 		return fmt.Errorf("data da aula não pode ser vazia")
@@ -1411,9 +1412,9 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	return err
 }
 
-// dbRepo adapta internal/db (que expõe Lesson com path e hash juntos) à
-// interface orientada a hash que internal/importer.Scan espera — Scan não
-// conhece database/sql nem o pacote internal/db diretamente.
+// dbRepo adapts internal/db (which exposes Lesson with path and hash
+// together) to the hash-oriented interface internal/importer.Scan expects —
+// Scan doesn't know about database/sql nor the internal/db package directly.
 type dbRepo struct{ conn *sql.DB }
 
 func (r *dbRepo) StatMatch(path string, size int64, mtime string) (bool, error) {
@@ -1500,13 +1501,13 @@ git status
 
 **Interfaces:**
 - Consumes: `services.NewImportService` (Task 3), the existing `conn *sql.DB` already opened in
-  `main.go` from História 2.
+  `main.go` from Story 2.
 - Produces: the running app now exposes `ImportService` to the frontend. Nothing downstream in
   this story consumes `main.go` directly.
 
 - [ ] **Step 1: Modify `main.go`**
 
-Current content (from História 2):
+Current content (from Story 2):
 
 ```go
 	app := application.New(application.Options{
@@ -1588,7 +1589,7 @@ git status
   `services/import.go` from Task 3. **Note the `| null`** on `ListPendingImports()` — the
   generator emits it because the Go slice can be `nil`; the frontend must coalesce it to `[]`.
 - Produces: `ImportConfirmModal.svelte` (props `{ pending: PendingImport, onConfirmed: () => void,
-  onClose: () => void }`), reused as-is by the future drag-and-drop story (História 3b).
+  onClose: () => void }`), reused as-is by the future drag-and-drop story (Story 3b).
 
 - [ ] **Step 1: Generate the bindings**
 
@@ -1606,7 +1607,7 @@ Models, 0 Events` and creates/updates:
   `ListPendingImports()`, `ConfirmImport(id, lessonDate, tutor)`.
 - `frontend/bindings/assistente-idiomas/services/models.ts` — gains `PendingImport` (`id: number`,
   `path: string`, `suggestedDate: string`) and `ScanSummary` (`new`, `updated`, `skipped`, `errors`
-  — all `number`) interfaces, alongside whatever was already there from História 2.
+  — all `number`) interfaces, alongside whatever was already there from Story 2.
 
 - [ ] **Step 2: Write `frontend/src/lib/ImportConfirmModal.svelte`**
 
@@ -1627,10 +1628,10 @@ Models, 0 Events` and creates/updates:
     onClose: () => void;
   } = $props();
 
-  // Cópia editável do palpite de data — deliberadamente não reativa a
-  // mudanças de `pending` (cada candidato tem sua própria instância deste
-  // componente, ver Library.svelte). `untrack` documenta essa intenção pro
-  // linter do Svelte 5.
+  // Editable copy of the suggested date — deliberately not reactive to
+  // changes in `pending` (each candidate gets its own instance of this
+  // component, see Library.svelte). `untrack` documents this intent for
+  // the Svelte 5 linter.
   let lessonDate: string = $state(untrack(() => pending.suggestedDate));
   let tutor: string = $state("");
   let error: string = $state("");
@@ -1743,7 +1744,7 @@ Models, 0 Events` and creates/updates:
 
 - [ ] **Step 3: Replace `frontend/src/lib/screens/Library.svelte`**
 
-Current content (placeholder from História 1):
+Current content (placeholder from Story 1):
 
 ```svelte
 <script lang="ts">
@@ -1920,7 +1921,7 @@ Replace it with:
 - [ ] **Step 4: Modify `frontend/src/lib/SetupWizard.svelte`**
 
 Add the `ImportService` import and a third `"scanning"` step, right after the existing two-step
-`<script>` block (from História 2):
+`<script>` block (from Story 2):
 
 Change the imports and `Step` type:
 
@@ -1943,13 +1944,13 @@ Change `complete()` to run the first scan before calling `onComplete`:
     try {
       await SetupService.CompleteSetup(storageRoot, apiKey);
       step = "scanning";
-      // Falha na varredura não deve travar o wizard nem esconder o app do
-      // usuário — o setup já está salvo; a próxima "Sincronizar pasta" na
-      // Biblioteca tenta de novo.
+      // A scan failure must not lock up the wizard nor hide the app from
+      // the user — setup is already saved; the next "Sincronizar pasta" in
+      // the Library tries again.
       try {
         await ImportService.ScanFolder();
       } catch {
-        // ignorado de propósito — ver comentário acima
+        // deliberately ignored — see comment above
       }
       onComplete();
     } catch (e) {
@@ -1981,7 +1982,7 @@ Change the template's second branch to check for `"credentials"` explicitly and 
 ```
 
 (The rest of the file — `chooseFolder()`, the `{#if step === "folder"}` branch, the error
-paragraph, and the `<style>` block — is unchanged from História 2.)
+paragraph, and the `<style>` block — is unchanged from Story 2.)
 
 - [ ] **Step 5: Verify with `svelte-check`**
 
@@ -2062,7 +2063,7 @@ On a machine with **no** existing `config.json` (or with it removed for a clean 
 couple of `.mp4` files directly into a test folder with **no** subfolder structure (e.g. flat,
 some with a `YYYY-MM-DD` date in the filename, some without). Run the wizard, pick that folder as
 the storage root, enter the ElevenLabs API key, click "Concluir". You should briefly see
-"Procurando aulas na pasta…", then land on the normal shell with the Biblioteca showing "N aulas
+"Procurando aulas na pasta…", then land on the normal shell with the Library showing "N aulas
 aguardando revisão". Click "Revisar" on one: the modal should show its path, a date pre-filled
 (the one from the filename, or today's/file's mtime date if the filename had none), and an empty
 tutor field required before "Confirmar" enables. Confirm it — it should disappear from the
@@ -2077,13 +2078,13 @@ This step needs a real display, so it's manual — not scriptable in this enviro
 
 - [ ] **Step 5: Update `docs/fase-1-mvp.md`**
 
-Check all six boxes under `## História 3 — Importar aula: varredura da pasta existente` from
+Check all six boxes under `## Story 3 — Import lesson: scanning the existing folder` from
 `- [ ]` to `- [x]`.
 
-In the `## Registro de progresso` table, add a row (keep the existing rows above it):
+In the `## Progress log` table, add a row (keep the existing rows above it):
 
 ```
-| 22/07/2026 | História 3 implementada: varredura recursiva da pasta de armazenamento (identificação por nome+SHA-256, sem estrutura assumida), stat-cache antes do hash, candidatos pendentes revisados um a um na Biblioteca (modal de data/tutor), lesson+jobs criados na confirmação | Nenhuma extensão além de `.mp4` reconhecida nesta fatia (fácil de estender depois); `wails3` CLI precisa ser instalado manualmente (`go install .../cmd/wails3@v3.0.0-alpha2.117`) em máquina nova, não é dependência do go.mod |
+| 22/07/2026 | Story 3 implemented: recursive scan of the storage folder (identification by name+SHA-256, no assumed structure), stat-cache before hashing, pending candidates reviewed one by one in the Library (date/tutor modal), lesson+jobs created on confirmation | No extension besides `.mp4` recognized in this slice (easy to extend later); the `wails3` CLI must be installed manually (`go install .../cmd/wails3@v3.0.0-alpha2.117`) on a new machine, it's not a go.mod dependency |
 ```
 
 - [ ] **Step 6: Stage (do not commit — user controls commit timing)**
@@ -2100,7 +2101,7 @@ story. Do not run `git commit`.
 
 ## Self-Review Notes
 
-- **Spec coverage:** all six `docs/fase-1-mvp.md` História 3 acceptance criteria map to tasks —
+- **Spec coverage:** all six `docs/fase-1-mvp.md` Story 3 acceptance criteria map to tasks —
   recursive scan without assumed structure + SHA-256 → Task 1 (`Scan`) and Task 2
   (`internal/db` hash storage); stat-cache before hashing → Task 1's `StatMatch` path + Task 2's
   `file_size`/`file_mtime` columns; known-hash-skip and moved-file path-update →
@@ -2133,4 +2134,4 @@ story. Do not run `git commit`.
   dependency this story touches) and hit a transient `rolldown` native-binding error on the first
   `npm install` that a second `npm install` resolved. Neither is a code defect; both are recorded
   in Global Constraints and Task 5 Step 1 so they're not rediscovered from scratch on the next new
-  machine. The GTK4/WebKitGTK-6 prerequisite itself is unchanged from História 2's plan.
+  machine. The GTK4/WebKitGTK-6 prerequisite itself is unchanged from Story 2's plan.

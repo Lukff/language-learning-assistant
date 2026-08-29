@@ -1,8 +1,8 @@
-# História 3b — Drag-and-drop de importação manual: Implementation Plan
+# Story 3b — Manual Import Drag-and-Drop: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let the user drag a video file onto the Library screen to register it as a lesson, reusing the existing confirmation flow (`ImportConfirmModal`) and dedup logic from História 3.
+**Goal:** Let the user drag a video file onto the Library screen to register it as a lesson, reusing the existing confirmation flow (`ImportConfirmModal`) and dedup logic from Story 3.
 
 **Architecture:** Wails v3's native file-drop (`EnableFileDrop` + `events.Common.WindowFilesDropped`) delivers absolute OS paths to a thin handler in `main.go`, which calls a new `ImportService.DropImport` method. For each path: validate extension, hash, dedup against existing lessons/pending imports, copy into `storage_root` (or register in place if already there), insert into `pending_imports`, and emit a Wails event so the Library screen opens `ImportConfirmModal` — one per file, queued in sequence for multi-file drops.
 
@@ -14,7 +14,7 @@
 
 - Wails v3 stays pinned at `v3.0.0-alpha2.117` (`go.mod`) — no version bump.
 - Stdlib first: no new external dependency for this feature (copy uses `io`/`os`, hashing already uses `crypto/sha256`).
-- SQL portável: no driver-specific SQL in `internal/db`.
+- Portable SQL: no driver-specific SQL in `internal/db`.
 - Database paths for videos are always **relative** to `storage_root`, never absolute — `pending_imports.path` and `lessons.video_path` must stay relative.
 - Svelte 5 runes only (`$state`, `$props`, `$effect`) — no legacy `export let`/`$:` syntax.
 - Code and identifiers in English; user-facing error strings and docs in PT-BR.
@@ -51,16 +51,16 @@
   SuggestedDate: SuggestDate(filepath.Base(path), info.ModTime()),
 
   // line ~167:
-  // HasVideoExtension indica se path tem uma extensão de vídeo reconhecida
-  // (hoje só .mp4). Exportada porque services.ImportService.DropImport
-  // (História 3b) precisa da mesma checagem pra um arquivo solto via
-  // drag-and-drop, fora da varredura da pasta.
+  // HasVideoExtension reports whether path has a recognized video extension
+  // (today only .mp4). Exported because services.ImportService.DropImport
+  // (Story 3b) needs the same check for a file dropped via
+  // drag-and-drop, outside the folder scan.
   func HasVideoExtension(path string) bool {
 
   // line ~177:
-  // HashFile calcula o SHA-256 do arquivo em path. Exportada pelo mesmo
-  // motivo de HasVideoExtension — DropImport hasheia um arquivo fora da
-  // varredura da pasta.
+  // HashFile computes the SHA-256 of the file at path. Exported for the same
+  // reason as HasVideoExtension — DropImport hashes a file outside the
+  // folder scan.
   func HashFile(path string) (string, error) {
 
   // line ~200 (keep the existing doc comment, just rename):
@@ -191,10 +191,10 @@
 
   ```go
   // internal/importer/copy.go
-  // Package importer — ver importer.go. Cópia de um arquivo externo (drag-
-  // and-drop, História 3b) pra dentro da raiz de armazenamento. Não sabe de
-  // Wails nem de banco — só I/O de arquivo (camada fina, mesmo princípio do
-  // resto do internal/).
+  // Package importer — see importer.go. Copying an external file (drag-
+  // and-drop, Story 3b) into the storage root. Doesn't know about
+  // Wails or the database — only file I/O (thin layer, same principle as the
+  // rest of internal/).
   package importer
 
   import (
@@ -205,14 +205,14 @@
   	"strings"
   )
 
-  // CopyIntoStorageRoot copia o conteúdo de srcPath pra dentro de
-  // storageRoot, sem subpasta, usando o nome-base de srcPath. Copia primeiro
-  // pra um arquivo temporário dentro de storageRoot (mesmo filesystem,
-  // então o rename final é atômico) e só depois move pro nome definitivo —
-  // uma cópia interrompida no meio nunca deixa um arquivo parcial com o
-  // nome final. Resolve colisão de nome no destino com sufixo "-2", "-3",
-  // ... antes da extensão. Retorna o nome do arquivo copiado (sem
-  // diretório — nunca cria subpasta).
+  // CopyIntoStorageRoot copies the content of srcPath into
+  // storageRoot, with no subfolder, using srcPath's base name. It copies first
+  // into a temporary file inside storageRoot (same filesystem,
+  // so the final rename is atomic) and only then moves it to the final name —
+  // a copy interrupted midway never leaves a partial file under the
+  // final name. It resolves a name collision at the destination with a "-2", "-3",
+  // ... suffix before the extension. Returns the copied file's name (with no
+  // directory — never creates a subfolder).
   func CopyIntoStorageRoot(srcPath, storageRoot string) (string, error) {
   	src, err := os.Open(srcPath)
   	if err != nil {
@@ -266,7 +266,7 @@
 
   ```bash
   git add internal/importer/importer.go internal/importer/copy.go internal/importer/copy_test.go
-  git commit -m "feat: exporta helpers do importer e adiciona cópia pra storage_root"
+  git commit -m "feat: export importer helpers and add copy into storage_root"
   ```
 
 ---
@@ -293,10 +293,10 @@ This task also fixes the two call sites outside `internal/db` that the signature
   ```go
   // internal/db/pending_imports.go — replace the existing InsertPendingImport:
 
-  // InsertPendingImport grava um candidato novo achado pela varredura (ou
-  // por um drop manual, História 3b) e retorna o id da linha criada — o
-  // chamador precisa dele pra montar o PendingImport exposto ao frontend
-  // sem uma segunda consulta.
+  // InsertPendingImport writes a new candidate found by the scan (or
+  // by a manual drop, Story 3b) and returns the id of the created row — the
+  // caller needs it to build the PendingImport exposed to the frontend
+  // without a second query.
   func InsertPendingImport(conn *sql.DB, p PendingImport) (int64, error) {
   	res, err := conn.Exec(
   		`INSERT INTO pending_imports (path, file_size, file_mtime, sha256, suggested_date, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -734,10 +734,10 @@ This task also fixes the two call sites outside `internal/db` that the signature
   Add near the `PendingImport` struct (same file, after it):
 
   ```go
-  // DropResult é o resultado de processar um caminho recebido via
-  // drag-and-drop nativo (main.go, evento WindowFilesDropped) — usado como
-  // retorno de DropImport (testável) e também como payload do evento
-  // DropErrorEvent quando Error não é vazio.
+  // DropResult is the result of processing a path received via
+  // native drag-and-drop (main.go, WindowFilesDropped event) — used as
+  // DropImport's return value (testable) and also as the payload of the
+  // DropErrorEvent event when Error is not empty.
   type DropResult struct {
   	Path  string `json:"path"`
   	Error string `json:"error"`
@@ -747,25 +747,25 @@ This task also fixes the two call sites outside `internal/db` that the signature
   Add at the end of the file (after the `dbRepo` methods, i.e. after `InsertPending`):
 
   ```go
-  // DroppedImportEvent é emitido uma vez por candidato criado com sucesso
-  // via drag-and-drop — payload é um PendingImport, mesmo formato que
-  // ListPendingImports já expõe, pra ImportConfirmModal abrir sem buscar de
-  // novo (História 3b).
+  // DroppedImportEvent is emitted once per candidate successfully created
+  // via drag-and-drop — the payload is a PendingImport, the same shape
+  // ListPendingImports already exposes, so ImportConfirmModal can open without
+  // fetching again (Story 3b).
   const DroppedImportEvent = "import:dropped"
 
-  // DropErrorEvent é emitido por arquivo que falhou (extensão não
-  // reconhecida, duplicata, falha de cópia) — nenhum candidato foi criado
-  // pra esse arquivo.
+  // DropErrorEvent is emitted for a file that failed (unrecognized
+  // extension, duplicate, copy failure) — no candidate was created
+  // for that file.
   const DropErrorEvent = "import:drop-error"
 
-  // DropImport processa arquivos recebidos via drag-and-drop nativo do
-  // Wails (main.go chama isso a partir do evento WindowFilesDropped) — um
-  // candidato pendente por arquivo válido, reaproveitando a mesma dedupe
-  // por hash da varredura (História 3). Diferente do best-effort de
-  // renameVideoBestEffort, falha aqui é sempre reportada (via
-  // DropErrorEvent e no DropResult retornado) — sem um candidato em
-  // pending_imports o usuário não teria outro jeito de saber que o arquivo
-  // solto falhou.
+  // DropImport processes files received via Wails's native drag-and-drop
+  // (main.go calls this from the WindowFilesDropped event) — one
+  // pending candidate per valid file, reusing the same hash-based dedupe
+  // from the folder scan (Story 3). Unlike renameVideoBestEffort's
+  // best-effort approach, a failure here is always reported (via
+  // DropErrorEvent and in the returned DropResult) — without a candidate in
+  // pending_imports the user would have no other way of knowing the dropped
+  // file failed.
   func (s *ImportService) DropImport(paths []string) []DropResult {
   	results := make([]DropResult, 0, len(paths))
   	for _, path := range paths {
@@ -834,11 +834,11 @@ This task also fixes the two call sites outside `internal/db` that the signature
   	return PendingImport{ID: id, Path: relPath, SuggestedDate: suggested}, nil
   }
 
-  // placeDroppedFile decide onde o arquivo solto fica registrado: se path
-  // já está dentro de storageRoot, registra no lugar sem copiar; senão,
-  // copia pra dentro de storageRoot (sem subpasta, resolvendo colisão de
-  // nome). Retorna o path relativo a storageRoot (sempre com "/"), o mtime
-  // (RFC3339 UTC) e o tamanho do arquivo no destino final.
+  // placeDroppedFile decides where the dropped file gets registered: if path
+  // is already inside storageRoot, it registers it in place without copying; otherwise,
+  // it copies it into storageRoot (no subfolder, resolving name
+  // collisions). Returns the path relative to storageRoot (always with "/"), the mtime
+  // (RFC3339 UTC), and the file's size at the final destination.
   func (s *ImportService) placeDroppedFile(path, storageRoot string) (relPath string, mtime string, size int64, err error) {
   	rel, inside, err := relativeIfInsideStorageRoot(path, storageRoot)
   	if err != nil {
@@ -859,11 +859,11 @@ This task also fixes the two call sites outside `internal/db` that the signature
   	return rel, info.ModTime().UTC().Format(time.RFC3339), info.Size(), nil
   }
 
-  // relativeIfInsideStorageRoot resolve links simbólicos de path e
-  // storageRoot e indica se path cai dentro de storageRoot — nesse caso
-  // retorna o path relativo (sempre com "/"). inside=false (relPath="") se
-  // path está fora, ou se a resolução falhar (o chamador então copia,
-  // tratamento seguro por padrão).
+  // relativeIfInsideStorageRoot resolves symlinks for path and
+  // storageRoot and reports whether path falls inside storageRoot — in that case
+  // it returns the relative path (always with "/"). inside=false (relPath="") if
+  // path is outside, or if resolution fails (the caller then copies,
+  // a safe default behavior).
   func relativeIfInsideStorageRoot(path, storageRoot string) (relPath string, inside bool, err error) {
   	resolvedPath, err := filepath.EvalSymlinks(path)
   	if err != nil {
@@ -883,9 +883,9 @@ This task also fixes the two call sites outside `internal/db` that the signature
   func (s *ImportService) emitDropped(p PendingImport) {
   	app := application.Get()
   	if app == nil {
-  		// Testes chamam DropImport sem application.New() ter rodado — mesmo
-  		// tratamento que WailsJobNotifier.JobChanged (services/jobs_notifier.go):
-  		// descartar é inofensivo, nenhum teste depende do evento em si.
+  		// Tests call DropImport without application.New() having run — the same
+  		// treatment as WailsJobNotifier.JobChanged (services/jobs_notifier.go):
+  		// discarding is harmless, no test depends on the event itself.
   		return
   	}
   	app.Event.Emit(DroppedImportEvent, p)
@@ -1176,7 +1176,7 @@ This task also fixes the two call sites outside `internal/db` that the signature
   Expected: PASS.
 
   Run: `wails3 build`
-  Expected: produces the binary without error (confirms the Go+embedded-frontend build succeeds end to end, same check every prior história's progress log records — this sandbox has no display, so opening the window and actually dragging a file onto it still needs manual verification by the user on Windows/Linux, same acknowledged gap as every other história in `docs/fase-1-mvp.md`'s progress log).
+  Expected: produces the binary without error (confirms the Go+embedded-frontend build succeeds end to end, same check every prior story's progress log records — this sandbox has no display, so opening the window and actually dragging a file onto it still needs manual verification by the user on Windows/Linux, same acknowledged gap as every other story in `docs/fase-1-mvp.md`'s progress log).
 
 - [ ] **Step 8: Commit**
 
@@ -1187,7 +1187,7 @@ This task also fixes the two call sites outside `internal/db` that the signature
 
 ---
 
-### Task 7: Close out História 3b in `docs/fase-1-mvp.md`
+### Task 7: Close out Story 3b in `docs/fase-1-mvp.md`
 
 **Files:**
 - Modify: `docs/fase-1-mvp.md`
@@ -1196,41 +1196,41 @@ This task also fixes the two call sites outside `internal/db` that the signature
 - Consumes: nothing (docs only).
 - Produces: nothing (last task).
 
-- [ ] **Step 1: Check off the four História 3b acceptance criteria**
+- [ ] **Step 1: Check off the four Story 3b acceptance criteria**
 
   ```markdown
-  <!-- docs/fase-1-mvp.md — História 3b section, replace the four "- [ ]" lines with: -->
-  - [x] Drag-and-drop (ou fallback por file dialog — risco 2) abre o mesmo modal de confirmação da História 3 (data pré-preenchida do nome/metadata do arquivo quando possível, tutor texto livre).
-  - [x] O vídeo é copiado para a raiz de armazenamento em estrutura previsível (ex.: `aulas/2026/2026-07-15/`); o banco guarda **apenas o path relativo**.
-  - [x] Registro em `lessons` + jobs `extract_audio` e `transcribe` criados como `pending`, reaproveitando a mesma lógica de confirmação/dedup por hash da História 3.
-  - [x] Importação duplicada (mesmo arquivo/hash) é detectada e avisada, não duplicada.
+  <!-- docs/fase-1-mvp.md — Story 3b section, replace the four "- [ ]" lines with: -->
+  - [x] Drag-and-drop (or file-dialog fallback — risk 2) opens the same confirmation modal as Story 3 (date pre-filled from the filename/file metadata when possible, free-text tutor field).
+  - [x] The video is copied into the storage root using a predictable structure (e.g., `aulas/2026/2026-07-15/`); the database stores **only the relative path**.
+  - [x] Entry created in `lessons` + `extract_audio` and `transcribe` jobs created as `pending`, reusing the same confirmation/dedup-by-hash logic from Story 3.
+  - [x] A duplicate import (same file/hash) is detected and flagged, not duplicated.
   ```
 
   Note: the copy destination diverged from the doc's own example subpath (`aulas/2026/2026-07-15/`) per the approved design — it copies flat into `storage_root`, no subfolder (see `docs/superpowers/specs/2026-07-24-historia-3b-drag-and-drop-design.md`). Leave the example text as-is (it's illustrative, not binding) rather than editing the acceptance criterion wording.
 
-- [ ] **Step 2: Mark risk 2 as resolved in the "Riscos técnicos" section**
+- [ ] **Step 2: Mark risk 2 as resolved in the "Technical risks" section**
 
   ```markdown
-  <!-- docs/fase-1-mvp.md — item 2 under "## Riscos técnicos — atacar primeiro, não por último",
+  <!-- docs/fase-1-mvp.md — item 2 under "## Technical risks — tackle first, not last",
        currently:
-  2. **Drag-and-drop de arquivo no Wails v3:** confirmar a API de DnD nativa da versão pinada
-     (área instável do alpha). Fallback aceitável: botão + file dialog.
+  2. **File drag-and-drop in Wails v3:** confirm the pinned version's native DnD API
+     (an unstable area of the alpha). Acceptable fallback: button + file dialog.
        becomes: -->
-  2. **Drag-and-drop de arquivo no Wails v3 (resolvido, História 3b):** a API nativa
-     (`EnableFileDrop` + evento `WindowFilesDropped`) funciona nas três plataformas na versão
-     pinada `v3.0.0-alpha2.117` — não foi preciso o fallback de file dialog.
+  2. **File drag-and-drop in Wails v3 (resolved, Story 3b):** the native API
+     (`EnableFileDrop` + `WindowFilesDropped` event) works on all three platforms at the pinned
+     version `v3.0.0-alpha2.117` — the file-dialog fallback wasn't needed.
   ```
 
 - [ ] **Step 3: Add a progress log row**
 
   ```markdown
-  <!-- docs/fase-1-mvp.md — add a new row at the end of the "## Registro de progresso" table: -->
-  | 24/07/2026 | História 3b implementada: drag-and-drop nativo do Wails v3 (`EnableFileDrop` + evento `WindowFilesDropped`, sem HTML5 File API) resolve o risco técnico 2 — funciona nas três plataformas na versão pinada; solto na tela Biblioteca (`data-file-drop-target`), abre `ImportConfirmModal` na hora (fila local drena um modal por vez em drops múltiplos); cópia pra `storage_root` sem subpasta com sufixo de colisão, ou registro no lugar se o arquivo já estiver dentro da raiz de armazenamento; extensão não reconhecida ou hash já importado/pendente é rejeitado sem copiar, com erro reportado via evento `import:drop-error` | Reaproveita 100% do fluxo de confirmação/dedup da História 3 (`ImportConfirmModal`, `pending_imports`, `ConfirmImport`) sem alterá-lo; `internal/importer.HashFile`/`HasVideoExtension`/`SuggestDate` exportados pra DropImport reusar sem duplicar lógica; `db.InsertPendingImport` passou a retornar o id da linha criada; verificação visual real (arrastar um arquivo numa janela de verdade) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
+  <!-- docs/fase-1-mvp.md — add a new row at the end of the "## Progress log" table: -->
+  | 24/07/2026 | Story 3b implemented: Wails v3's native drag-and-drop (`EnableFileDrop` + `WindowFilesDropped` event, no HTML5 File API) resolves technical risk 2 — works on all three platforms at the pinned version; dropped onto the Library screen (`data-file-drop-target`), it opens `ImportConfirmModal` right away (a local queue drains one modal at a time on multiple drops); files are copied into `storage_root` with no subfolder, with a collision suffix, or registered in place if the file is already inside the storage root; an unrecognized extension or an already-imported/pending hash is rejected without copying, with the error reported via the `import:drop-error` event | Reuses 100% of Story 3's confirmation/dedup flow (`ImportConfirmModal`, `pending_imports`, `ConfirmImport`) unchanged; `internal/importer.HashFile`/`HasVideoExtension`/`SuggestDate` were exported for DropImport to reuse without duplicating logic; `db.InsertPendingImport` now returns the id of the created row; real visual verification (dragging a file in a real window) is still pending on Windows/Linux, same pattern as previous stories |
   ```
 
 - [ ] **Step 4: Commit**
 
   ```bash
   git add docs/fase-1-mvp.md
-  git commit -m "docs: marca Historia 3b concluida e registra progresso"
+  git commit -m "docs: mark Story 3b complete and record progress"
   ```

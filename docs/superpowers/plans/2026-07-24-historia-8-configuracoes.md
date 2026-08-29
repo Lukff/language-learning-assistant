@@ -1,45 +1,44 @@
-# História 8 — Configurações básicas (path + credencial) Implementation Plan
+# Story 8 — Basic Settings (path + credential) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Adicionar uma tela de Configurações (ícone no Header) onde o usuário vê/troca a raiz de
-armazenamento (sem mover arquivos — reconciliação por hash reaproveitando a varredura da História
-3) e (re)cadastra a credencial do provedor STT no keyring; a Biblioteca passa a sinalizar
-"vídeo ausente" por aula, recalculado a cada carregamento.
+**Goal:** Add a Settings screen (icon in the Header) where the user views/changes the storage root
+(without moving files — hash-based reconciliation reusing Story 3's scan) and (re-)registers the
+STT provider credential in the keyring; the Library starts flagging "missing video" per lesson,
+recalculated on every load.
 
-**Architecture:** Nenhum pacote novo em `internal/`. Um novo `SettingsService` (em `services/`,
-mesmo padrão de `SetupService`) orquestra `internal/config` (credencial + `storage_root`) e
-reaproveita `internal/importer.Scan` (já usado por `ImportService.ScanFolder`) pra reconciliar
-arquivos renomeados na pasta nova. `LibraryService` ganha um resolver de `storage_root` e passa a
-checar (`os.Stat`) a existência do vídeo de cada aula a cada listagem — nunca persistido, mesmo
-padrão do status processando/pronta/erro. Frontend: nova tela `Settings.svelte` (rota própria,
-acessada por um ícone no `Header`).
+**Architecture:** No new package under `internal/`. A new `SettingsService` (in `services/`, same
+pattern as `SetupService`) orchestrates `internal/config` (credential + `storage_root`) and reuses
+`internal/importer.Scan` (already used by `ImportService.ScanFolder`) to reconcile renamed files
+in the new folder. `LibraryService` gains a `storage_root` resolver and starts checking
+(`os.Stat`) whether each lesson's video exists on every listing — never persisted, same pattern as
+the processing/ready/error status. Frontend: a new `Settings.svelte` screen (its own route,
+reached via an icon in the `Header`).
 
 **Tech Stack:** Go (stdlib + `zalando/go-keyring`, `modernc.org/sqlite`), Wails v3
 `v3.0.0-alpha2.117`, Svelte 5 (runes), TypeScript.
 
 ## Global Constraints
 
-- Svelte 5 com runes sempre (`$state`/`$derived`/`$effect`/`$props`) — nunca sintaxe legada de
-  Svelte 3/4.
-- Go: preferir stdlib; nenhuma dependência nova sem justificativa (nenhuma é necessária nesta
-  história).
-- Credenciais via `go-keyring`, nunca texto plano, nunca commitadas.
-- SQL portável na camada de repositório — nada específico de driver.
-- Paths de vídeo no banco sempre relativos à `storage_root`, nunca absolutos.
-- Commits: uma linha só, formato semântico (`tipo: descrição`).
-- `go vet ./...` limpo e `go test ./...` passando antes de cada commit que toque Go.
-- Wails v3 pinado em `v3.0.0-alpha2.117` (`go.mod`) — não fazer upgrade nesta tarefa.
-- Bindings do frontend geradas via `wails3 generate bindings -ts -i ./...` (flag `-i` obrigatória
-  — sem ela o gerador produz classes, não interfaces, formato que este frontend não usa) — nunca
-  editadas à mão, nunca commitadas (`frontend/bindings` está no `.gitignore`).
-- Código/identificadores em inglês; textos de UI e mensagens de erro voltadas ao usuário em PT-BR.
-- Princípio de resiliência: nada nesta história pode impedir assistir a uma aula cujo vídeo está
-  de fato presente.
+- Svelte 5 with runes always (`$state`/`$derived`/`$effect`/`$props`) — never legacy Svelte 3/4
+  syntax.
+- Go: prefer stdlib; no new dependency without justification (none is needed for this story).
+- Credentials via `go-keyring`, never plain text, never committed.
+- Portable SQL in the repository layer — nothing driver-specific.
+- Video paths in the database always relative to `storage_root`, never absolute.
+- Commits: single line, semantic format (`type: description`).
+- `go vet ./...` clean and `go test ./...` passing before every commit that touches Go.
+- Wails v3 pinned at `v3.0.0-alpha2.117` (`go.mod`) — no upgrade in this task.
+- Frontend bindings generated via `wails3 generate bindings -ts -i ./...` (the `-i` flag is
+  mandatory — without it the generator produces classes, not interfaces, a format this frontend
+  doesn't use) — never hand-edited, never committed (`frontend/bindings` is in `.gitignore`).
+- Code/identifiers in English; UI text and user-facing error messages in PT-BR.
+- Resilience principle: nothing in this story may prevent watching a lesson whose video is
+  actually present.
 
 ---
 
-### Task 1: Extrair helper compartilhado de escolha de pasta
+### Task 1: Extract shared folder-picker helper
 
 **Files:**
 - Create: `services/storage_folder.go`
@@ -48,17 +47,17 @@ acessada por um ícone no `Header`).
 - Modify: `services/setup_test.go`
 
 **Interfaces:**
-- Produces: `chooseStorageFolder(title string) (string, error)` e `isDirWritable(dir string) error`
-  — funções não-exportadas do pacote `services`, usadas por `SetupService` (já existente) e por
-  `SettingsService` (Task 2).
-- Consumes: nada novo — `github.com/wailsapp/wails/v3/pkg/application` (já é dependência do
-  projeto).
+- Produces: `chooseStorageFolder(title string) (string, error)` and `isDirWritable(dir string) error`
+  — unexported functions of the `services` package, used by `SetupService` (already existing) and
+  by `SettingsService` (Task 2).
+- Consumes: nothing new — `github.com/wailsapp/wails/v3/pkg/application` (already a project
+  dependency).
 
-Este é um refactor mecânico (mover código, sem mudar comportamento): `ChooseStorageFolder` do
-wizard de first-run e a validação de escrita saem de `setup.go` para um arquivo compartilhado, já
-que a História 8 precisa do mesmo dialog+validação na tela de Configurações.
+This is a mechanical refactor (moving code, no behavior change): `ChooseStorageFolder` from the
+first-run wizard and the write-validation logic move from `setup.go` into a shared file, since
+Story 8 needs the same dialog+validation on the Settings screen.
 
-- [ ] **Step 1: Criar `services/storage_folder.go`**
+- [ ] **Step 1: Create `services/storage_folder.go`**
 
 ```go
 package services
@@ -70,10 +69,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// chooseStorageFolder abre o dialog nativo de escolha de pasta com o título
-// dado e valida que ela é gravável. Retorna path vazio (sem erro) se o
-// usuário cancelar o dialog. Compartilhado por SetupService (wizard de
-// first-run) e SettingsService (troca de pasta, História 8).
+// chooseStorageFolder opens the native folder-choice dialog with the given
+// title and validates that it's writable. Returns an empty path (no error)
+// if the user cancels the dialog. Shared by SetupService (first-run
+// wizard) and SettingsService (folder change, Story 8).
 func chooseStorageFolder(title string) (string, error) {
 	dir, err := application.Get().Dialog.OpenFile().
 		SetTitle(title).
@@ -93,8 +92,8 @@ func chooseStorageFolder(title string) (string, error) {
 	return dir, nil
 }
 
-// isDirWritable confirma que dir aceita escrita, criando e removendo um
-// arquivo temporário nele.
+// isDirWritable confirms that dir accepts writes, by creating and removing
+// a temporary file in it.
 func isDirWritable(dir string) error {
 	f, err := os.CreateTemp(dir, ".assistente-idiomas-write-test-*")
 	if err != nil {
@@ -109,7 +108,7 @@ func isDirWritable(dir string) error {
 }
 ```
 
-- [ ] **Step 2: Criar `services/storage_folder_test.go`** (testes movidos de `setup_test.go`)
+- [ ] **Step 2: Create `services/storage_folder_test.go`** (tests moved from `setup_test.go`)
 
 ```go
 package services
@@ -160,13 +159,14 @@ func TestIsDirWritable_LeavesNoTempFileBehind(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Atualizar `services/setup.go`** — remover `isDirWritable` e o corpo do dialog de
-      `ChooseStorageFolder`, delegando pro helper. Conteúdo final do arquivo:
+- [ ] **Step 3: Update `services/setup.go`** — remove `isDirWritable` and the dialog body of
+      `ChooseStorageFolder`, delegating to the helper. Final file contents:
 
 ```go
-// Package services contém os serviços expostos ao frontend via bindings do
-// Wails v3 — a casca que liga internal/config e internal/db à UI. Diferente
-// de internal/, este pacote importa Wails de propósito.
+// Package services contains the services exposed to the frontend via
+// Wails v3 bindings — the shell that connects internal/config and
+// internal/db to the UI. Unlike internal/, this package imports Wails on
+// purpose.
 package services
 
 import (
@@ -175,34 +175,35 @@ import (
 	"assistente-idiomas/internal/config"
 )
 
-// SetupService cobre o wizard de primeira execução: escolher a pasta de
-// armazenamento e cadastrar a API key da ElevenLabs.
+// SetupService covers the first-run wizard: choosing the storage folder
+// and registering the ElevenLabs API key.
 type SetupService struct{}
 
 func NewSetupService() *SetupService {
 	return &SetupService{}
 }
 
-// IsFirstRun indica se o app ainda não tem config.json gravado (nenhuma
-// configuração completa até agora). Qualquer erro ao carregar a config
-// (arquivo ausente, corrompido, sem permissão) é tratado como "ainda não
-// configurado" — o pior caso é o usuário refazer o wizard, não perda de
-// dados: CompleteSetup apenas sobrescreve config.json e a credencial.
+// IsFirstRun reports whether the app doesn't have config.json saved yet
+// (no complete configuration so far). Any error loading the config
+// (missing file, corrupted, no permission) is treated as "not configured
+// yet" — the worst case is the user redoing the wizard, not data loss:
+// CompleteSetup just overwrites config.json and the credential.
 func (s *SetupService) IsFirstRun() bool {
 	_, err := config.Load()
 	return err != nil
 }
 
-// ChooseStorageFolder abre o dialog nativo de escolha de pasta e valida que
-// ela é gravável. Retorna path vazio (sem erro) se o usuário cancelar o
-// dialog.
+// ChooseStorageFolder opens the native folder-choice dialog and validates
+// that it's writable. Returns an empty path (no error) if the user cancels
+// the dialog.
 func (s *SetupService) ChooseStorageFolder() (string, error) {
 	return chooseStorageFolder("Escolha a pasta onde as aulas ficarão guardadas")
 }
 
-// CompleteSetup grava a credencial da ElevenLabs (keyring) e, só se isso
-// funcionar, grava storageRoot em config.json. Nessa ordem: se a credencial
-// falhar, config.json não é tocado e o app continua detectando first-run.
+// CompleteSetup saves the ElevenLabs credential (keyring) and, only if
+// that succeeds, saves storageRoot in config.json. In that order: if the
+// credential fails, config.json isn't touched and the app keeps detecting
+// first-run.
 func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 	if storageRoot == "" {
 		return fmt.Errorf("pasta de armazenamento não pode ser vazia")
@@ -217,8 +218,8 @@ func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 }
 ```
 
-- [ ] **Step 4: Atualizar `services/setup_test.go`** — remover os testes de `isDirWritable`
-      (movidos pro Step 2), mantendo só os de `CompleteSetup`. Conteúdo final do arquivo:
+- [ ] **Step 4: Update `services/setup_test.go`** — remove the `isDirWritable` tests (moved to
+      Step 2), keeping only the `CompleteSetup` ones. Final file contents:
 
 ```go
 package services
@@ -258,47 +259,47 @@ func TestCompleteSetup_EmptyStorageRootRejected(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Rodar os testes**
+- [ ] **Step 5: Run the tests**
 
 Run: `go test ./services/... -v`
-Expected: PASS em todos os testes (os quatro `TestIsDirWritable_*` agora em
-`storage_folder_test.go`, os dois `TestCompleteSetup_*` em `setup_test.go`).
+Expected: PASS on all tests (the four `TestIsDirWritable_*` now in
+`storage_folder_test.go`, the two `TestCompleteSetup_*` in `setup_test.go`).
 
 - [ ] **Step 6: `go vet`**
 
 Run: `go vet ./...`
-Expected: sem saída (limpo).
+Expected: no output (clean).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add services/storage_folder.go services/storage_folder_test.go services/setup.go services/setup_test.go
-git commit -m "refactor: extrai helper compartilhado de escolha de pasta de armazenamento"
+git commit -m "refactor: extract shared storage folder picker helper"
 ```
 
 ---
 
-### Task 2: `SettingsService` — armazenamento
+### Task 2: `SettingsService` — storage
 
 **Files:**
 - Create: `services/settings.go`
 - Create: `services/settings_test.go`
 
 **Interfaces:**
-- Consumes: `chooseStorageFolder`/`isDirWritable` (Task 1); `dbRepo` (não-exportado, já definido em
-  `services/import.go`); `importer.Scan(root string, repo importer.Repo) (importer.Summary, error)`
+- Consumes: `chooseStorageFolder`/`isDirWritable` (Task 1); `dbRepo` (unexported, already defined
+  in `services/import.go`); `importer.Scan(root string, repo importer.Repo) (importer.Summary, error)`
   (`internal/importer`); `config.Load`/`config.Save`/`config.AppConfig` (`internal/config`);
-  `ScanSummary` (já definido em `services/import.go`).
+  `ScanSummary` (already defined in `services/import.go`).
 - Produces: `SettingsService` (`conn *sql.DB`, `storageRoot func() (string, error)`),
   `NewSettingsService(conn *sql.DB, storageRoot func() (string, error)) *SettingsService`,
   `(*SettingsService).GetStorageRoot() (string, error)`,
   `(*SettingsService).ChooseStorageFolder() (string, error)`,
-  `(*SettingsService).ChangeStorageFolder(newRoot string) (ScanSummary, error)` — usados por
-  Task 5 (wiring em `main.go`) e pelo frontend (Task 6).
+  `(*SettingsService).ChangeStorageFolder(newRoot string) (ScanSummary, error)` — used by
+  Task 5 (wiring in `main.go`) and by the frontend (Task 6).
 
-- [ ] **Step 1: Escrever os testes (vão falhar — `SettingsService` ainda não existe)**
+- [ ] **Step 1: Write the tests (will fail — `SettingsService` doesn't exist yet)**
 
-Criar `services/settings_test.go`:
+Create `services/settings_test.go`:
 
 ```go
 package services
@@ -313,8 +314,8 @@ import (
 	"assistente-idiomas/internal/importer"
 )
 
-// configStorageRoot resolve storage_root a partir de config.Load() — mesmo
-// closure que main.go monta pro worker/middleware/serviços reais.
+// configStorageRoot resolves storage_root from config.Load() — the same
+// closure that main.go builds for the real worker/middleware/services.
 func configStorageRoot() (string, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -337,8 +338,9 @@ func TestSettingsService_ChangeStorageFolder_UpdatesConfigAndReconcilesRenamedVi
 		t.Fatalf("config.Save() falhou: %v", err)
 	}
 
-	// Pasta nova já tem o vídeo, mas com outro nome — simula o usuário tendo
-	// renomeado o arquivo fora do app antes de trocar a pasta aqui.
+	// The new folder already has the video, but under a different name —
+	// simulates the user having renamed the file outside the app before
+	// changing the folder here.
 	newRoot := t.TempDir()
 	renamedPath := filepath.Join(newRoot, "aula-renomeada.mp4")
 	if err := os.WriteFile(renamedPath, []byte("conteudo-fake-do-video"), 0o644); err != nil {
@@ -430,12 +432,12 @@ func TestSettingsService_ChangeStorageFolder_EmptyRejected(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham (compilação)**
+- [ ] **Step 2: Run the tests and confirm they fail (compilation)**
 
 Run: `go test ./services/... -run TestSettingsService -v`
 Expected: FAIL — `undefined: NewSettingsService`.
 
-- [ ] **Step 3: Implementar `services/settings.go`**
+- [ ] **Step 3: Implement `services/settings.go`**
 
 ```go
 package services
@@ -448,8 +450,8 @@ import (
 	"assistente-idiomas/internal/importer"
 )
 
-// SettingsService cobre a tela de Configurações (História 8): ver/trocar a
-// raiz de armazenamento e (re)cadastrar a credencial do provedor STT.
+// SettingsService covers the Settings screen (Story 8): view/change the
+// storage root and (re-)register the STT provider credential.
 type SettingsService struct {
 	conn        *sql.DB
 	storageRoot func() (string, error)
@@ -459,27 +461,27 @@ func NewSettingsService(conn *sql.DB, storageRoot func() (string, error)) *Setti
 	return &SettingsService{conn: conn, storageRoot: storageRoot}
 }
 
-// GetStorageRoot retorna a storage_root configurada atualmente.
+// GetStorageRoot returns the currently configured storage_root.
 func (s *SettingsService) GetStorageRoot() (string, error) {
 	return s.storageRoot()
 }
 
-// ChooseStorageFolder abre o dialog nativo (mesma validação de escrita do
-// wizard) e retorna o path escolhido, sem gravar nada ainda. Retorna path
-// vazio (sem erro) se o usuário cancelar o dialog.
+// ChooseStorageFolder opens the native dialog (same write validation as
+// the wizard) and returns the chosen path, without saving anything yet.
+// Returns an empty path (no error) if the user cancels the dialog.
 func (s *SettingsService) ChooseStorageFolder() (string, error) {
 	return chooseStorageFolder("Escolha a nova pasta — os arquivos já devem estar lá dentro")
 }
 
-// ChangeStorageFolder grava newRoot em config.json (sempre, mesmo que a
-// varredura a seguir encontre problemas) e roda a mesma reconciliação por
-// hash da História 3 (internal/importer.Scan): vídeos com nome diferente na
-// pasta nova têm o video_path atualizado por hash; vídeos novos na pasta
-// nova viram candidatos pendentes; a troca em si nunca é bloqueada por
-// vídeos que não forem encontrados (esses continuam com o path antigo e
-// ficam "ausentes" — ver LibraryService.videoMissing, Task 4). ScanSummary
-// é o tipo já definido em import.go, reaproveitado aqui sem duplicar o
-// formato de resumo.
+// ChangeStorageFolder saves newRoot to config.json (always, even if the
+// scan that follows finds problems) and runs the same hash-based
+// reconciliation from Story 3 (internal/importer.Scan): videos with a
+// different name in the new folder get video_path updated by hash; new
+// videos in the new folder become pending candidates; the change itself is
+// never blocked by videos that aren't found (those keep the old path and
+// stay "missing" — see LibraryService.videoMissing, Task 4). ScanSummary
+// is the type already defined in import.go, reused here without
+// duplicating the summary format.
 func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, error) {
 	if newRoot == "" {
 		return ScanSummary{}, fmt.Errorf("pasta de armazenamento não pode ser vazia")
@@ -498,26 +500,26 @@ func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, erro
 }
 ```
 
-- [ ] **Step 4: Rodar os testes de novo**
+- [ ] **Step 4: Run the tests again**
 
 Run: `go test ./services/... -run TestSettingsService -v`
-Expected: PASS nos três testes.
+Expected: PASS on all three tests.
 
-- [ ] **Step 5: `go vet` e suíte completa**
+- [ ] **Step 5: `go vet` and full suite**
 
 Run: `go vet ./... && go test ./...`
-Expected: sem saída do vet; todos os pacotes PASS.
+Expected: no output from vet; all packages PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add services/settings.go services/settings_test.go
-git commit -m "feat: adiciona SettingsService com troca de raiz de armazenamento"
+git commit -m "feat: add SettingsService with storage root change"
 ```
 
 ---
 
-### Task 3: `SettingsService` — credencial do provedor STT
+### Task 3: `SettingsService` — STT provider credential
 
 **Files:**
 - Modify: `services/settings.go`
@@ -525,11 +527,11 @@ git commit -m "feat: adiciona SettingsService com troca de raiz de armazenamento
 
 **Interfaces:**
 - Consumes: `config.GetSTTAPIKey`/`config.SaveSTTAPIKey` (`internal/config`); `keyring.ErrNotFound`
-  (`github.com/zalando/go-keyring`, já uma dependência do projeto).
+  (`github.com/zalando/go-keyring`, already a project dependency).
 - Produces: `(*SettingsService).HasSTTCredential() (bool, error)`,
-  `(*SettingsService).SaveSTTAPIKey(apiKey string) error` — usados pelo frontend (Task 6).
+  `(*SettingsService).SaveSTTAPIKey(apiKey string) error` — used by the frontend (Task 6).
 
-- [ ] **Step 1: Adicionar os testes ao final de `services/settings_test.go`**
+- [ ] **Step 1: Add the tests at the end of `services/settings_test.go`**
 
 ```go
 func TestSettingsService_HasSTTCredential_FalseWhenNotConfigured(t *testing.T) {
@@ -578,8 +580,8 @@ func TestSettingsService_HasSTTCredential_KeyringUnavailablePropagatesError(t *t
 }
 ```
 
-Atualizar o bloco `import` de `services/settings_test.go` (topo do arquivo) pra incluir os pacotes
-novos usados por estes testes:
+Update the `import` block of `services/settings_test.go` (top of the file) to include the new
+packages used by these tests:
 
 ```go
 import (
@@ -597,14 +599,14 @@ import (
 )
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham (compilação)**
+- [ ] **Step 2: Run the tests and confirm they fail (compilation)**
 
 Run: `go test ./services/... -run TestSettingsService_HasSTTCredential -v`
 Expected: FAIL — `undefined: (*SettingsService).HasSTTCredential`.
 
-- [ ] **Step 3: Adicionar os métodos ao final de `services/settings.go`**
+- [ ] **Step 3: Add the methods to the end of `services/settings.go`**
 
-Atualizar o bloco `import` de `services/settings.go`:
+Update the `import` block of `services/settings.go`:
 
 ```go
 import (
@@ -619,13 +621,13 @@ import (
 )
 ```
 
-Adicionar ao final do arquivo:
+Add at the end of the file:
 
 ```go
-// HasSTTCredential indica se há uma credencial gravada no keyring, sem
-// revelar o valor. false (sem erro) se simplesmente não configurada ainda;
-// erro só em falha real de acesso ao keyring (Secret Service indisponível,
-// risco 3 do projeto).
+// HasSTTCredential reports whether a credential is stored in the keyring,
+// without revealing the value. false (no error) if simply not configured
+// yet; an error only on a real keyring access failure (Secret Service
+// unavailable, project risk 3).
 func (s *SettingsService) HasSTTCredential() (bool, error) {
 	_, err := config.GetSTTAPIKey()
 	if err == nil {
@@ -637,57 +639,57 @@ func (s *SettingsService) HasSTTCredential() (bool, error) {
 	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
 }
 
-// SaveSTTAPIKey grava/sobrescreve a credencial do provedor STT.
+// SaveSTTAPIKey saves/overwrites the STT provider credential.
 func (s *SettingsService) SaveSTTAPIKey(apiKey string) error {
 	return config.SaveSTTAPIKey(apiKey)
 }
 ```
 
-- [ ] **Step 4: Rodar os testes de novo**
+- [ ] **Step 4: Run the tests again**
 
 Run: `go test ./services/... -run TestSettingsService -v`
-Expected: PASS em todos.
+Expected: PASS on all.
 
-- [ ] **Step 5: `go vet` e suíte completa**
+- [ ] **Step 5: `go vet` and full suite**
 
 Run: `go vet ./... && go test ./...`
-Expected: sem saída do vet; todos os pacotes PASS.
+Expected: no output from vet; all packages PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add services/settings.go services/settings_test.go
-git commit -m "feat: adiciona (re)cadastro de credencial STT ao SettingsService"
+git commit -m "feat: add STT credential (re-)registration to SettingsService"
 ```
 
 ---
 
-### Task 4: `LibraryService` — indicador de vídeo ausente
+### Task 4: `LibraryService` — missing video indicator
 
 **Files:**
 - Modify: `services/library.go`
 - Modify: `services/library_test.go`
-- Modify: `main.go` (só a linha de construção de `LibraryService`, ver Step 5)
+- Modify: `main.go` (only the `LibraryService` construction line, see Step 5)
 
 **Interfaces:**
-- Consumes: nada novo de outros pacotes (só stdlib `os`/`path/filepath`).
+- Consumes: nothing new from other packages (only stdlib `os`/`path/filepath`).
 - Produces: `NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *LibraryService`
-  (assinatura muda — consumido por `main.go`, Task 5, e pelos testes deste arquivo);
-  `Lesson.VideoMissing bool` (json: `videoMissing`) — consumido pelo frontend na Task 7.
+  (signature changes — consumed by `main.go`, Task 5, and by this file's tests);
+  `Lesson.VideoMissing bool` (json: `videoMissing`) — consumed by the frontend in Task 7.
 
-- [ ] **Step 1: Preparar `services/library_test.go`**
+- [ ] **Step 1: Prepare `services/library_test.go`**
 
-Primeiro, renomear as 10 ocorrências existentes de `NewLibraryService(conn)` (que vão quebrar
-assim que a assinatura mudar no Step 3) pro novo formato:
+First, rename the 10 existing occurrences of `NewLibraryService(conn)` (which will break as
+soon as the signature changes in Step 3) to the new form:
 
 Run: `sed -i 's/NewLibraryService(conn)/NewLibraryService(conn, testStorageRoot(t))/g' services/library_test.go`
 
-Depois, adicionar o helper `testStorageRoot` e três testes novos ao final do arquivo:
+Then, add the `testStorageRoot` helper and three new tests at the end of the file:
 
 ```go
-// testStorageRoot retorna um resolver de storage_root fixo, apontando pra
-// um diretório temporário vazio — usado pelos testes que não têm relação
-// com a checagem de vídeo ausente (essa tem testes próprios abaixo).
+// testStorageRoot returns a fixed storage_root resolver, pointing to an
+// empty temporary directory — used by tests unrelated to the missing-video
+// check (that one has its own tests below).
 func testStorageRoot(t *testing.T) func() (string, error) {
 	t.Helper()
 	dir := t.TempDir()
@@ -705,7 +707,7 @@ func TestLibraryService_ListLessons_VideoMissingWhenFileNotFound(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
 
-	root := t.TempDir() // vazio — o arquivo "aula.mp4" não existe aqui
+	root := t.TempDir() // empty — the "aula.mp4" file doesn't exist here
 	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
 	lessons, err := svc.ListLessons(LessonFilter{})
 	if err != nil {
@@ -763,7 +765,7 @@ func TestLibraryService_GetLesson_VideoMissingWhenFileNotFound(t *testing.T) {
 }
 ```
 
-Atualizar o `import` de `services/library_test.go` pra incluir `"os"`:
+Update the `import` of `services/library_test.go` to include `"os"`:
 
 ```go
 import (
@@ -776,15 +778,15 @@ import (
 )
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham (compilação)**
+- [ ] **Step 2: Run the tests and confirm they fail (compilation)**
 
 Run: `go test ./services/... -run TestLibraryService -v`
-Expected: FAIL — `not enough arguments in call to NewLibraryService` (assinatura ainda com 1
-parâmetro) e `lessons[0].VideoMissing undefined`.
+Expected: FAIL — `not enough arguments in call to NewLibraryService` (signature still has 1
+parameter) and `lessons[0].VideoMissing undefined`.
 
-- [ ] **Step 3: Atualizar `services/library.go`**
+- [ ] **Step 3: Update `services/library.go`**
 
-Conteúdo final do arquivo:
+Final file contents:
 
 ```go
 package services
@@ -798,11 +800,11 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// LibraryService expõe as aulas já confirmadas para a Biblioteca —
-// listagem com status derivado dos jobs e duração (História 5), filtro por
-// tutor/período, reprocessamento de aulas com erro, busca de uma aula pro
-// Detalhe e sua transcrição sincronizada (História 6), e checagem de
-// presença do arquivo de vídeo na storage_root atual (História 8).
+// LibraryService exposes already-confirmed lessons to the Library —
+// listing with status derived from jobs and duration (Story 5), filter by
+// tutor/period, reprocessing of lessons with errors, fetching a lesson for
+// the Detail view and its synced transcript (Story 6), and checking
+// whether the video file is present in the current storage_root (Story 8).
 type LibraryService struct {
 	conn        *sql.DB
 	storageRoot func() (string, error)
@@ -812,16 +814,16 @@ func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *Librar
 	return &LibraryService{conn: conn, storageRoot: storageRoot}
 }
 
-// Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
-// sempre um de "processando", "pronta", "erro" (ver db.LessonWithStatus);
-// ErrorMessage só é preenchido quando Status == "erro". DurationSeconds é
-// nil até o probe de duração (melhor esforço, na confirmação da
-// importação) ter sucesso. StudentSpeakerLabel é nil até o usuário marcar
-// quem é o aluno no toggle do Detalhe (História 6). VideoMissing é
-// recalculado a cada leitura (nunca gravado no banco) — true quando o
-// arquivo de video_path não é encontrado na storage_root atual (História 8:
-// pasta trocada sem o vídeo reaparecer, ou arquivo apagado/movido por fora
-// do app).
+// Lesson is a confirmed lesson, in the format exposed to the frontend.
+// Status is always one of "processando", "pronta", "erro" (see
+// db.LessonWithStatus); ErrorMessage is only filled when Status == "erro".
+// DurationSeconds is nil until the duration probe (best effort, at import
+// confirmation) succeeds. StudentSpeakerLabel is nil until the user marks
+// who the student is in the Detail view's toggle (Story 6). VideoMissing
+// is recalculated on every read (never stored in the database) — true when
+// the video_path file isn't found in the current storage_root (Story 8:
+// folder changed without the video reappearing, or file deleted/moved
+// outside the app).
 type Lesson struct {
 	ID                  int64   `json:"id"`
 	LessonDate          string  `json:"lessonDate"`
@@ -834,23 +836,23 @@ type Lesson struct {
 	VideoMissing        bool    `json:"videoMissing"`
 }
 
-// LessonFilter filtra ListLessons — campos vazios são ignorados (sem
-// filtro naquele critério).
+// LessonFilter filters ListLessons — empty fields are ignored (no filter
+// on that criterion).
 type LessonFilter struct {
 	Tutor    string `json:"tutor"`
 	DateFrom string `json:"dateFrom"`
 	DateTo   string `json:"dateTo"`
 }
 
-// Transcript é a transcrição de uma lesson, no formato exposto ao Detalhe
-// (História 6).
+// Transcript is a lesson's transcript, in the format exposed to the Detail
+// view (Story 6).
 type Transcript struct {
 	Utterances []Utterance `json:"utterances"`
 }
 
-// Utterance é uma fala da transcrição. Timestamps em segundos — mesma
-// unidade de HTMLVideoElement.currentTime no frontend, convertida aqui na
-// borda do serviço (o banco guarda time.Duration).
+// Utterance is one line of the transcript. Timestamps in seconds — same
+// unit as HTMLVideoElement.currentTime in the frontend, converted here at
+// the service boundary (the database stores time.Duration).
 type Utterance struct {
 	Speaker      string  `json:"speaker"`
 	Text         string  `json:"text"`
@@ -858,8 +860,8 @@ type Utterance struct {
 	EndSeconds   float64 `json:"endSeconds"`
 }
 
-// ListLessons lista as aulas confirmadas com status/duração, mais recentes
-// primeiro, aplicando filter.
+// ListLessons lists confirmed lessons with status/duration, most recent
+// first, applying filter.
 func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	rows, err := db.ListLessonsWithStatus(s.conn, db.LessonFilter{
 		Tutor:    filter.Tutor,
@@ -886,25 +888,26 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	return out, nil
 }
 
-// ListTutors lista os tutores distintos já registrados, pro dropdown de
-// filtro da Biblioteca.
+// ListTutors lists the distinct tutors already registered, for the
+// Library's filter dropdown.
 func (s *LibraryService) ListTutors() ([]string, error) {
 	return db.ListTutors(s.conn)
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — o worker de
-// jobs (internal/jobs) retoma o pipeline sozinho no próximo poll (~5s), sem
-// precisar acordá-lo explicitamente (mesma decisão da História 4). Não é
-// erro se a lesson não tiver nenhum job em erro no momento.
+// RetryLesson resets the lesson's errored jobs to "pending" — the jobs
+// worker (internal/jobs) resumes the pipeline on its own on the next poll
+// (~5s), without needing to be explicitly woken (same decision as
+// Story 4). It's not an error if the lesson currently has no job in
+// error.
 func (s *LibraryService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err
 }
 
-// GetLesson busca uma aula por id, com status/erro derivados dos jobs, pro
-// Detalhe (História 6) — que agora abre em qualquer status: "processando"
-// e "erro" mostram o vídeo sem transcrição (ver LessonDetail.svelte),
-// "pronta" habilita GetTranscript.
+// GetLesson looks up a lesson by id, with status/error derived from the
+// jobs, for the Detail view (Story 6) — which now opens for any status:
+// "processando" and "erro" show the video without a transcript (see
+// LessonDetail.svelte), "pronta" enables GetTranscript.
 func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	lws, err := db.FindLessonWithStatusByID(s.conn, id)
 	if err != nil {
@@ -926,10 +929,11 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	}, nil
 }
 
-// GetTranscript busca a transcrição de uma lesson pro Detalhe (História 6).
-// Só deve ser chamado quando GetLesson já retornou Status == "pronta" — o
-// Detalhe não chama isso pra aulas processando/erro, que mostram o status
-// no lugar do painel de transcrição.
+// GetTranscript looks up a lesson's transcript for the Detail view
+// (Story 6). Should only be called once GetLesson has already returned
+// Status == "pronta" — the Detail view doesn't call this for lessons that
+// are processing/errored, which show the status instead of the transcript
+// panel.
 func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	t, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
@@ -950,17 +954,17 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	return out, nil
 }
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — toggle do Detalhe (História 6).
+// SetStudentSpeaker stores which raw speaker (e.g. "speaker_0") is the
+// student in this lesson — the Detail view's toggle (Story 6).
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
 }
 
-// videoMissing indica se o arquivo de vídeo de uma lesson não é encontrado
-// na storage_root atual. Qualquer erro de os.Stat (não só "não existe") é
-// tratado como ausente — resiliência: nunca deixa a Biblioteca quebrar por
-// causa disso, e não vale a pena diferenciar "ausente" de "sem permissão"
-// nesta fatia (História 8).
+// videoMissing reports whether a lesson's video file isn't found in the
+// current storage_root. Any os.Stat error (not just "doesn't exist") is
+// treated as missing — resilience: never lets the Library break because of
+// this, and it's not worth distinguishing "missing" from "no permission"
+// in this slice (Story 8).
 func (s *LibraryService) videoMissing(videoPath string) bool {
 	root, err := s.storageRoot()
 	if err != nil {
@@ -971,14 +975,14 @@ func (s *LibraryService) videoMissing(videoPath string) bool {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes de novo**
+- [ ] **Step 4: Run the tests again**
 
 Run: `go test ./services/... -run TestLibraryService -v`
-Expected: PASS em todos.
+Expected: PASS on all.
 
-- [ ] **Step 5: Atualizar a chamada em `main.go`**
+- [ ] **Step 5: Update the call in `main.go`**
 
-Em `main.go`, a linha:
+In `main.go`, the line:
 
 ```go
 Services: []application.Service{
@@ -989,7 +993,7 @@ Services: []application.Service{
 },
 ```
 
-vira:
+becomes:
 
 ```go
 Services: []application.Service{
@@ -1000,38 +1004,38 @@ Services: []application.Service{
 },
 ```
 
-(`storageRoot` já existe em `main.go` — é a mesma closure sobre `config.Load()` já passada pro
-worker e pro `VideoAssetMiddleware`.)
+(`storageRoot` already exists in `main.go` — it's the same closure over `config.Load()` already
+passed to the worker and to `VideoAssetMiddleware`.)
 
-- [ ] **Step 6: Build completo + `go vet` + suíte completa**
+- [ ] **Step 6: Full build + `go vet` + full suite**
 
 Run: `go build ./... && go vet ./... && go test ./...`
-Expected: build sem erro; vet sem saída; todos os pacotes PASS.
+Expected: build with no error; vet with no output; all packages PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add services/library.go services/library_test.go main.go
-git commit -m "feat: LibraryService sinaliza video ausente na storage_root atual"
+git commit -m "feat: LibraryService flags missing video in the current storage_root"
 ```
 
 ---
 
-### Task 5: Registrar `SettingsService` em `main.go` e gerar bindings
+### Task 5: Register `SettingsService` in `main.go` and generate bindings
 
 **Files:**
 - Modify: `main.go`
 
 **Interfaces:**
 - Consumes: `services.NewSettingsService(conn *sql.DB, storageRoot func() (string, error)) *SettingsService` (Tasks 2-3).
-- Produces: `frontend/bindings/assistente-idiomas/services/settingsservice.ts` (gerado, não
-  commitado) — consumido pelo frontend nas Tasks 6-7. `models.ts` ganha `ScanSummary` (se ainda
-  não presente) e `Lesson` ganha o campo `videoMissing`.
+- Produces: `frontend/bindings/assistente-idiomas/services/settingsservice.ts` (generated, not
+  committed) — consumed by the frontend in Tasks 6-7. `models.ts` gains `ScanSummary` (if not
+  already present) and `Lesson` gains the `videoMissing` field.
 
-- [ ] **Step 1: Registrar o serviço em `main.go`**
+- [ ] **Step 1: Register the service in `main.go`**
 
-Na lista `Services` de `application.New`, adicionar `SettingsService` (usa o mesmo `storageRoot`
-já resolvido em `main.go`):
+In the `Services` list of `application.New`, add `SettingsService` (using the same `storageRoot`
+already resolved in `main.go`):
 
 ```go
 Services: []application.Service{
@@ -1046,32 +1050,32 @@ Services: []application.Service{
 - [ ] **Step 2: Build**
 
 Run: `go build ./...`
-Expected: sem erro.
+Expected: no error.
 
-- [ ] **Step 3: Gerar as bindings do frontend**
+- [ ] **Step 3: Generate the frontend bindings**
 
 Run: `wails3 generate bindings -ts -i ./...`
-Expected: sem erro; `frontend/bindings/assistente-idiomas/services/settingsservice.ts` passa a
-existir, exportando `GetStorageRoot`, `ChooseStorageFolder`, `ChangeStorageFolder`,
+Expected: no error; `frontend/bindings/assistente-idiomas/services/settingsservice.ts` now
+exists, exporting `GetStorageRoot`, `ChooseStorageFolder`, `ChangeStorageFolder`,
 `HasSTTCredential`, `SaveSTTAPIKey`; `frontend/bindings/assistente-idiomas/services/models.ts`
-passa a ter `Lesson.videoMissing: boolean`.
+now has `Lesson.videoMissing: boolean`.
 
-- [ ] **Step 4: Confirmar que o frontend ainda tipa limpo com as bindings novas**
+- [ ] **Step 4: Confirm the frontend still type-checks cleanly with the new bindings**
 
 Run: `cd frontend && pnpm run check`
-Expected: sem erros de tipo (nenhum consumidor usa os campos/serviços novos ainda — só confirma
-que a geração não quebrou nada existente).
+Expected: no type errors (no consumer uses the new fields/services yet — this just confirms the
+generation didn't break anything existing).
 
-- [ ] **Step 5: Commit** (só `main.go` — `frontend/bindings` é gitignored)
+- [ ] **Step 5: Commit** (only `main.go` — `frontend/bindings` is gitignored)
 
 ```bash
 git add main.go
-git commit -m "feat: registra SettingsService no app Wails"
+git commit -m "feat: register SettingsService in the Wails app"
 ```
 
 ---
 
-### Task 6: Frontend — rota e tela de Configurações
+### Task 6: Frontend — Settings route and screen
 
 **Files:**
 - Modify: `frontend/src/lib/Header.svelte`
@@ -1081,12 +1085,12 @@ git commit -m "feat: registra SettingsService no app Wails"
 **Interfaces:**
 - Consumes: `frontend/bindings/assistente-idiomas/services/settingsservice` (Task 5):
   `GetStorageRoot()`, `ChooseStorageFolder()`, `ChangeStorageFolder(newRoot: string)`,
-  `HasSTTCredential()`, `SaveSTTAPIKey(apiKey: string)`; `$models.ScanSummary` (campos `new`,
+  `HasSTTCredential()`, `SaveSTTAPIKey(apiKey: string)`; `$models.ScanSummary` (fields `new`,
   `updated`, `skipped`, `errors`).
-- Produces: prop `onOpenSettings: () => void` em `Header.svelte`; variante `{ screen: "settings" }`
-  no `Route` de `App.svelte`.
+- Produces: `onOpenSettings: () => void` prop on `Header.svelte`; `{ screen: "settings" }` variant
+  on `App.svelte`'s `Route`.
 
-- [ ] **Step 1: Atualizar `frontend/src/lib/Header.svelte`**
+- [ ] **Step 1: Update `frontend/src/lib/Header.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -1126,7 +1130,7 @@ git commit -m "feat: registra SettingsService no app Wails"
 </style>
 ```
 
-- [ ] **Step 2: Criar `frontend/src/lib/screens/Settings.svelte`**
+- [ ] **Step 2: Create `frontend/src/lib/screens/Settings.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -1333,7 +1337,7 @@ git commit -m "feat: registra SettingsService no app Wails"
 </style>
 ```
 
-- [ ] **Step 3: Atualizar `frontend/src/App.svelte`**
+- [ ] **Step 3: Update `frontend/src/App.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -1428,37 +1432,37 @@ git commit -m "feat: registra SettingsService no app Wails"
 </style>
 ```
 
-- [ ] **Step 4: Checagem de tipos**
+- [ ] **Step 4: Type check**
 
 Run: `cd frontend && pnpm run check`
-Expected: sem erros.
+Expected: no errors.
 
 - [ ] **Step 5: Build**
 
 Run: `cd frontend && pnpm run build`
-Expected: build sem erro.
+Expected: build with no error.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add frontend/src/lib/Header.svelte frontend/src/App.svelte frontend/src/lib/screens/Settings.svelte
-git commit -m "feat: adiciona tela de Configuracoes (armazenamento e credencial)"
+git commit -m "feat: add Settings screen (storage and credential)"
 ```
 
 ---
 
-### Task 7: Frontend — indicador de "vídeo ausente"
+### Task 7: Frontend — "missing video" indicator
 
 **Files:**
 - Modify: `frontend/src/lib/screens/Library.svelte`
 - Modify: `frontend/src/lib/screens/LessonDetail.svelte`
 
 **Interfaces:**
-- Consumes: `Lesson.videoMissing: boolean` (bindings geradas na Task 5).
+- Consumes: `Lesson.videoMissing: boolean` (bindings generated in Task 5).
 
-- [ ] **Step 1: Atualizar o item de lesson em `frontend/src/lib/screens/Library.svelte`**
+- [ ] **Step 1: Update the lesson item in `frontend/src/lib/screens/Library.svelte`**
 
-Localizar o bloco (dentro do `{#each lessons as lesson (lesson.id)}`):
+Locate the block (inside `{#each lessons as lesson (lesson.id)}`):
 
 ```svelte
               {#if lesson.status === "erro"}
@@ -1483,7 +1487,7 @@ Localizar o bloco (dentro do `{#each lessons as lesson (lesson.id)}`):
               {/if}
 ```
 
-Substituir por (mesmo bloco, com o badge de vídeo ausente adicionado ao lado, independente do
+Replace with (same block, with the missing-video badge added alongside it, independent of
 `status`):
 
 ```svelte
@@ -1514,9 +1518,9 @@ Substituir por (mesmo bloco, com o badge de vídeo ausente adicionado ao lado, i
               {/if}
 ```
 
-- [ ] **Step 2: Atualizar o cabeçalho da aula em `frontend/src/lib/screens/LessonDetail.svelte`**
+- [ ] **Step 2: Update the lesson header in `frontend/src/lib/screens/LessonDetail.svelte`**
 
-Localizar:
+Locate:
 
 ```svelte
     <div class="header-row">
@@ -1527,7 +1531,7 @@ Localizar:
     </div>
 ```
 
-Substituir por:
+Replace with:
 
 ```svelte
     <div class="header-row">
@@ -1546,7 +1550,7 @@ Substituir por:
     </div>
 ```
 
-Adicionar ao bloco `<style>` (perto de `.meta`):
+Add to the `<style>` block (near `.meta`):
 
 ```css
   .video-missing-badge {
@@ -1556,31 +1560,31 @@ Adicionar ao bloco `<style>` (perto de `.meta`):
   }
 ```
 
-- [ ] **Step 3: Checagem de tipos**
+- [ ] **Step 3: Type check**
 
 Run: `cd frontend && pnpm run check`
-Expected: sem erros.
+Expected: no errors.
 
 - [ ] **Step 4: Build**
 
 Run: `cd frontend && pnpm run build`
-Expected: build sem erro.
+Expected: build with no error.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/lib/screens/Library.svelte frontend/src/lib/screens/LessonDetail.svelte
-git commit -m "feat: sinaliza video ausente na Biblioteca e no Detalhe"
+git commit -m "feat: flag missing video in the Library and Detail views"
 ```
 
 ---
 
-## Verificação manual (fora do escopo automatizável, registrar como pendência)
+## Manual verification (outside the scope of automated tests, log as pending)
 
-Mesmo padrão das histórias anteriores — pendente em janela real (Windows/Linux):
-1. `wails3 dev`; abrir Configurações pelo ícone do Header.
-2. Trocar a pasta de armazenamento de verdade movendo um vídeo com nome diferente pra ela e
-   confirmar que a Biblioteca reflete o `video_path` novo (sem "vídeo ausente" nessa aula).
-3. Apagar um vídeo do disco e confirmar que a Biblioteca e o Detalhe mostram "vídeo ausente" sem
-   quebrar a tela ou impedir a navegação.
-4. Recadastrar a credencial e confirmar que o status muda pra "Credencial configurada".
+Same pattern as previous stories — pending on a real window (Windows/Linux):
+1. `wails3 dev`; open Settings via the Header icon.
+2. Actually change the storage folder by moving a video under a different name into it and
+   confirm the Library reflects the new `video_path` (no "missing video" on that lesson).
+3. Delete a video from disk and confirm the Library and the Detail view show "missing video"
+   without breaking the screen or preventing navigation.
+4. Re-register the credential and confirm the status changes to "Credential configured".

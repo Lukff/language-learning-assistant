@@ -1,4 +1,4 @@
-# História 2 — Banco local e configuração da máquina: Implementation Plan
+# Story 2 — Local Database and Machine Configuration: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -57,7 +57,7 @@ is the exact code that was verified, not a sketch.
   against GTK4.)
 - `go.mod`'s `go` directive may auto-bump (e.g. `1.25.0` → `1.25.7`) when running `go get`/`go mod
   tidy` below, matching whatever toolchain is available — expected, not an error (same behavior
-  documented in the História 1 plan).
+  documented in the Story 1 plan).
 - Every task's Go changes must leave `go vet ./...` and `gofmt -l .` (no output) clean.
 - Implementers **stage** (`git add`) their changes at the end of each task but do **not**
   commit — the user controls commit timing (established project convention, `docs/superpowers/plans/2026-07-20-historia-1-esqueleto.md`).
@@ -215,8 +215,8 @@ Expected: `FAIL` — `Open` is undefined (only the test file exists so far).
 - [ ] **Step 4: Write `internal/db/db.go`**
 
 ```go
-// Package db abre o banco SQLite local do app e aplica as migrations goose
-// embutidas no binário. Não importa nada do Wails (camada fina).
+// Package db opens the app's local SQLite database and applies the goose
+// migrations embedded in the binary. Imports nothing from Wails (thin layer).
 package db
 
 import (
@@ -233,9 +233,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Open abre (criando se necessário) o banco SQLite em path, ativa WAL e
-// aplica as migrations pendentes. O diretório pai de path é criado se não
-// existir.
+// Open opens (creating if necessary) the SQLite database at path, enables
+// WAL, and applies pending migrations. path's parent directory is created if
+// it doesn't exist.
 func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("criar diretório do banco: %w", err)
@@ -421,9 +421,10 @@ Expected: `FAIL` — build error, nothing defined yet (`appDirName`, `AppDataDir
 - [ ] **Step 3: Write `internal/config/paths.go`**
 
 ```go
-// Package config resolve os paths de dados do app na máquina local, lê/grava
-// a configuração (config.json) e guarda/lê a credencial do provedor de STT
-// via keyring do SO. Não importa nada do Wails (camada fina).
+// Package config resolves the app's data paths on the local machine,
+// reads/writes the configuration (config.json), and stores/reads the STT
+// provider's credential via the OS keyring. Imports nothing from Wails
+// (thin layer).
 package config
 
 import (
@@ -434,9 +435,9 @@ import (
 
 const appDirName = "assistente-idiomas"
 
-// AppDataDir resolve (criando se necessário) o diretório de dados do app no
-// diretório de configuração do SO: %AppData%\assistente-idiomas no Windows,
-// ~/.config/assistente-idiomas no Linux (respeita XDG_CONFIG_HOME).
+// AppDataDir resolves (creating if necessary) the app's data directory
+// inside the OS's configuration directory: %AppData%\assistente-idiomas on
+// Windows, ~/.config/assistente-idiomas on Linux (respects XDG_CONFIG_HOME).
 func AppDataDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -449,8 +450,8 @@ func AppDataDir() (string, error) {
 	return dir, nil
 }
 
-// DBPath resolve o caminho do arquivo do banco SQLite dentro do
-// AppDataDir. O diretório pai é criado por db.Open, não aqui.
+// DBPath resolves the path of the SQLite database file inside
+// AppDataDir. The parent directory is created by db.Open, not here.
 func DBPath() (string, error) {
 	dir, err := AppDataDir()
 	if err != nil {
@@ -479,16 +480,16 @@ import (
 	"os"
 )
 
-// AppConfig é a configuração local da máquina, persistida em config.json no
-// AppDataDir. StorageRoot é um path absoluto (específico da máquina) para a
-// pasta sincronizada onde as aulas importadas são guardadas.
+// AppConfig is the local machine configuration, persisted to config.json in
+// AppDataDir. StorageRoot is an absolute (machine-specific) path to the
+// synced folder where imported lessons are kept.
 type AppConfig struct {
 	StorageRoot string `json:"storage_root"`
 }
 
-// Load lê a config.json do AppDataDir. Se o arquivo não existir, o erro
-// retornado satisfaz errors.Is(err, os.ErrNotExist) — é assim que os
-// chamadores detectam "primeira execução".
+// Load reads config.json from AppDataDir. If the file doesn't exist, the
+// returned error satisfies errors.Is(err, os.ErrNotExist) — this is how
+// callers detect "first run".
 func Load() (*AppConfig, error) {
 	path, err := configPath()
 	if err != nil {
@@ -505,7 +506,7 @@ func Load() (*AppConfig, error) {
 	return &cfg, nil
 }
 
-// Save grava cfg em config.json no AppDataDir, sobrescrevendo o que houver.
+// Save writes cfg to config.json in AppDataDir, overwriting whatever is there.
 func Save(cfg *AppConfig) error {
 	path, err := configPath()
 	if err != nil {
@@ -638,10 +639,10 @@ const (
 	keyringUserElevenLabs = "elevenlabs"
 )
 
-// SaveSTTAPIKey grava a API key da ElevenLabs no gerenciador de credenciais
-// nativo do SO, via go-keyring. Nunca em texto plano. Se o Secret Service
-// (Linux) ou equivalente não estiver disponível, retorna erro — sem
-// fallback para variável de ambiente ou arquivo.
+// SaveSTTAPIKey writes the ElevenLabs API key to the OS's native
+// credential manager, via go-keyring. Never in plaintext. If the Secret
+// Service (Linux) or equivalent isn't available, returns an error — with no
+// fallback to an environment variable or file.
 func SaveSTTAPIKey(apiKey string) error {
 	if err := keyring.Set(keyringService, keyringUserElevenLabs, apiKey); err != nil {
 		return fmt.Errorf("gravar credencial no gerenciador do sistema: %w", err)
@@ -649,7 +650,7 @@ func SaveSTTAPIKey(apiKey string) error {
 	return nil
 }
 
-// GetSTTAPIKey lê a API key da ElevenLabs previamente salva via
+// GetSTTAPIKey reads the ElevenLabs API key previously saved via
 // SaveSTTAPIKey.
 func GetSTTAPIKey() (string, error) {
 	apiKey, err := keyring.Get(keyringService, keyringUserElevenLabs)
@@ -784,9 +785,9 @@ Expected: `FAIL` — `isDirWritable` undefined (package doesn't exist yet).
 - [ ] **Step 3: Write `services/setup.go`**
 
 ```go
-// Package services contém os serviços expostos ao frontend via bindings do
-// Wails v3 — a casca que liga internal/config e internal/db à UI. Diferente
-// de internal/, este pacote importa Wails de propósito.
+// Package services contains the services exposed to the frontend via Wails
+// v3 bindings — the shell that connects internal/config and internal/db to
+// the UI. Unlike internal/, this package deliberately imports Wails.
 package services
 
 import (
@@ -798,27 +799,27 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// SetupService cobre o wizard de primeira execução: escolher a pasta de
-// armazenamento e cadastrar a API key da ElevenLabs.
+// SetupService covers the first-run wizard: choosing the storage folder
+// and registering the ElevenLabs API key.
 type SetupService struct{}
 
 func NewSetupService() *SetupService {
 	return &SetupService{}
 }
 
-// IsFirstRun indica se o app ainda não tem config.json gravado (nenhuma
-// configuração completa até agora). Qualquer erro ao carregar a config
-// (arquivo ausente, corrompido, sem permissão) é tratado como "ainda não
-// configurado" — o pior caso é o usuário refazer o wizard, não perda de
-// dados: CompleteSetup apenas sobrescreve config.json e a credencial.
+// IsFirstRun reports whether the app doesn't have config.json written yet
+// (no complete configuration so far). Any error loading the config (missing
+// file, corrupted, no permission) is treated as "not configured yet" — the
+// worst case is the user redoing the wizard, not data loss: CompleteSetup
+// simply overwrites config.json and the credential.
 func (s *SetupService) IsFirstRun() bool {
 	_, err := config.Load()
 	return err != nil
 }
 
-// ChooseStorageFolder abre o dialog nativo de escolha de pasta e valida que
-// ela é gravável. Retorna path vazio (sem erro) se o usuário cancelar o
-// dialog.
+// ChooseStorageFolder opens the native folder-choice dialog and validates
+// that it's writable. Returns an empty path (with no error) if the user
+// cancels the dialog.
 func (s *SetupService) ChooseStorageFolder() (string, error) {
 	dir, err := application.Get().Dialog.OpenFile().
 		SetTitle("Escolha a pasta onde as aulas ficarão guardadas").
@@ -838,9 +839,10 @@ func (s *SetupService) ChooseStorageFolder() (string, error) {
 	return dir, nil
 }
 
-// CompleteSetup grava a credencial da ElevenLabs (keyring) e, só se isso
-// funcionar, grava storageRoot em config.json. Nessa ordem: se a credencial
-// falhar, config.json não é tocado e o app continua detectando first-run.
+// CompleteSetup writes the ElevenLabs credential (keyring) and, only if that
+// succeeds, writes storageRoot to config.json. In that order: if the
+// credential fails, config.json isn't touched and the app keeps detecting
+// first-run.
 func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 	if err := config.SaveSTTAPIKey(apiKey); err != nil {
 		return err
@@ -851,8 +853,8 @@ func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 	return nil
 }
 
-// isDirWritable confirma que dir aceita escrita, criando e removendo um
-// arquivo temporário nele.
+// isDirWritable confirms that dir accepts writes, by creating and removing
+// a temporary file in it.
 func isDirWritable(dir string) error {
 	f, err := os.CreateTemp(dir, ".assistente-idiomas-write-test-*")
 	if err != nil {
@@ -911,7 +913,7 @@ git status
 
 - [ ] **Step 1: Replace `main.go`**
 
-Current content (from História 1):
+Current content (from Story 1):
 
 ```go
 package main
@@ -1192,7 +1194,7 @@ needs to compile `services/setup.go` too).
 
 - [ ] **Step 3: Modify `frontend/src/App.svelte`**
 
-Current content (from História 1):
+Current content (from Story 1):
 
 ```svelte
 <script lang="ts">
@@ -1389,29 +1391,29 @@ On a machine **without** a `config.json` yet (or with `%AppData%\assistente-idio
 "Onde ficam suas aulas?" with a "Escolher pasta" button. Pick a real folder (ideally inside your
 Google Drive sync folder), confirm it advances to the API key step showing the chosen path, enter
 a real (or throwaway) ElevenLabs API key, click "Concluir". The app should then show the normal
-sidebar shell (Biblioteca/Progresso/Fila) from História 1. Close and reopen the app (`wails3 dev`
+sidebar shell (Library/Progress/Queue) from Story 1. Close and reopen the app (`wails3 dev`
 again): the wizard should **not** reappear — confirms `IsFirstRun()` now returns false.
 
 Repeat this on both the Windows and the Linux machine — this is exactly risk 3 from
-`docs/fase-1-mvp.md` ("Keyring no Linux"): if the Linux machine's Secret Service isn't running,
+`docs/fase-1-mvp.md` ("Keyring on Linux"): if the Linux machine's Secret Service isn't running,
 `CompleteSetup` should show a clear error message on the credentials step (not crash, not silently
 swallow it), and the wizard should stay on that step — the already-chosen folder path stays filled
 in (it's still held in the Svelte component's local state), so the user only has to retry entering
 the API key after fixing the environment, not re-pick the folder too. `config.json` itself isn't
 written until `CompleteSetup` fully succeeds — that's the already-reviewed trade-off from the
-design doc's Fluxo de first-run section, not a bug.
+design doc's first-run flow section, not a bug.
 
 This step needs a real display and real credentials, so it's manual — not scriptable in this
 environment.
 
 - [ ] **Step 5: Update `docs/fase-1-mvp.md`**
 
-Check all four boxes under `## História 2` from `- [ ]` to `- [x]`.
+Check all four boxes under `## Story 2` from `- [ ]` to `- [x]`.
 
-In the `## Registro de progresso` table, add a row (keep the existing História 1 row above it):
+In the `## Progress log` table, add a row (keep the existing Story 1 row above it):
 
 ```
-| 21/07/2026 | História 2 implementada: banco SQLite (schema v1: lessons/transcripts/jobs/prompts, migrations goose), config local (config.json) e credencial ElevenLabs via keyring, tudo no wizard de primeira execução | No Linux, `go build`/`go vet`/`go test` de qualquer pacote que importe Wails exige `CGO_ENABLED=1` + `libgtk-4-dev libwebkitgtk-6.0-dev` instalados (gtk4/webkitgtk-6.0, não gtk3) — vale documentar/instalar isso cedo em máquina Linux nova |
+| 21/07/2026 | Story 2 implemented: SQLite database (schema v1: lessons/transcripts/jobs/prompts, goose migrations), local config (config.json), and ElevenLabs credential via keyring, all in the first-run wizard | On Linux, `go build`/`go vet`/`go test` for any package importing Wails requires `CGO_ENABLED=1` + `libgtk-4-dev libwebkitgtk-6.0-dev` installed (gtk4/webkitgtk-6.0, not gtk3) — worth documenting/installing this early on a new Linux machine |
 ```
 
 - [ ] **Step 6: Stage (do not commit — user controls commit timing)**
@@ -1428,7 +1430,7 @@ story. Do not run `git commit`.
 
 ## Self-Review Notes
 
-- **Spec coverage:** all four `docs/fase-1-mvp.md` História 2 acceptance criteria map to tasks —
+- **Spec coverage:** all four `docs/fase-1-mvp.md` Story 2 acceptance criteria map to tasks —
   SQLite/WAL outside the synced folder → Task 1 + Task 2's `AppDataDir`/`DBPath`; goose migrations
   with the 4-table schema v1 → Task 1; config local with first-run visual flow → Tasks 2, 4, 6, 7;
   keyring credential, never plaintext, tested Windows+Linux → Task 3 (unit) + Task 7 Step 4
@@ -1455,7 +1457,7 @@ story. Do not run `git commit`.
   `package main` service has an ambiguous/edge-case binding output path in the Wails v3 generator,
   so `SetupService` was placed in a new top-level `services/` package instead — verified via the
   real generator to produce a clean, predictable `frontend/bindings/assistente-idiomas/services/`
-  output. This also gives future stories (Histórias 3/4/7's import/jobs/queue services) an obvious,
+  output. This also gives future stories (Stories 3/4/7's import/jobs/queue services) an obvious,
   already-precedented home.
 - **Environment discovery, not a design change:** building/vetting/testing any package that
   imports Wails on Linux requires `CGO_ENABLED=1` plus GTK4/WebKitGTK-6 dev headers

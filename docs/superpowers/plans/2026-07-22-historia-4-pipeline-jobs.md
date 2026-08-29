@@ -1,40 +1,41 @@
-# História 4 — Pipeline em Background (Fila de Jobs) Implementation Plan
+# Story 4 — Background Pipeline (Job Queue) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extração de áudio e transcrição rodam sozinhas em background depois que uma aula é
-confirmada (História 3), via um worker único processando uma fila em tabela, sem bloquear o app.
+**Goal:** Audio extraction and transcription run on their own in the background once a lesson is
+confirmed (Story 3), via a single worker processing a table-backed queue, without blocking the
+app.
 
-**Architecture:** Novo pacote `internal/jobs` (Go puro, sem Wails) com um `Worker` que seleciona
-o próximo job elegível (respeitando precedência `extract_audio → transcribe` e backoff de
-retry), executa via `media.ExtractAudio`/`stt.Provider` injetados, e notifica transições via uma
-interface `Notifier` — implementada em `services/` (que já importa Wails) emitindo eventos.
-`storage_root` e o provedor de STT são resolvidos a cada job (não na criação do Worker), porque
-o wizard de primeira execução só grava essa configuração depois que o app já iniciou.
+**Architecture:** New `internal/jobs` package (pure Go, no Wails) with a `Worker` that selects the
+next eligible job (respecting `extract_audio → transcribe` precedence and retry backoff), runs it
+via injected `media.ExtractAudio`/`stt.Provider`, and reports transitions through a `Notifier`
+interface — implemented in `services/` (which already imports Wails) by emitting events.
+`storage_root` and the STT provider are resolved on every job (not at Worker construction), because
+the first-run wizard only saves that configuration after the app has already started.
 
 **Tech Stack:** Go stdlib (`database/sql`, `context`, `log/slog`, `encoding/json`, `time`),
-`modernc.org/sqlite` (já em uso via `internal/db`), `internal/media` e `internal/stt` da Fase 0
-(reaproveitados como estão).
+`modernc.org/sqlite` (already in use via `internal/db`), `internal/media` and `internal/stt` from
+Phase 0 (reused as-is).
 
 ## Global Constraints
 
-- `internal/` nunca importa Wails — camada fina (CLAUDE.md, `docs/decisoes-tecnologia.md`).
-- Fila de jobs: tabela `jobs` + worker único, sem lib externa de job queue (decisão vigente em
+- `internal/` never imports Wails — thin layer (CLAUDE.md, `docs/decisoes-tecnologia.md`).
+- Job queue: `jobs` table + single worker, no external job-queue library (decision in effect in
   `docs/decisoes-tecnologia.md`).
-- Idempotência real por artefato (não só por status); retry com `attempts` + backoff simples;
-  jobs presos em `running` voltam a `pending` na abertura do app.
-- Falha de transcrição nunca impede assistir ao vídeo — princípio de resiliência da Fase 1.
-- SQL portável na camada de repositório (nada específico de driver).
-- Paths de vídeo no banco são sempre relativos à `storage_root` — nunca absolutos.
-- Commits em uma linha só, formato `tipo: descrição` (`feat:`, `fix:`, `test:`, ...).
-- `go vet ./...` limpo antes de cada commit. `go build ./...` gera um erro pré-existente e não
-  relacionado no pacote `build/ios` (scaffold do Wails) — para verificar o build do que importa
-  aqui, use `go build ./internal/... ./services/... .` (sem `build/ios`).
-- Sem migração de banco nesta história — o schema de `jobs` já tem todas as colunas necessárias.
+- Real idempotency per artifact (not just by status); retry with `attempts` + simple backoff; jobs
+  stuck in `running` go back to `pending` when the app opens.
+- Transcription failure never prevents watching the video — Phase 1 resilience principle.
+- Portable SQL in the repository layer (nothing driver-specific).
+- Video paths in the database are always relative to `storage_root` — never absolute.
+- Single-line commits, format `type: description` (`feat:`, `fix:`, `test:`, ...).
+- `go vet ./...` clean before every commit. `go build ./...` produces a pre-existing, unrelated
+  error in the `build/ios` package (Wails scaffold) — to verify the build of what matters here,
+  use `go build ./internal/... ./services/... .` (without `build/ios`).
+- No database migration in this story — the `jobs` schema already has all the necessary columns.
 
 ---
 
-### Task 1: `internal/db` — modelo e queries de `Job`
+### Task 1: `internal/db` — `Job` model and queries
 
 **Files:**
 - Create: `internal/db/jobs.go`
@@ -47,9 +48,9 @@ o wizard de primeira execução só grava essa configuração depois que o app j
   `func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts int) (string, int, error)`;
   `func MarkJobBlocked(conn *sql.DB, id int64, reason string) error`;
   `func RequeueRunningJobs(conn *sql.DB) (int64, error)`.
-  Status é sempre uma destas strings: `"pending"`, `"running"`, `"done"`, `"error"`.
+  Status is always one of these strings: `"pending"`, `"running"`, `"done"`, `"error"`.
 
-- [ ] **Step 1: Escrever os testes (vão falhar por falta de implementação)**
+- [ ] **Step 1: Write the tests (they'll fail due to the missing implementation)**
 
 ```go
 // internal/db/jobs_test.go
@@ -278,12 +279,12 @@ func TestRequeueRunningJobs_MovesRunningBackToPendingWithoutIncrementingAttempts
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham (pacote não compila — funções não existem)**
+- [ ] **Step 2: Run the tests and confirm they fail (package doesn't compile — functions don't exist)**
 
 Run: `go test ./internal/db/... -run TestListPendingJobs -v`
-Expected: FAIL — `undefined: ListPendingJobs` (erro de compilação)
+Expected: FAIL — `undefined: ListPendingJobs` (compilation error)
 
-- [ ] **Step 3: Implementar `internal/db/jobs.go`**
+- [ ] **Step 3: Implement `internal/db/jobs.go`**
 
 ```go
 // internal/db/jobs.go
@@ -295,9 +296,10 @@ import (
 	"time"
 )
 
-// Job é uma linha de jobs — ver a fila em tabela + worker único decidida em
-// docs/decisoes-tecnologia.md e a História 4 em docs/fase-1-mvp.md. Status
-// é sempre um de "pending", "running", "done", "error".
+// Job is a row in the jobs table — see the table-backed queue + single
+// worker decision in docs/decisoes-tecnologia.md and Story 4 in
+// docs/fase-1-mvp.md. Status is always one of "pending", "running", "done",
+// "error".
 type Job struct {
 	ID        int64
 	LessonID  int64
@@ -309,9 +311,8 @@ type Job struct {
 	UpdatedAt string
 }
 
-// ListPendingJobs lista os jobs "pending", mais antigos primeiro — é a
-// ordem de FIFO que internal/jobs.Worker usa pra escolher o próximo job a
-// processar.
+// ListPendingJobs lists "pending" jobs, oldest first — this is the FIFO
+// order internal/jobs.Worker uses to pick the next job to process.
 func ListPendingJobs(conn *sql.DB) ([]Job, error) {
 	rows, err := conn.Query(
 		`SELECT id, lesson_id, kind, status, attempts, COALESCE(last_error, ''), created_at, updated_at FROM jobs WHERE status = 'pending' ORDER BY created_at ASC, id ASC`,
@@ -335,9 +336,9 @@ func ListPendingJobs(conn *sql.DB) ([]Job, error) {
 	return out, nil
 }
 
-// FindJob busca o job de kind (ex.: "extract_audio") para lessonID.
-// Retorna (nil, nil) se não houver — usado pelo Worker pra checar a
-// precedência de transcribe sobre extract_audio.
+// FindJob looks up the job of the given kind (e.g. "extract_audio") for
+// lessonID. Returns (nil, nil) if there isn't one — used by the Worker to
+// check the precedence of transcribe over extract_audio.
 func FindJob(conn *sql.DB, lessonID int64, kind string) (*Job, error) {
 	var j Job
 	err := conn.QueryRow(
@@ -353,9 +354,9 @@ func FindJob(conn *sql.DB, lessonID int64, kind string) (*Job, error) {
 	return &j, nil
 }
 
-// MarkJobRunning reivindica um job pending, marcando status="running".
-// Falha se o job não estiver mais pending — não deve acontecer com o
-// worker único da Fase 1, mas evita corrida silenciosa se isso mudar.
+// MarkJobRunning claims a pending job, setting status="running". Fails if
+// the job is no longer pending — shouldn't happen with Phase 1's single
+// worker, but avoids a silent race if that changes.
 func MarkJobRunning(conn *sql.DB, id int64) error {
 	res, err := conn.Exec(
 		`UPDATE jobs SET status = 'running', updated_at = ? WHERE id = ? AND status = 'pending'`,
@@ -374,7 +375,7 @@ func MarkJobRunning(conn *sql.DB, id int64) error {
 	return nil
 }
 
-// MarkJobDone marca um job como concluído com sucesso.
+// MarkJobDone marks a job as successfully completed.
 func MarkJobDone(conn *sql.DB, id int64) error {
 	_, err := conn.Exec(
 		`UPDATE jobs SET status = 'done', last_error = NULL, updated_at = ? WHERE id = ?`,
@@ -386,11 +387,11 @@ func MarkJobDone(conn *sql.DB, id int64) error {
 	return nil
 }
 
-// MarkJobRetryOrError registra a falha de execução de um job: incrementa
-// attempts e grava lastError. Se o novo total de attempts ainda for menor
-// que maxAttempts, o job volta a "pending" (o Worker retenta depois do
-// backoff); senão vira "error" — terminal, só reprocessa manualmente.
-// Retorna o novo status e o novo total de attempts.
+// MarkJobRetryOrError records a job's execution failure: increments
+// attempts and stores lastError. If the new attempts total is still less
+// than maxAttempts, the job goes back to "pending" (the Worker retries
+// after the backoff); otherwise it becomes "error" — terminal, only
+// reprocessed manually. Returns the new status and the new attempts total.
 func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts int) (string, int, error) {
 	var attempts int
 	if err := conn.QueryRow(`SELECT attempts FROM jobs WHERE id = ?`, id).Scan(&attempts); err != nil {
@@ -411,10 +412,10 @@ func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts i
 	return status, attempts, nil
 }
 
-// MarkJobBlocked marca um job como "error" sem executá-lo e sem
-// incrementar attempts — usado quando a dependência dele (ex.:
-// extract_audio de um transcribe) já falhou definitivamente, então rodar o
-// job não faria sentido.
+// MarkJobBlocked marks a job as "error" without running it and without
+// incrementing attempts — used when its dependency (e.g. the extract_audio
+// of a transcribe) has already failed definitively, so running the job
+// wouldn't make sense.
 func MarkJobBlocked(conn *sql.DB, id int64, reason string) error {
 	_, err := conn.Exec(
 		`UPDATE jobs SET status = 'error', last_error = ?, updated_at = ? WHERE id = ?`,
@@ -426,10 +427,10 @@ func MarkJobBlocked(conn *sql.DB, id int64, reason string) error {
 	return nil
 }
 
-// RequeueRunningJobs volta todo job "running" pra "pending" — chamado uma
-// vez na inicialização do Worker pra cobrir crash/kill no meio de um job.
-// attempts não é incrementado: a interrupção não foi uma falha de
-// execução. Retorna quantos jobs foram requeued.
+// RequeueRunningJobs moves every "running" job back to "pending" — called
+// once on Worker startup to cover a crash/kill in the middle of a job.
+// attempts isn't incremented: the interruption wasn't an execution
+// failure. Returns how many jobs were requeued.
 func RequeueRunningJobs(conn *sql.DB) (int64, error) {
 	res, err := conn.Exec(
 		`UPDATE jobs SET status = 'pending', updated_at = ? WHERE status = 'running'`,
@@ -446,26 +447,26 @@ func RequeueRunningJobs(conn *sql.DB) (int64, error) {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos os testes de `jobs_test.go` e nos já existentes de `internal/db`.
+Expected: PASS on all tests in `jobs_test.go` and the existing ones in `internal/db`.
 
-- [ ] **Step 5: `go vet` e commit**
+- [ ] **Step 5: `go vet` and commit**
 
 ```bash
 go vet ./internal/db/...
 git add internal/db/jobs.go internal/db/jobs_test.go
-git commit -m "feat: adiciona modelo e queries de Job para a fila de background"
+git commit -m "feat: add Job model and queries for the background queue"
 ```
 
 ---
 
-### Task 2: `internal/db` — busca de lesson por id e persistência de transcript
+### Task 2: `internal/db` — find lesson by id and persist transcript
 
 **Files:**
-- Modify: `internal/db/lessons.go` (adicionar `FindLessonByID` após `FindLessonByHash`)
-- Modify: `internal/db/lessons_test.go` (adicionar teste)
+- Modify: `internal/db/lessons.go` (add `FindLessonByID` after `FindLessonByHash`)
+- Modify: `internal/db/lessons_test.go` (add test)
 - Create: `internal/db/transcripts.go`
 - Test: `internal/db/transcripts_test.go`
 
@@ -473,11 +474,12 @@ git commit -m "feat: adiciona modelo e queries de Job para a fila de background"
 - Produces: `func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error)`;
   `func HasTranscript(conn *sql.DB, lessonID int64) (bool, error)`;
   `func InsertTranscript(conn *sql.DB, lessonID int64, rawJSONPath string, utterancesJSON string) error`.
-- Consumes: `type Lesson struct` de `internal/db/lessons.go` (já existe, tem `VideoPath` relativo).
+- Consumes: `type Lesson struct` from `internal/db/lessons.go` (already exists, has a relative
+  `VideoPath`).
 
-- [ ] **Step 1: Escrever o teste de `FindLessonByID` (vai falhar por falta de implementação)**
+- [ ] **Step 1: Write the `FindLessonByID` test (will fail due to the missing implementation)**
 
-Adicionar ao final de `internal/db/lessons_test.go`:
+Add at the end of `internal/db/lessons_test.go`:
 
 ```go
 func TestFindLessonByID_FindsExistingAndNilWhenMissing(t *testing.T) {
@@ -514,17 +516,17 @@ func TestFindLessonByID_FindsExistingAndNilWhenMissing(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar e confirmar falha de compilação**
+- [ ] **Step 2: Run and confirm the compilation failure**
 
 Run: `go test ./internal/db/... -run TestFindLessonByID -v`
 Expected: FAIL — `undefined: FindLessonByID`
 
-- [ ] **Step 3: Implementar `FindLessonByID`**
+- [ ] **Step 3: Implement `FindLessonByID`**
 
-Adicionar em `internal/db/lessons.go`, logo após a função `FindLessonByHash`:
+Add to `internal/db/lessons.go`, right after the `FindLessonByHash` function:
 
 ```go
-// FindLessonByID busca a lesson por id. Retorna (nil, nil) se não houver.
+// FindLessonByID looks up the lesson by id. Returns (nil, nil) if there isn't one.
 func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	var l Lesson
 	err := conn.QueryRow(
@@ -541,12 +543,12 @@ func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 }
 ```
 
-- [ ] **Step 4: Rodar e confirmar que passa**
+- [ ] **Step 4: Run and confirm it passes**
 
 Run: `go test ./internal/db/... -run TestFindLessonByID -v`
 Expected: PASS
 
-- [ ] **Step 5: Escrever os testes de transcripts (vão falhar por falta de implementação)**
+- [ ] **Step 5: Write the transcripts tests (will fail due to the missing implementation)**
 
 ```go
 // internal/db/transcripts_test.go
@@ -628,12 +630,12 @@ func TestInsertTranscript_PersistsRawPathAndUtterances(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Rodar e confirmar falha de compilação**
+- [ ] **Step 6: Run and confirm the compilation failure**
 
 Run: `go test ./internal/db/... -run TestHasTranscript -v`
 Expected: FAIL — `undefined: HasTranscript`
 
-- [ ] **Step 7: Implementar `internal/db/transcripts.go`**
+- [ ] **Step 7: Implement `internal/db/transcripts.go`**
 
 ```go
 // internal/db/transcripts.go
@@ -645,9 +647,9 @@ import (
 	"time"
 )
 
-// HasTranscript indica se já existe uma transcrição gravada para
-// lessonID — usado por internal/jobs.Worker pra idempotência do job
-// transcribe.
+// HasTranscript reports whether a transcript is already stored for
+// lessonID — used by internal/jobs.Worker for the transcribe job's
+// idempotency.
 func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 	var id int64
 	err := conn.QueryRow(`SELECT id FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&id)
@@ -660,9 +662,9 @@ func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 	return true, nil
 }
 
-// InsertTranscript grava a transcrição de uma lesson. rawJSONPath é
-// relativo à storage_root (mesma convenção de lessons.video_path);
-// utterancesJSON já vem serializado ([]stt.Utterance em JSON).
+// InsertTranscript stores a lesson's transcript. rawJSONPath is relative
+// to storage_root (same convention as lessons.video_path); utterancesJSON
+// arrives already serialized ([]stt.Utterance as JSON).
 func InsertTranscript(conn *sql.DB, lessonID int64, rawJSONPath string, utterancesJSON string) error {
 	_, err := conn.Exec(
 		`INSERT INTO transcripts (lesson_id, raw_json_path, utterances, created_at) VALUES (?, ?, ?, ?)`,
@@ -675,33 +677,33 @@ func InsertTranscript(conn *sql.DB, lessonID int64, rawJSONPath string, utteranc
 }
 ```
 
-- [ ] **Step 8: Rodar todos os testes de `internal/db` e confirmar que passam**
+- [ ] **Step 8: Run all `internal/db` tests and confirm they pass**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos.
+Expected: PASS on all.
 
-- [ ] **Step 9: `go vet` e commit**
+- [ ] **Step 9: `go vet` and commit**
 
 ```bash
 go vet ./internal/db/...
 git add internal/db/lessons.go internal/db/lessons_test.go internal/db/transcripts.go internal/db/transcripts_test.go
-git commit -m "feat: adiciona FindLessonByID e persistencia de transcript"
+git commit -m "feat: add FindLessonByID and transcript persistence"
 ```
 
 ---
 
-### Task 3: `internal/config` — diretório de cache de áudio
+### Task 3: `internal/config` — audio cache directory
 
 **Files:**
-- Modify: `internal/config/paths.go` (adicionar `AudioCacheDir`)
-- Modify: `internal/config/config_test.go` (adicionar teste)
+- Modify: `internal/config/paths.go` (add `AudioCacheDir`)
+- Modify: `internal/config/config_test.go` (add test)
 
 **Interfaces:**
-- Produces: `func AudioCacheDir() (string, error)` — resolve e cria `AppDataDir()/audio-cache`.
+- Produces: `func AudioCacheDir() (string, error)` — resolves and creates `AppDataDir()/audio-cache`.
 
-- [ ] **Step 1: Escrever o teste (vai falhar por falta de implementação)**
+- [ ] **Step 1: Write the test (will fail due to the missing implementation)**
 
-Adicionar ao final de `internal/config/config_test.go`:
+Add at the end of `internal/config/config_test.go`:
 
 ```go
 func TestAudioCacheDir_IsUnderAppDataDirAudioCacheSubdirAndCreated(t *testing.T) {
@@ -729,20 +731,20 @@ func TestAudioCacheDir_IsUnderAppDataDirAudioCacheSubdirAndCreated(t *testing.T)
 }
 ```
 
-- [ ] **Step 2: Rodar e confirmar falha de compilação**
+- [ ] **Step 2: Run and confirm the compilation failure**
 
 Run: `go test ./internal/config/... -run TestAudioCacheDir -v`
 Expected: FAIL — `undefined: AudioCacheDir`
 
-- [ ] **Step 3: Implementar `AudioCacheDir` em `internal/config/paths.go`**
+- [ ] **Step 3: Implement `AudioCacheDir` in `internal/config/paths.go`**
 
-Adicionar ao final do arquivo (imports `fmt`, `os`, `path/filepath` já existem no arquivo):
+Add at the end of the file (the `fmt`, `os`, `path/filepath` imports already exist in the file):
 
 ```go
-// AudioCacheDir resolve (criando se necessário) o diretório de cache de
-// áudio intermediário (WAVs extraídos pra chamar a API de STT) dentro do
-// AppDataDir — fora da pasta sincronizada, já que esses arquivos são
-// descartáveis assim que a transcrição é salva (ver internal/jobs).
+// AudioCacheDir resolves (creating it if needed) the intermediate audio
+// cache directory (WAVs extracted to call the STT API) inside AppDataDir —
+// outside the synced folder, since these files are disposable as soon as
+// the transcript is saved (see internal/jobs).
 func AudioCacheDir() (string, error) {
 	dir, err := AppDataDir()
 	if err != nil {
@@ -756,22 +758,22 @@ func AudioCacheDir() (string, error) {
 }
 ```
 
-- [ ] **Step 4: Rodar todos os testes de `internal/config` e confirmar que passam**
+- [ ] **Step 4: Run all `internal/config` tests and confirm they pass**
 
 Run: `go test ./internal/config/... -v`
-Expected: PASS em todos.
+Expected: PASS on all.
 
-- [ ] **Step 5: `go vet` e commit**
+- [ ] **Step 5: `go vet` and commit**
 
 ```bash
 go vet ./internal/config/...
 git add internal/config/paths.go internal/config/config_test.go
-git commit -m "feat: adiciona AudioCacheDir para o cache de audio do worker"
+git commit -m "feat: add AudioCacheDir for the worker's audio cache"
 ```
 
 ---
 
-### Task 4: `internal/jobs` — Worker: construção, seleção, precedência e backoff
+### Task 4: `internal/jobs` — Worker: construction, selection, precedence and backoff
 
 **Files:**
 - Create: `internal/jobs/worker.go`
@@ -780,18 +782,18 @@ git commit -m "feat: adiciona AudioCacheDir para o cache de audio do worker"
 **Interfaces:**
 - Consumes: `db.Job`, `db.ListPendingJobs`, `db.FindJob`, `db.MarkJobRunning`, `db.MarkJobBlocked`,
   `db.MarkJobDone`, `db.MarkJobRetryOrError`, `db.RequeueRunningJobs`, `db.FindLessonByID`,
-  `db.HasTranscript`, `db.InsertTranscript` (Tasks 1–2); `stt.Provider` e `stt.Result`/`stt.Utterance`
-  (`internal/stt/stt.go`, já existente).
+  `db.HasTranscript`, `db.InsertTranscript` (Tasks 1–2); `stt.Provider` and `stt.Result`/`stt.Utterance`
+  (`internal/stt/stt.go`, already existing).
 - Produces: `type MediaExtractorFunc func(ctx context.Context, videoPath, outputPath string) error`;
   `type StorageRootResolver func() (string, error)`; `type STTProviderFactory func() (stt.Provider, error)`;
   `type Notifier interface { JobChanged(JobEvent) }`; `type JobEvent struct { LessonID int64; Kind, Status, LastError string; Attempts int }`;
   `type Option func(*Worker)`; `func WithPollInterval(d time.Duration) Option`; `func WithLogger(l *slog.Logger) Option`;
   `func NewWorker(conn *sql.DB, storageRoot StorageRootResolver, audioCacheDir string, extractAudio MediaExtractorFunc, sttFactory STTProviderFactory, notifier Notifier, opts ...Option) *Worker`;
-  método `(*Worker) Run(ctx context.Context) error`; método `(*Worker) Wake()`.
-  Métodos não exportados usados por Tasks 5–6: `claimNextEligibleJob`, `eligibleForRetry` (função livre),
+  method `(*Worker) Run(ctx context.Context) error`; method `(*Worker) Wake()`.
+  Unexported methods used by Tasks 5–6: `claimNextEligibleJob`, `eligibleForRetry` (free function),
   `process`, `fail`, `runExtractAudio`, `runTranscribe`, `audioPathFor`, `rawJSONRelPath`.
 
-- [ ] **Step 1: Escrever os testes de seleção/precedência (vão falhar — pacote não existe)**
+- [ ] **Step 1: Write the selection/precedence tests (will fail — the package doesn't exist)**
 
 ```go
 // internal/jobs/worker_test.go
@@ -957,12 +959,12 @@ func TestClaimNextEligibleJob_BlocksTranscribeWhenExtractAudioErrored(t *testing
 }
 ```
 
-- [ ] **Step 2: Rodar e confirmar falha de compilação**
+- [ ] **Step 2: Run and confirm the compilation failure**
 
 Run: `go test ./internal/jobs/... -v`
-Expected: FAIL — pacote `internal/jobs` não compila (`NewWorker`, `noopNotifier` etc. indefinidos)
+Expected: FAIL — the `internal/jobs` package doesn't compile (`NewWorker`, `noopNotifier` etc. undefined)
 
-- [ ] **Step 3: Implementar `internal/jobs/worker.go`**
+- [ ] **Step 3: Implement `internal/jobs/worker.go`**
 
 ```go
 // internal/jobs/worker.go
@@ -985,12 +987,13 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// maxAttempts é o total de tentativas (a primeira + os retries) antes de
-// um job falho virar "error" terminal — ver docs/fase-1-mvp.md (História 4).
+// maxAttempts is the total number of attempts (the first try + retries)
+// before a failing job becomes terminal "error" — see docs/fase-1-mvp.md
+// (Story 4).
 const maxAttempts = 3
 
-// backoff mapeia attempts (já incrementado após uma falha) para o tempo
-// mínimo de espera antes da próxima tentativa.
+// backoff maps attempts (already incremented after a failure) to the
+// minimum wait time before the next attempt.
 var backoff = map[int]time.Duration{
 	1: 10 * time.Second,
 	2: 60 * time.Second,
@@ -999,30 +1002,30 @@ var backoff = map[int]time.Duration{
 
 const defaultPollInterval = 5 * time.Second
 
-// MediaExtractorFunc tem a mesma assinatura de media.ExtractAudio —
-// permite injetar um fake nos testes sem depender de ffmpeg.
+// MediaExtractorFunc has the same signature as media.ExtractAudio — lets
+// tests inject a fake without depending on ffmpeg.
 type MediaExtractorFunc func(ctx context.Context, videoPath, outputPath string) error
 
-// StorageRootResolver resolve o path absoluto da pasta de armazenamento.
-// Reavaliado a cada job (não guardado como valor fixo na criação do
-// Worker) porque o wizard de primeira execução grava essa configuração
-// depois que o app (e o Worker) já foram iniciados — ver o spec da
-// História 4 em docs/superpowers/specs/.
+// StorageRootResolver resolves the absolute path of the storage folder.
+// Re-evaluated on every job (not stored as a fixed value at Worker
+// construction) because the first-run wizard saves this configuration
+// after the app (and the Worker) have already started — see the Story 4
+// spec in docs/superpowers/specs/.
 type StorageRootResolver func() (string, error)
 
-// STTProviderFactory constrói (ou retorna) o stt.Provider a usar. Mesma
-// razão de StorageRootResolver: a credencial de STT só existe depois do
+// STTProviderFactory builds (or returns) the stt.Provider to use. Same
+// reason as StorageRootResolver: the STT credential only exists after the
 // wizard.
 type STTProviderFactory func() (stt.Provider, error)
 
-// Notifier é notificado a cada transição de status de job. A implementação
-// real (que emite eventos Wails) mora em services/ — internal/jobs não
-// importa Wails (camada fina).
+// Notifier is notified on every job status transition. The real
+// implementation (which emits Wails events) lives in services/ —
+// internal/jobs doesn't import Wails (thin layer).
 type Notifier interface {
 	JobChanged(JobEvent)
 }
 
-// JobEvent é o payload passado ao Notifier a cada transição.
+// JobEvent is the payload passed to the Notifier on every transition.
 type JobEvent struct {
 	LessonID  int64
 	Kind      string
@@ -1035,8 +1038,8 @@ type noopNotifier struct{}
 
 func (noopNotifier) JobChanged(JobEvent) {}
 
-// Worker processa a fila de jobs (tabela jobs) sequencialmente, um de cada
-// vez — ver decisão "worker único" em docs/decisoes-tecnologia.md.
+// Worker processes the jobs queue (jobs table) sequentially, one at a
+// time — see the "single worker" decision in docs/decisoes-tecnologia.md.
 type Worker struct {
 	conn          *sql.DB
 	storageRoot   StorageRootResolver
@@ -1049,7 +1052,7 @@ type Worker struct {
 	wake          chan struct{}
 }
 
-// Option customiza um Worker na criação — usado nos testes pra encurtar o
+// Option customizes a Worker at construction — used in tests to shorten
 // pollInterval.
 type Option func(*Worker)
 
@@ -1090,9 +1093,9 @@ func NewWorker(
 	return w
 }
 
-// Wake sinaliza ao Worker que há um job novo pra olhar, sem esperar o
-// próximo tick do poll de fallback. Não bloqueia — se já houver um sinal
-// pendente, este é descartado (o worker já vai acordar).
+// Wake signals the Worker that there's a new job to look at, without
+// waiting for the next fallback poll tick. Non-blocking — if a signal is
+// already pending, this one is dropped (the worker will wake up anyway).
 func (w *Worker) Wake() {
 	select {
 	case w.wake <- struct{}{}:
@@ -1100,8 +1103,8 @@ func (w *Worker) Wake() {
 	}
 }
 
-// Run bloqueia processando jobs até ctx ser cancelado. Ao iniciar, faz
-// requeue de qualquer job preso em "running" (crash/kill anterior).
+// Run blocks processing jobs until ctx is canceled. On startup, it
+// requeues any job stuck in "running" (previous crash/kill).
 func (w *Worker) Run(ctx context.Context) error {
 	if _, err := db.RequeueRunningJobs(w.conn); err != nil {
 		return fmt.Errorf("jobs: requeue de jobs presos em running: %w", err)
@@ -1129,9 +1132,9 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
-// claimNextEligibleJob escolhe o próximo job pending elegível (respeitando
-// backoff e a precedência de transcribe sobre extract_audio) e o marca
-// running. Retorna (nil, nil) se nada estiver elegível agora.
+// claimNextEligibleJob picks the next eligible pending job (respecting
+// backoff and the precedence of transcribe over extract_audio) and marks
+// it running. Returns (nil, nil) if nothing is eligible right now.
 func (w *Worker) claimNextEligibleJob() (*db.Job, error) {
 	pending, err := db.ListPendingJobs(w.conn)
 	if err != nil {
@@ -1173,9 +1176,9 @@ func (w *Worker) claimNextEligibleJob() (*db.Job, error) {
 	return nil, nil
 }
 
-// eligibleForRetry indica se j já passou da janela de backoff da sua
-// última tentativa (se attempts == 0, é a primeira tentativa: sempre
-// elegível).
+// eligibleForRetry reports whether j has already passed the backoff
+// window of its last attempt (if attempts == 0, it's the first attempt:
+// always eligible).
 func eligibleForRetry(j db.Job, now time.Time) bool {
 	if j.Attempts == 0 {
 		return true
@@ -1191,7 +1194,7 @@ func eligibleForRetry(j db.Job, now time.Time) bool {
 	return now.After(updatedAt.Add(wait))
 }
 
-// process executa job (já marcado running) e registra o resultado.
+// process runs job (already marked running) and records the result.
 func (w *Worker) process(ctx context.Context, job db.Job) {
 	var err error
 	switch job.Kind {
@@ -1213,8 +1216,8 @@ func (w *Worker) process(ctx context.Context, job db.Job) {
 	w.notifier.JobChanged(JobEvent{LessonID: job.LessonID, Kind: job.Kind, Status: "done", Attempts: job.Attempts})
 }
 
-// fail registra a falha de execução de job: incrementa attempts e decide
-// entre retry (volta a pending) ou error terminal.
+// fail records a job's execution failure: increments attempts and decides
+// between retry (back to pending) or terminal error.
 func (w *Worker) fail(job db.Job, cause error) {
 	status, attempts, err := db.MarkJobRetryOrError(w.conn, job.ID, cause.Error(), maxAttempts)
 	if err != nil {
@@ -1224,9 +1227,9 @@ func (w *Worker) fail(job db.Job, cause error) {
 	w.notifier.JobChanged(JobEvent{LessonID: job.LessonID, Kind: job.Kind, Status: status, Attempts: attempts, LastError: cause.Error()})
 }
 
-// runExtractAudio extrai o áudio do vídeo da lesson pro cache
-// (audioCacheDir/<lessonID>.wav), pulando se o WAV já existir
-// (idempotência).
+// runExtractAudio extracts the lesson's video audio into the cache
+// (audioCacheDir/<lessonID>.wav), skipping if the WAV already exists
+// (idempotency).
 func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	lesson, err := db.FindLessonByID(w.conn, job.LessonID)
 	if err != nil {
@@ -1250,9 +1253,9 @@ func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	return nil
 }
 
-// runTranscribe transcreve o áudio em cache da lesson via STT, gravando o
-// JSON bruto junto do vídeo e a transcrição mapeada em transcripts. Pula
-// se já existir uma transcrição pra essa lesson (idempotência).
+// runTranscribe transcribes the lesson's cached audio via STT, writing the
+// raw JSON alongside the video and the mapped transcript into transcripts.
+// Skips if a transcript already exists for this lesson (idempotency).
 func (w *Worker) runTranscribe(ctx context.Context, job db.Job) error {
 	has, err := db.HasTranscript(w.conn, job.LessonID)
 	if err != nil {
@@ -1303,10 +1306,10 @@ func (w *Worker) audioPathFor(lessonID int64) string {
 	return filepath.Join(w.audioCacheDir, strconv.FormatInt(lessonID, 10)+".wav")
 }
 
-// rawJSONRelPath calcula o path (relativo à storage_root, sempre com "/")
-// do JSON bruto do provedor: mesmo diretório do vídeo, nome
-// "<basename-sem-extensão>.transcript.json" — sem assumir nenhuma
-// subpasta (consistente com a varredura da História 3).
+// rawJSONRelPath computes the path (relative to storage_root, always with
+// "/") of the provider's raw JSON: same directory as the video, name
+// "<basename-without-extension>.transcript.json" — without assuming any
+// subfolder (consistent with Story 3's scan).
 func rawJSONRelPath(videoRelPath string) string {
 	dir := path.Dir(videoRelPath)
 	base := strings.TrimSuffix(path.Base(videoRelPath), path.Ext(videoRelPath))
@@ -1314,33 +1317,33 @@ func rawJSONRelPath(videoRelPath string) string {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/jobs/... -v`
-Expected: PASS nos dois testes de `worker_test.go`.
+Expected: PASS on both `worker_test.go` tests.
 
-- [ ] **Step 5: `go vet` e commit**
+- [ ] **Step 5: `go vet` and commit**
 
 ```bash
 go vet ./internal/jobs/...
 git add internal/jobs/worker.go internal/jobs/worker_test.go
-git commit -m "feat: adiciona Worker com selecao e precedencia de jobs"
+git commit -m "feat: add Worker with job selection and precedence"
 ```
 
 ---
 
-### Task 5: `internal/jobs` — idempotência e artefatos (extract_audio/transcribe)
+### Task 5: `internal/jobs` — idempotency and artifacts (extract_audio/transcribe)
 
 **Files:**
-- Modify: `internal/jobs/worker_test.go` (adicionar import `encoding/json` e 4 testes)
+- Modify: `internal/jobs/worker_test.go` (add `encoding/json` import and 4 tests)
 
 **Interfaces:**
-- Consumes: tudo produzido na Task 4 (mesmo arquivo/pacote); `db.InsertTranscript`, `db.HasTranscript`
+- Consumes: everything produced in Task 4 (same file/package); `db.InsertTranscript`, `db.HasTranscript`
   (Task 2); `stt.Utterance` (`internal/stt/stt.go`).
 
-- [ ] **Step 1: Adicionar o import `encoding/json` e os 4 testes (vão falhar — funções não usadas ainda por eles, mas o comportamento está incorreto/incompleto sem o teste)**
+- [ ] **Step 1: Add the `encoding/json` import and the 4 tests (they'll "fail" — not because the functions are unused, but because behavior would be incorrect/incomplete without the test)**
 
-Editar o bloco de imports no topo de `internal/jobs/worker_test.go`, adicionando `"encoding/json"`:
+Edit the import block at the top of `internal/jobs/worker_test.go`, adding `"encoding/json"`:
 
 ```go
 import (
@@ -1357,7 +1360,7 @@ import (
 )
 ```
 
-Adicionar ao final do arquivo:
+Add at the end of the file:
 
 ```go
 func TestRunExtractAudio_SkipsWhenWavAlreadyCached(t *testing.T) {
@@ -1529,40 +1532,40 @@ func TestRunTranscribe_WritesRawJSONInsertsTranscriptAndCleansCache(t *testing.T
 }
 ```
 
-- [ ] **Step 2: Rodar os 4 testes novos**
+- [ ] **Step 2: Run the 4 new tests**
 
 Run: `go test ./internal/jobs/... -run 'TestRunExtractAudio|TestRunTranscribe' -v`
-Expected: PASS em todos — a implementação da Task 4 já cobre idempotência e escrita de artefatos,
-nenhum código de produção novo é necessário aqui, só a cobertura de teste.
+Expected: PASS on all — Task 4's implementation already covers idempotency and artifact
+writing, no new production code is needed here, just the test coverage.
 
-- [ ] **Step 3: Rodar a suíte inteira de `internal/jobs` e confirmar que nada quebrou**
+- [ ] **Step 3: Run the full `internal/jobs` suite and confirm nothing broke**
 
 Run: `go test ./internal/jobs/... -v`
-Expected: PASS em todos os 6 testes (2 da Task 4 + 4 novos).
+Expected: PASS on all 6 tests (2 from Task 4 + 4 new).
 
-- [ ] **Step 4: `go vet` e commit**
+- [ ] **Step 4: `go vet` and commit**
 
 ```bash
 go vet ./internal/jobs/...
 git add internal/jobs/worker_test.go
-git commit -m "test: cobre idempotencia e artefatos de extract_audio/transcribe"
+git commit -m "test: cover idempotency and artifacts of extract_audio/transcribe"
 ```
 
 ---
 
-### Task 6: `internal/jobs` — retry/backoff, requeue e loop `Run` completo
+### Task 6: `internal/jobs` — retry/backoff, requeue and full `Run` loop
 
 **Files:**
-- Modify: `internal/jobs/worker_test.go` (adicionar import `errors` e 4 testes/1 tipo)
+- Modify: `internal/jobs/worker_test.go` (add `errors` import and 4 tests/1 type)
 
 **Interfaces:**
-- Consumes: tudo de Tasks 4–5 (mesmo pacote).
-- Produces (só em teste): `type recordingNotifier struct { events *[]JobEvent }` com método
-  `JobChanged(JobEvent)`, implementando `Notifier` pra inspecionar eventos emitidos.
+- Consumes: everything from Tasks 4–5 (same package).
+- Produces (test-only): `type recordingNotifier struct { events *[]JobEvent }` with a
+  `JobChanged(JobEvent)` method, implementing `Notifier` to inspect emitted events.
 
-- [ ] **Step 1: Adicionar o import `errors` e os testes**
+- [ ] **Step 1: Add the `errors` import and the tests**
 
-Editar o bloco de imports no topo de `internal/jobs/worker_test.go`, adicionando `"errors"`:
+Edit the import block at the top of `internal/jobs/worker_test.go`, adding `"errors"`:
 
 ```go
 import (
@@ -1580,7 +1583,7 @@ import (
 )
 ```
 
-Adicionar ao final do arquivo:
+Add at the end of the file:
 
 ```go
 type recordingNotifier struct {
@@ -1600,11 +1603,11 @@ func TestEligibleForRetry_RespectsBackoffWindow(t *testing.T) {
 		updated  time.Time
 		want     bool
 	}{
-		{"primeira tentativa sempre elegível", 0, now, true},
-		{"1 falha, ainda dentro dos 10s", 1, now.Add(-5 * time.Second), false},
-		{"1 falha, passou dos 10s", 1, now.Add(-11 * time.Second), true},
-		{"2 falhas, ainda dentro de 60s", 2, now.Add(-30 * time.Second), false},
-		{"2 falhas, passou de 60s", 2, now.Add(-61 * time.Second), true},
+		{"first attempt always eligible", 0, now, true},
+		{"1 failure, still within 10s", 1, now.Add(-5 * time.Second), false},
+		{"1 failure, past 10s", 1, now.Add(-11 * time.Second), true},
+		{"2 failures, still within 60s", 2, now.Add(-30 * time.Second), false},
+		{"2 failures, past 60s", 2, now.Add(-61 * time.Second), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1726,38 +1729,38 @@ func TestRun_ProcessesExtractAudioThenTranscribeEndToEnd(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar a suíte inteira de `internal/jobs` e confirmar que passa**
+- [ ] **Step 2: Run the full `internal/jobs` suite and confirm it passes**
 
 Run: `go test ./internal/jobs/... -v`
-Expected: PASS em todos os testes (Tasks 4–6 combinadas).
+Expected: PASS on all tests (Tasks 4–6 combined).
 
-- [ ] **Step 3: `go vet` e commit**
+- [ ] **Step 3: `go vet` and commit**
 
 ```bash
 go vet ./internal/jobs/...
 git add internal/jobs/worker_test.go
-git commit -m "test: cobre retry/backoff, requeue e o loop Run do worker"
+git commit -m "test: cover retry/backoff, requeue and the worker's Run loop"
 ```
 
 ---
 
-### Task 7: `services` — Notifier que emite eventos Wails
+### Task 7: `services` — Notifier that emits Wails events
 
 **Files:**
 - Create: `services/jobs_notifier.go`
 
 **Interfaces:**
 - Consumes: `jobs.Notifier`, `jobs.JobEvent` (`internal/jobs/worker.go`, Task 4).
-- Produces: `type WailsJobNotifier struct{}` com método `JobChanged(e jobs.JobEvent)`;
+- Produces: `type WailsJobNotifier struct{}` with a `JobChanged(e jobs.JobEvent)` method;
   `const JobUpdatedEvent = "job:updated"`.
 
-Sem teste automatizado nesta task: `WailsJobNotifier.JobChanged` só faz sentido chamando
-`application.Get().Event.Emit(...)`, que exige um app Wails já inicializado — o mesmo motivo
-pelo qual `main.go` e os métodos de `SetupService` que usam `application.Get().Dialog` não têm
-teste automatizado neste projeto. A verificação é `go build`/`go vet` (Step 2) mais a checagem
-manual do evento chegando ao frontend, quando a Fila (História 7) existir para consumi-lo.
+No automated test in this task: `WailsJobNotifier.JobChanged` only makes sense when calling
+`application.Get().Event.Emit(...)`, which requires an already-initialized Wails app — the same
+reason `main.go` and the `SetupService` methods that use `application.Get().Dialog` have no
+automated test in this project. Verification is `go build`/`go vet` (Step 2) plus a manual check
+of the event reaching the frontend, once the Queue screen (Story 7) exists to consume it.
 
-- [ ] **Step 1: Criar `services/jobs_notifier.go`**
+- [ ] **Step 1: Create `services/jobs_notifier.go`**
 
 ```go
 // services/jobs_notifier.go
@@ -1769,14 +1772,14 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// JobUpdatedEvent é o nome do evento Wails emitido a cada transição de
-// status de job — nenhuma tela consome isso ainda (fica pras Históras 5 e
-// 7); esta história só monta o transporte.
+// JobUpdatedEvent is the name of the Wails event emitted on every job
+// status transition — no screen consumes this yet (that's for Stories 5
+// and 7); this story only sets up the transport.
 const JobUpdatedEvent = "job:updated"
 
-// WailsJobNotifier implementa jobs.Notifier emitindo eventos Wails — única
-// peça do pipeline (História 4) que sabe que o Wails existe. internal/jobs
-// em si não importa Wails (camada fina).
+// WailsJobNotifier implements jobs.Notifier by emitting Wails events — the
+// only piece of the pipeline (Story 4) that knows Wails exists.
+// internal/jobs itself doesn't import Wails (thin layer).
 type WailsJobNotifier struct{}
 
 func (WailsJobNotifier) JobChanged(e jobs.JobEvent) {
@@ -1784,21 +1787,21 @@ func (WailsJobNotifier) JobChanged(e jobs.JobEvent) {
 }
 ```
 
-- [ ] **Step 2: Verificar que compila**
+- [ ] **Step 2: Verify it compiles**
 
 Run: `go build ./services/... && go vet ./services/...`
-Expected: sem erros.
+Expected: no errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add services/jobs_notifier.go
-git commit -m "feat: adiciona WailsJobNotifier para eventos de job"
+git commit -m "feat: add WailsJobNotifier for job events"
 ```
 
 ---
 
-### Task 8: `main.go` — inicia o worker em background
+### Task 8: `main.go` — start the worker in the background
 
 **Files:**
 - Modify: `main.go`
@@ -1806,13 +1809,14 @@ git commit -m "feat: adiciona WailsJobNotifier para eventos de job"
 **Interfaces:**
 - Consumes: `jobs.NewWorker`, `jobs.StorageRootResolver`, `jobs.STTProviderFactory` (Task 4);
   `services.WailsJobNotifier` (Task 7); `config.Load`, `config.GetSTTAPIKey`, `config.AudioCacheDir`
-  (`internal/config`, já existente + Task 3); `media.ExtractAudio` (`internal/media/media.go`, já
-  existente); `stt.NewElevenLabsProvider` (`internal/stt/elevenlabs.go`, já existente).
+  (`internal/config`, already existing + Task 3); `media.ExtractAudio` (`internal/media/media.go`,
+  already existing); `stt.NewElevenLabsProvider` (`internal/stt/elevenlabs.go`, already existing).
 
-Sem teste automatizado — é wiring de `main()`, no mesmo padrão do resto do arquivo (não testado
-neste projeto). Verificação por build/vet (Step 2) e, se possível, abertura visual do app.
+No automated test — this is `main()` wiring, following the same pattern as the rest of the file
+(not tested in this project). Verification via build/vet (Step 2) and, if possible, opening the
+app visually.
 
-- [ ] **Step 1: Reescrever `main.go`**
+- [ ] **Step 1: Rewrite `main.go`**
 
 ```go
 package main
@@ -1877,13 +1881,14 @@ func main() {
 	}
 }
 
-// startJobWorker inicia o pipeline em background (História 4) numa
-// goroutine. storage_root e a credencial de STT são resolvidos a cada job,
-// não aqui — o wizard de primeira execução ainda não rodou neste ponto do
-// startup, então resolvê-los agora falharia sempre na primeira sessão do
-// app (ver docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
-// Só o cache de áudio (que não depende do wizard) é resolvido aqui; se
-// isso falhar, é um problema de disco/permissão e o worker não inicia.
+// startJobWorker starts the background pipeline (Story 4) in a goroutine.
+// storage_root and the STT credential are resolved on every job, not
+// here — the first-run wizard hasn't run yet at this point in startup, so
+// resolving them now would always fail on the app's first session (see
+// docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
+// Only the audio cache (which doesn't depend on the wizard) is resolved
+// here; if that fails, it's a disk/permission problem and the worker
+// doesn't start.
 func startJobWorker(conn *sql.DB) {
 	audioCacheDir, err := config.AudioCacheDir()
 	if err != nil {
@@ -1913,33 +1918,33 @@ func startJobWorker(conn *sql.DB) {
 }
 ```
 
-- [ ] **Step 2: Verificar que compila e passa `go vet`**
+- [ ] **Step 2: Verify it compiles and passes `go vet`**
 
 Run: `go build ./internal/... ./services/... . && go vet ./...`
-Expected: sem erros (o erro conhecido e não relacionado de `go build ./...` no pacote
-`build/ios` do scaffold do Wails não afeta esta verificação, que já exclui esse pacote).
+Expected: no errors (the known, unrelated error from `go build ./...` in the Wails scaffold's
+`build/ios` package doesn't affect this check, which already excludes that package).
 
-- [ ] **Step 3: Rodar a suíte completa do projeto**
+- [ ] **Step 3: Run the project's full test suite**
 
 Run: `go test ./... -v`
-Expected: PASS em todos os pacotes (`internal/db`, `internal/config`, `internal/jobs`,
-`internal/media`, `internal/stt`, `services`, e os demais já existentes).
+Expected: PASS on all packages (`internal/db`, `internal/config`, `internal/jobs`,
+`internal/media`, `internal/stt`, `services`, and the other existing ones).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add main.go
-git commit -m "feat: inicia o worker de jobs em background no startup do app"
+git commit -m "feat: start the background job worker on app startup"
 ```
 
 ---
 
-## Verificação manual pendente (fora do escopo de testes automatizados)
+## Pending manual verification (outside the scope of automated tests)
 
-Depois da Task 8, com uma máquina que tenha display (Windows/Linux com GUI — ver risco 3 e a
-pendência de verificação visual já registrada para as Histórias 1 e 3 em `docs/fase-1-mvp.md`):
-rodar `wails3 dev`, completar o wizard, confirmar uma aula de teste e observar no log/backend que
-os jobs `extract_audio`/`transcribe` avançam para `done` (ou `error` com uma API key inválida,
-sem travar o app nem impedir assistir ao vídeo). Isso não é um passo desta plan — é a mesma
-verificação visual pendente já anotada no `docs/fase-1-mvp.md`, a ser feita quando alguém abrir o
-app numa máquina com display.
+After Task 8, on a machine with a display (Windows/Linux with a GUI — see risk 3 and the visual
+verification already logged as pending for Stories 1 and 3 in `docs/fase-1-mvp.md`): run
+`wails3 dev`, complete the wizard, confirm a test lesson, and watch in the log/backend that the
+`extract_audio`/`transcribe` jobs progress to `done` (or `error` with an invalid API key, without
+locking up the app or preventing watching the video). This isn't a step in this plan — it's the
+same pending visual verification already noted in `docs/fase-1-mvp.md`, to be done whenever
+someone opens the app on a machine with a display.

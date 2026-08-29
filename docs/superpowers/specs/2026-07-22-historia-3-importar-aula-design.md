@@ -1,45 +1,47 @@
-# História 3 — Importar aula (varredura da pasta existente): design
+# Story 3 — Import lesson (scanning the existing folder): design
 
-> Spec da terceira fatia de implementação da Fase 1 (`docs/fase-1-mvp.md`, História 3).
-> Objetivo: a pasta de armazenamento escolhida no wizard provavelmente **já** tem vídeos de
-> aulas anteriores, soltos, sem nenhuma convenção de subpastas. O app precisa achá-los, deixar
-> o usuário revisar e confirmar cada um (data + tutor) no seu próprio ritmo, e registrá-los como
-> `lessons` reais com os jobs de processamento pendentes.
+> Spec for the third implementation slice of Phase 1 (`docs/fase-1-mvp.md`, Story 3).
+> Goal: the storage folder chosen in the wizard likely **already** has videos from previous
+> lessons, loose, with no subfolder convention at all. The app needs to find them, let the
+> user review and confirm each one (date + tutor) at their own pace, and register them as real
+> `lessons` with the processing jobs pending.
 >
-> **Fora de escopo desta fatia** (decisão de brainstorming, 22/07/2026): drag-and-drop de arquivo
-> novo. O app já cobre o caso mais urgente (aulas antigas já na pasta); import manual por
-> drag-and-drop vira uma história separada depois, reaproveitando o mesmo modal de confirmação
-> que esta história cria.
+> **Out of scope for this slice** (brainstorming decision, 2026-07-22): drag-and-drop of new
+> files. The app already covers the most urgent case (old lessons already in the folder); manual
+> import via drag-and-drop becomes a separate story later, reusing the same confirmation modal
+> this story creates.
 
-## Contexto
+## Context
 
-A História 2 entregou banco (`internal/db`), config (`internal/config`) e o wizard de first-run
-que grava `storage_root`. Nenhuma linha real existe ainda em `lessons`/`jobs`. Esta história
-introduz o primeiro pacote de negócio puro do projeto (`internal/importer`) e a primeira camada
-de repositório sobre `internal/db` (que até agora só tinha `Open`).
+Story 2 delivered the database (`internal/db`), config (`internal/config`), and the first-run
+wizard that saves `storage_root`. No real rows exist yet in `lessons`/`jobs`. This story
+introduces the project's first pure business package (`internal/importer`) and the first
+repository layer over `internal/db` (which until now only had `Open`).
 
-Decisões de escopo fechadas durante o brainstorming:
-- **Sem estrutura de pasta assumida.** Identificação e dedupe são sempre por **nome do arquivo +
-  SHA-256**, nunca por convenção de path/subpasta — a varredura é recursiva na pasta inteira.
-- **Extensão reconhecida nesta fatia: `.mp4`** apenas (formato mais comum do Cambly/navegador).
-  Lista fácil de estender depois (`.mov`, `.mkv`, `.webm`) sem mudar a lógica.
-- **SHA-256 não é gargalo:** medido em sandbox, ~1-3s por vídeo típico de aula mesmo sem
-  aceleração de hardware (`crypto/sha256` do Go usa SHA-NI em amd64 quando disponível, o que fica
-  ainda mais rápido). Ainda assim, um **stat-cache** (path+tamanho+mtime) evita reler o conteúdo
-  inteiro de arquivos já registrados a cada sincronização repetida.
-- **Revisão no ritmo do usuário**, não uma fila de modais bloqueando a sincronização: a varredura
-  grava candidatos numa tabela de staging (`pending_imports`); a Biblioteca lê essa tabela e
-  mostra "N aulas aguardando revisão", e o usuário confirma um de cada vez quando quiser.
-- **Sem botão "Ignorar"** — decisão explícita do usuário: a pasta só deve conter aulas de fato,
-  então todo vídeo achado é candidato a confirmação, sem estado de "descartado" no schema.
-- Arquivo que já é uma `lesson` conhecida mas mudou de nome/pasta (mesmo hash, path diferente) é
-  tratado como **atualização de path**, não como candidato novo nem duplicata.
+Scope decisions closed during brainstorming:
+- **No assumed folder structure.** Identification and dedup are always by **filename +
+  SHA-256**, never by path/subfolder convention — the scan is recursive over the whole folder.
+- **Extension recognized in this slice: `.mp4`** only (the most common format from
+  Cambly/browser). An easy list to extend later (`.mov`, `.mkv`, `.webm`) without changing the
+  logic.
+- **SHA-256 is not a bottleneck:** measured in the sandbox, ~1-3s per typical lesson video even
+  without hardware acceleration (Go's `crypto/sha256` uses SHA-NI on amd64 when available, which
+  is even faster). Even so, a **stat-cache** (path+size+mtime) avoids rereading the entire
+  content of already-registered files on every repeated sync.
+- **Review at the user's own pace**, not a queue of modals blocking the sync: the scan writes
+  candidates into a staging table (`pending_imports`); the Library reads that table and shows
+  "N lessons awaiting review", and the user confirms them one at a time whenever they want.
+- **No "Ignore" button** — an explicit user decision: the folder should only ever contain actual
+  lessons, so every video found is a candidate for confirmation, with no "dismissed" state in the
+  schema.
+- A file that's already a known `lesson` but changed name/folder (same hash, different path) is
+  treated as a **path update**, not a new candidate nor a duplicate.
 
-## Arquitetura e pacotes
+## Architecture and packages
 
 ```
 internal/importer/
-  importer.go        # Scan(root string, repo Repo) (Summary, error) — pura, sem Wails
+  importer.go        # Scan(root string, repo Repo) (Summary, error) — pure, no Wails
   importer_test.go
 internal/db/
   lessons.go          # FindLessonByHash, FindLessonByPath, UpdateLessonPath, InsertLesson
@@ -47,16 +49,16 @@ internal/db/
   migrations/
     00002_pending_imports.sql
 services/
-  import.go           # ImportService: casca Wails sobre internal/importer + internal/db
+  import.go           # ImportService: Wails shell over internal/importer + internal/db
   import_test.go
 frontend/src/lib/
-  screens/Library.svelte        # seção "N aulas aguardando revisão" + botão "Sincronizar pasta"
-  ImportConfirmModal.svelte     # modal de confirmação (data/tutor) — novo, reaproveitável
+  screens/Library.svelte        # "N lessons awaiting review" section + "Sync folder" button
+  ImportConfirmModal.svelte     # confirmation modal (date/tutor) — new, reusable
 ```
 
-`internal/importer` não importa Wails nem `internal/db` diretamente — recebe uma interface
-`Repo` (implementada pelas funções de `internal/db`) pra ficar testável com um fake em memória,
-sem precisar de um SQLite real nos testes de varredura.
+`internal/importer` does not import Wails nor `internal/db` directly — it receives a `Repo`
+interface (implemented by `internal/db`'s functions) so it stays testable with an in-memory fake,
+with no need for a real SQLite in the scan tests.
 
 ```go
 // internal/importer/importer.go
@@ -94,45 +96,47 @@ ALTER TABLE lessons DROP COLUMN file_mtime;
 ALTER TABLE lessons DROP COLUMN file_size;
 ```
 
-`file_size`/`file_mtime` em `lessons` existem só pro stat-cache (evitar rehash de arquivo
-inalterado); `video_hash` já existia desde a migration 00001, ganha aqui o índice único que
-transforma "importação duplicada" numa garantia de banco, não só de lógica de aplicação.
+`file_size`/`file_mtime` on `lessons` exist only for the stat-cache (avoiding a rehash of an
+unchanged file); `video_hash` already existed since migration 00001, and gains here the unique
+index that turns "duplicate import" into a database guarantee, not just application logic.
 
-## Fluxo da varredura (`internal/importer.Scan`)
+## Scan flow (`internal/importer.Scan`)
 
-Caminha `storage_root` recursivamente (`filepath.WalkDir`), filtrando por extensão `.mp4`. Para
-cada arquivo:
+Walks `storage_root` recursively (`filepath.WalkDir`), filtering by the `.mp4` extension. For
+each file:
 
-1. `os.Stat` → path + tamanho + mtime batem com uma `lesson` já registrada?
-   **Sim** → ignora, já é uma aula conhecida e nada mudou (short-circuit, sem ler o conteúdo).
-2. Senão, calcula SHA-256 do conteúdo.
-   - Hash bate com uma `lesson` existente, path diferente → **arquivo só mudou de lugar/nome**:
-     `UpdateLessonPath` (atualiza `video_path`, `file_size`, `file_mtime`), sem virar candidato.
-   - Hash já está em `pending_imports` → ignora (já está na fila de revisão de uma varredura
-     anterior).
-   - Hash novo → `InsertPending`, com `suggested_date` extraído do nome do arquivo (regex de data
-     comum, ex. `2026-07-15` ou `15-07-2026`) ou, na falta disso, do `mtime`.
+1. `os.Stat` → do path + size + mtime match an already-registered `lesson`?
+   **Yes** → skip, it's already a known lesson and nothing changed (short-circuit, without
+   reading the content).
+2. Otherwise, compute the SHA-256 of the content.
+   - Hash matches an existing `lesson`, different path → **the file just moved/was renamed**:
+     `UpdateLessonPath` (updates `video_path`, `file_size`, `file_mtime`), without becoming a
+     candidate.
+   - Hash is already in `pending_imports` → skip (already in the review queue from a previous
+     scan).
+   - New hash → `InsertPending`, with `suggested_date` extracted from the filename (common date
+     regex, e.g. `2026-07-15` or `15-07-2026`) or, failing that, from the `mtime`.
 
-`Scan` retorna um resumo (`Summary{New, Updated, Skipped, Errors int}`) — falha ao ler/hashear um
-arquivo específico (permissão, I/O) não aborta a varredura: é contada em `Errors` e o loop
-continua. Isso é o princípio de resiliência do `CLAUDE.md` aplicado à varredura: falha pontual
-num arquivo nunca impede achar os outros.
+`Scan` returns a summary (`Summary{New, Updated, Skipped, Errors int}`) — failure to read/hash a
+specific file (permission, I/O) does not abort the scan: it's counted in `Errors` and the loop
+continues. This is the resilience principle from `CLAUDE.md` applied to the scan: a failure on
+one file never prevents finding the others.
 
-## Confirmação (staging → lesson real)
+## Confirmation (staging → real lesson)
 
-`ConfirmPendingImport(id, lessonDate, tutor string) (lessonID int64, err error)` em
-`internal/db/pending_imports.go`, numa única transação:
-1. Lê o `pending_imports` pelo `id`.
+`ConfirmPendingImport(id, lessonDate, tutor string) (lessonID int64, err error)` in
+`internal/db/pending_imports.go`, in a single transaction:
+1. Reads the `pending_imports` row by `id`.
 2. `INSERT INTO lessons (lesson_date, tutor, video_path, video_hash, file_size, file_mtime,
    created_at, updated_at)`.
-3. `INSERT INTO jobs (lesson_id, kind, status)` duas vezes: `extract_audio` e `transcribe`, ambos
+3. `INSERT INTO jobs (lesson_id, kind, status)` twice: `extract_audio` and `transcribe`, both
    `pending`.
 4. `DELETE FROM pending_imports WHERE id = ?`.
 
-Se qualquer passo falhar, a transação desfaz tudo — o candidato continua em `pending_imports`
-intacto, o usuário pode tentar de novo.
+If any step fails, the transaction rolls everything back — the candidate remains intact in
+`pending_imports`, and the user can try again.
 
-## Serviço Wails (`services/import.go`)
+## Wails service (`services/import.go`)
 
 ```go
 type ImportService struct{ db *sql.DB }
@@ -142,67 +146,71 @@ func (s *ImportService) ListPendingImports() ([]PendingImportDTO, error)
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error
 ```
 
-`ScanFolder` lê `storage_root` de `config.Load()`, chama `internal/importer.Scan`. É chamado:
-- Automaticamente ao fim do wizard de first-run (depois de `CompleteSetup` ter sucesso), com um
-  passo visual "Procurando aulas na pasta…" antes do wizard fechar.
-- Sob demanda, pelo botão **"Sincronizar pasta"** na Biblioteca.
+`ScanFolder` reads `storage_root` from `config.Load()`, calls `internal/importer.Scan`. It is
+called:
+- Automatically at the end of the first-run wizard (after `CompleteSetup` succeeds), with a
+  visual step "Looking for lessons in the folder…" before the wizard closes.
+- On demand, via the **"Sync folder"** button in the Library.
 
-## Fluxo de dados
+## Data flow
 
 ```
 ScanFolder() → config.Load() (storage_root) → importer.Scan(root, repo)
-  → grava/atualiza pending_imports e lessons (paths movidos)
-  → retorna Summary → UI mostra toast ("N novas, M atualizadas, E erros")
+  → writes/updates pending_imports and lessons (moved paths)
+  → returns Summary → UI shows a toast ("N new, M updated, E errors")
 
-Library.svelte (mount / após ScanFolder) → ListPendingImports() → lista "aguardando revisão"
-  clique num item → ImportConfirmModal (data sugerida pré-preenchida, tutor livre)
-    confirmar → ConfirmImport(id, date, tutor) → transação (lessons + jobs, apaga pending)
-      sucesso → item some da lista de pendentes
-      erro    → mensagem no modal, candidato continua pendente
+Library.svelte (mount / after ScanFolder) → ListPendingImports() → "awaiting review" list
+  click on an item → ImportConfirmModal (suggested date pre-filled, free-text tutor)
+    confirm → ConfirmImport(id, date, tutor) → transaction (lessons + jobs, deletes pending)
+      success → item disappears from the pending list
+      error    → message in the modal, candidate stays pending
 ```
 
-## Tratamento de erros
+## Error handling
 
-- Erro ao ler/hashear um arquivo específico durante a varredura: não aborta o restante, entra no
-  contador `Errors` do resumo (mostrado ao usuário, não é silencioso).
-- `config.Load()` falhar dentro de `ScanFolder` (não deveria acontecer pós first-run, mas
-  defensivo): erro claro, varredura não roda, nada quebra — usuário já está no app normal.
-- `ConfirmImport` falhar (violação do índice único de `video_hash`, por exemplo uma corrida rara
-  entre duas sincronizações): erro explicado no modal, candidato permanece em `pending_imports`.
+- Error reading/hashing a specific file during the scan: does not abort the rest, goes into the
+  summary's `Errors` counter (shown to the user, not silent).
+- `config.Load()` failing inside `ScanFolder` (shouldn't happen post first-run, but defensive):
+  clear error, scan doesn't run, nothing breaks — the user is already in the normal app.
+- `ConfirmImport` failing (violation of the `video_hash` unique index, for example a rare race
+  between two syncs): error explained in the modal, candidate remains in `pending_imports`.
 
-## Testes
+## Tests
 
-- `internal/importer`: fixtures num `t.TempDir()` com arquivos `.mp4` sintéticos (conteúdo
-  arbitrário, não precisa ser vídeo de verdade — só o hash importa). Casos: arquivo novo vira
-  candidato; hash já conhecido é ignorado; stat-cache evita rehash (fake `Repo` conta chamadas);
-  mesmo hash em path diferente atualiza em vez de duplicar; erro num arquivo não interrompe os
-  demais.
-- `internal/db`: round-trip de `pending_imports` (insert/list/delete); `ConfirmPendingImport`
-  cria `lessons` + 2 `jobs` numa transação; índice único de `video_hash` rejeita duplicata.
-- `services/import_test.go`: wrapping de erro, seguindo o padrão de `setup_test.go`.
-- Verificação manual: `wails3 dev` com uma pasta de teste contendo alguns `.mp4` soltos (sem
-  estrutura) — rodar o wizard, ver a varredura achar os arquivos, confirmar um, ver ele sumir da
-  lista de pendentes.
+- `internal/importer`: fixtures in a `t.TempDir()` with synthetic `.mp4` files (arbitrary
+  content, doesn't need to be a real video — only the hash matters). Cases: a new file becomes a
+  candidate; an already-known hash is skipped; the stat-cache avoids rehashing (fake `Repo`
+  counts calls); the same hash at a different path updates instead of duplicating; an error on
+  one file doesn't interrupt the rest.
+- `internal/db`: round-trip of `pending_imports` (insert/list/delete); `ConfirmPendingImport`
+  creates `lessons` + 2 `jobs` in a transaction; the `video_hash` unique index rejects a
+  duplicate.
+- `services/import_test.go`: error wrapping, following the `setup_test.go` pattern.
+- Manual verification: `wails3 dev` with a test folder containing a few loose `.mp4` files (no
+  structure) — run the wizard, watch the scan find the files, confirm one, watch it disappear
+  from the pending list.
 
-## Fora de escopo desta história
+## Out of scope for this story
 
-Drag-and-drop de importação manual (história futura, reaproveita `ImportConfirmModal.svelte`);
-botão "Ignorar" candidato (decisão: pasta só deve ter aulas); cópia de vídeo pra estrutura
-`aulas/AAAA/AAAA-MM-DD/` (só se aplica ao fluxo de drag-and-drop, não à varredura); fila de jobs
-rodando de verdade (worker, História 4) — os jobs só são criados como `pending`, ninguém os
-processa ainda; listagem real na tela de Biblioteca além da seção de pendentes (História 5).
+Drag-and-drop manual import (future story, reuses `ImportConfirmModal.svelte`); an "Ignore"
+button for a candidate (decision: the folder should only contain lessons); copying the video
+into an `aulas/AAAA/AAAA-MM-DD/` structure (only applies to the drag-and-drop flow, not the
+scan); a job queue actually running (worker, Story 4) — the jobs are only created as `pending`,
+nobody processes them yet; a real listing on the Library screen beyond the pending section
+(Story 5).
 
-## Critérios de aceite (de `docs/fase-1-mvp.md`, História 3)
+## Acceptance criteria (from `docs/fase-1-mvp.md`, Story 3)
 
-- [ ] Varredura recursiva da pasta de armazenamento, sem assumir estrutura de subpastas;
-      identifica `.mp4` e calcula SHA-256 de cada um.
-- [ ] Stat-cache (path+tamanho+mtime) evita recalcular hash de vídeos já registrados e
-      inalterados.
-- [ ] Vídeos já registrados (mesmo hash) são ignorados; mesmo hash em path diferente atualiza o
-      path da lesson em vez de duplicar.
-- [ ] Vídeos novos aparecem como pendentes de revisão na Biblioteca; confirmação (modal de
-      data/tutor) grava a `lesson` + jobs `extract_audio`/`transcribe` como `pending`.
-- [ ] Varredura roda automaticamente ao final do wizard de first-run e sob demanda via
-      "Sincronizar pasta".
-- [ ] Importação duplicada (mesmo hash) é detectada e não duplicada — garantida por índice único
-      no banco.
+- [ ] Recursive scan of the storage folder, without assuming a subfolder structure; identifies
+      `.mp4` files and computes SHA-256 for each.
+- [ ] Stat-cache (path+size+mtime) avoids recomputing the hash of videos already registered and
+      unchanged.
+- [ ] Already-registered videos (same hash) are skipped; the same hash at a different path
+      updates the lesson's path instead of duplicating.
+- [ ] New videos appear as pending review in the Library; confirmation (date/tutor modal) writes
+      the `lesson` + `extract_audio`/`transcribe` jobs as `pending`.
+- [ ] The scan runs automatically at the end of the first-run wizard and on demand via
+      "Sync folder".
+- [ ] Duplicate import (same hash) is detected and not duplicated — guaranteed by a unique index
+      in the database.
+</content>

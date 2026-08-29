@@ -1,87 +1,91 @@
 # Agents.md
 
-## O projeto
+## The project
 
-Assistente de aprendizagem de idioma: app desktop **pessoal** (1 usuário, 1 dev, sem servidor
-próprio) que arquiva gravações de aulas de inglês do Cambly e gera transcrições diarizadas
-(aluno × tutor), análises via LLM (correções, vocabulário, expressões do tutor) e visão de
-progresso. UI e análises em PT-BR; as aulas são em inglês com code-switching ocasional (PT/ES).
+Language-learning assistant: a **personal** desktop app (1 user, 1 dev, no server of its
+own) that archives recordings of English lessons from Cambly and generates diarized transcripts
+(student × tutor), LLM-based analyses (corrections, vocabulary, tutor expressions), and a progress
+view. UI and analyses in PT-BR; lessons are in English with occasional code-switching (PT/ES).
 
-**Fontes da verdade** (ler antes de decidir qualquer coisa):
-- `docs/decisoes-tecnologia.md` — escolhas de tecnologia vigentes. Não contrariar silenciosamente; se uma escolha precisar mudar, propor a atualização do documento.
-- `docs/fase-1-mvp.md` — histórias e tracking da fase atual.
-- `docs/fase-0-validacao.md` — fase concluída (validação das APIs); mantido como histórico.
+**Sources of truth** (read before deciding anything):
+- `docs/decisoes-tecnologia.md` — current technology choices. Do not silently contradict; if a choice needs to change, propose updating the document.
+- `docs/fase-1-mvp.md` — stories and tracking for the current phase.
+- `docs/fase-0-validacao.md` — completed phase (API validation); kept as history.
 
-## Fase atual: Fase 1 (MVP — importar → transcrever → assistir)
+## Current phase: Phase 1 (MVP — import → transcribe → watch)
 
-App Wails v3 (alpha, **versão pinada** no `go.mod`; upgrade de alpha é tarefa deliberada, nunca no
-meio de uma feature) + Svelte 5, com banco SQLite. Escopo, histórias e marcos em
-`docs/fase-1-mvp.md` — segui-lo, incluindo a lista de **fora de escopo** (análise na UI, tags,
-progresso, sync, FTS ficam para fases seguintes) e os **riscos técnicos a atacar primeiro**
-(vídeo com range requests no asset handler; drag-and-drop no v3; keyring no Linux).
+Wails v3 app (alpha, **version pinned** in `go.mod`; upgrading from alpha is a deliberate task,
+never in the middle of a feature) + Svelte 5, with a SQLite database. Scope, stories, and
+milestones in `docs/fase-1-mvp.md` — follow it, including the **out-of-scope** list (in-UI
+analysis, tags, progress, sync, FTS are left for later phases) and the **technical risks to
+tackle first** (video with range requests in the asset handler; drag-and-drop in v3; keyring on
+Linux).
 
-Regras da fase:
-- Os packages da Fase 0 (`media`, `stt`, `analysis`) são reaproveitados como estão — não copiar, não reescrever.
-- O CLI `cmd/spike` e os providers de STT descartados na comparação (Gladia, AssemblyAI, Deepgram) foram removidos: cumpriram o papel de validação da Fase 0 e não têm mais chamador no app. `internal/stt` mantém só o ElevenLabs.
-- STT do app: ElevenLabs Scribe (`scribe_v2`, diarização, detecção multilíngue) — configuração registrada no `decisoes-tecnologia.md`.
-- Princípio de resiliência: falha de transcrição/análise nunca impede assistir ao vídeo.
+Phase rules:
+- Phase 0 packages (`media`, `stt`, `analysis`) are reused as-is — no copying, no rewriting.
+- The `cmd/spike` CLI and the STT providers discarded in the comparison (Gladia, AssemblyAI, Deepgram) have been removed: they served their purpose validating Phase 0 and have no remaining caller in the app. `internal/stt` keeps only ElevenLabs.
+- App STT: ElevenLabs Scribe (`scribe_v2`, diarization, multilingual detection) — configuration recorded in `decisoes-tecnologia.md`.
+- Resilience principle: a transcription/analysis failure never blocks watching the video.
 
-## Arquitetura — princípio da camada fina
+## Architecture — thin-layer principle
 
-Todo o core vive em packages Go puros, **sem imports de Wails** — o Wails entra apenas como casca
-(janela, bindings, eventos). Isso é inegociável: torna barato recuar de versão do framework.
+All the core lives in pure Go packages, **with no Wails imports** — Wails only comes in as the
+shell (window, bindings, events). This is non-negotiable: it keeps stepping back a framework
+version cheap.
 
 ```
-main.go             # entrada do app Wails v3 (casca)
-frontend/           # Svelte 5 (runes) — UI portada do protótipo React
-internal/media/     # extração de áudio (ffmpeg via os/exec)
-internal/stt/       # interface Provider + implementação ElevenLabs (única ativa)
-internal/analysis/  # análise via LLM (usada de fato na Fase 2)
-internal/db/        # SQLite (modernc.org/sqlite, WAL) + migrations goose (embed.FS)
-internal/jobs/      # fila em tabela + worker único (estados, retry, idempotência)
-internal/config/    # config local da máquina (paths, keyring)
-prompts/            # prompts versionados (analyze-v1.md, ...)
+main.go             # Wails v3 app entry point (shell)
+frontend/           # Svelte 5 (runes) — UI ported from the React prototype
+internal/media/     # audio extraction (ffmpeg via os/exec)
+internal/stt/       # Provider interface + ElevenLabs implementation (the only active one)
+internal/analysis/  # LLM-based analysis (actually used in Phase 2)
+internal/db/        # SQLite (modernc.org/sqlite, WAL) + goose migrations (embed.FS)
+internal/jobs/      # table-backed queue + single worker (states, retry, idempotency)
+internal/config/    # machine-local config (paths, keyring)
+prompts/            # versioned prompts (analyze-v1.md, ...)
 docs/               # decisoes-tecnologia.md, fase-1-mvp.md, fase-0-validacao.md
-testdata/           # fixtures sintéticas/anonimizadas
+testdata/           # synthetic/anonymized fixtures
 ```
 
-Fases futuras (não implementar agora, mas não bloquear no schema/desenho): análise na UI e
-prompts versionados ativos; tags + FTS5; sync pull-work-push entre máquinas com snapshot via
-`VACUUM INTO` (nunca copiar o arquivo do banco com conexões abertas) e manifesto sha256.
+Future phases (do not implement now, but do not block on it in the schema/design): in-UI
+analysis and active versioned prompts; tags + FTS5; pull-work-push sync between machines with a
+snapshot via `VACUUM INTO` (never copy the database file with open connections) and a sha256
+manifest.
 
-## Stack e convenções
+## Stack and conventions
 
-- Go recente; preferir **stdlib**: `net/http` para APIs, `os/exec` para ffmpeg, `log/slog` para logs, `encoding/json`.
-- Dependências externas só com justificativa (as aprovadas estão no `decisoes-tecnologia.md`).
-- **Credenciais:** via `zalando/go-keyring` (armazenamento nativo do SO) — nunca em texto plano, nunca na pasta sincronizada. Nada hardcoded, nada commitado.
-- **SQL portável** na camada de repositório: nada específico de driver (trocar modernc ↔ mattn deve ser só o import + `sql.Open`).
-- **Banco nunca dentro da pasta sincronizada**; paths de vídeo no banco sempre **relativos** à raiz de armazenamento — nunca absolutos ou específicos de máquina.
-- **Frontend: Svelte 5 com runes, sempre.** Nunca usar sintaxe legada do Svelte 3/4 (stores com `$:`, `export let`, etc.) — usar `$state`, `$derived`, `$effect`, `$props`. Se houver dúvida entre padrão antigo e novo, parar e perguntar.
-- Código e identificadores em inglês; documentação, mensagens de erro voltadas ao usuário e textos de análise em PT-BR.
-- STT sempre com diarização + timestamps por palavra + configuração multilíngue/code-switching do provedor (documentar no código a configuração usada e por quê).
-- No prompt de análise: palavra em PT/ES na fala do aluno é recurso ao idioma nativo (candidata a vocabulário), **não** erro de inglês.
+- Recent Go; prefer **stdlib**: `net/http` for APIs, `os/exec` for ffmpeg, `log/slog` for logging, `encoding/json`.
+- External dependencies only with justification (approved ones are in `decisoes-tecnologia.md`).
+- **Credentials:** via `zalando/go-keyring` (native OS storage) — never in plain text, never in the synced folder. Nothing hardcoded, nothing committed.
+- **Portable SQL** in the repository layer: nothing driver-specific (switching modernc ↔ mattn should be just the import + `sql.Open`).
+- **Database never inside the synced folder**; video paths in the database are always **relative** to the storage root — never absolute or machine-specific.
+- **Frontend: Svelte 5 with runes, always.** Never use legacy Svelte 3/4 syntax (stores with `$:`, `export let`, etc.) — use `$state`, `$derived`, `$effect`, `$props`. If in doubt between the old and new pattern, stop and ask.
+- Code and identifiers in English; documentation in English; user-facing error messages and analysis text in PT-BR.
+- STT always with diarization + per-word timestamps + the provider's multilingual/code-switching configuration (document in the code the configuration used and why).
+- In the analysis prompt: a PT/ES word in the student's speech is a resort to their native language (a vocabulary candidate), **not** an English mistake.
 
-## Comandos
+## Commands
 
 ```bash
-wails3 dev                # app em modo dev (hot reload do frontend)
-wails3 build              # build do app
-go test ./...             # testes (fixtures em testdata/)
-go vet ./...              # antes de commitar
+wails3 dev                # app in dev mode (frontend hot reload)
+wails3 build              # build the app
+go test ./...             # tests (fixtures in testdata/)
+go vet ./...              # before committing
 ```
 
 ## Commits
 
-Mensagens de commit devem ser **uma linha só**, no formato semântico (`tipo: descrição`) — ex.:
-`feat: adiciona extração de áudio via ffmpeg`, `fix: corrige parsing de timestamp da Gladia`,
-`docs: registra decisão de STT`. Tipos usuais: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+Commit messages must be a **single line**, in semantic format (`type: description`) — e.g.:
+`feat: add audio extraction via ffmpeg`, `fix: correct Gladia timestamp parsing`,
+`docs: record STT decision`. Usual types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 
-## Privacidade
+## Privacy
 
-O repositório é **público** (ou pode vir a ser a qualquer momento — tratar como público desde já).
-As gravações e transcrições são dados pessoais do dev e de terceiros (tutores):
+The repository is **public** (or may become so at any time — treat it as public from the
+start). Recordings and transcripts are personal data belonging to the dev and to third parties
+(tutors):
 
-- Vídeos, áudios e **qualquer JSON/transcrição de aula real** nunca entram no repo. Manter no `.gitignore` os diretórios de trabalho (ex.: `local/`, `*.mp4`, `*.wav`, saídas brutas dos provedores).
-- Fixtures em `testdata/` devem ser **sintéticas ou anonimizadas**: conversas inventadas no mesmo formato de resposta de cada provedor, sem nomes reais, sem trechos de aulas reais.
-- Nunca citar nomes de tutores, IDs de conta ou dados de billing em código, comentários, commits ou documentação.
-- Chaves de API somente em variáveis de ambiente; conferir que nenhum exemplo de `.env` commitado contém valores reais.
+- Videos, audio, and **any JSON/transcript of a real lesson** never enter the repo. Keep working directories in `.gitignore` (e.g., `local/`, `*.mp4`, `*.wav`, raw provider outputs).
+- Fixtures in `testdata/` must be **synthetic or anonymized**: invented conversations in the same response format as each provider, no real names, no excerpts from real lessons.
+- Never mention tutor names, account IDs, or billing data in code, comments, commits, or documentation.
+- API keys only in environment variables; verify that no committed `.env` example contains real values.

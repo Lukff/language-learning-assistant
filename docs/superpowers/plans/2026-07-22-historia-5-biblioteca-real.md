@@ -1,37 +1,37 @@
-# História 5 — Biblioteca real — Implementation Plan
+# Story 5 — Real Library — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A Biblioteca lista aulas reais com status derivado do pipeline de jobs (processando/pronta/erro), duração, filtro por tutor/período e reprocessamento de erros; clicar numa aula pronta abre um Detalhe mínimo que já reproduz o vídeo local (resolvendo o risco técnico 1 do projeto).
+**Goal:** The Library lists real lessons with status derived from the jobs pipeline (`processando`/`pronta`/`erro`), duration, filter by tutor/date range, and reprocessing of errors; clicking a lesson with status `pronta` opens a minimal Detail view that already plays the local video (resolving the project's technical risk 1).
 
-**Architecture:** Status e duração nunca são colunas gravadas por um processo separado — status é sempre derivado, na leitura, dos dois jobs (`extract_audio`/`transcribe`) de cada lesson; duração é calculada via `ffprobe` em melhor esforço no momento da confirmação da importação, dissociada do pipeline de transcrição (resiliência: nunca bloqueia a confirmação). O vídeo local é servido ao webview por um `application.Middleware` do Wails v3 que intercepta `GET /media/lesson/{id}` e delega pro `http.ServeFile` da stdlib (que já trata `Range` requests), caindo no handler padrão do Wails (embedded assets em produção, proxy pro Vite em `wails3 dev`) pra qualquer outro path.
+**Architecture:** Status and duration are never columns written by a separate process — status is always derived, at read time, from the two jobs (`extract_audio`/`transcribe`) of each lesson; duration is calculated via `ffprobe` on a best-effort basis at import confirmation time, decoupled from the transcription pipeline (resilience: never blocks confirmation). The local video is served to the webview by a Wails v3 `application.Middleware` that intercepts `GET /media/lesson/{id}` and delegates to the stdlib's `http.ServeFile` (which already handles `Range` requests), falling through to Wails's default handler (embedded assets in production, proxy to Vite in `wails3 dev`) for any other path.
 
-**Tech Stack:** Go (stdlib `net/http`, `os/exec` pro ffprobe), SQLite via `modernc.org/sqlite`, Svelte 5 (runes) + TypeScript, Wails v3 (`application.Middleware`, bindings geradas via `wails3 generate bindings -ts -i`).
+**Tech Stack:** Go (stdlib `net/http`, `os/exec` for ffprobe), SQLite via `modernc.org/sqlite`, Svelte 5 (runes) + TypeScript, Wails v3 (`application.Middleware`, bindings generated via `wails3 generate bindings -ts -i`).
 
 ## Global Constraints
 
-- `internal/` nunca importa Wails (camada fina) — `application.Middleware`/`application.Service` só aparecem em `services/` e `main.go`.
-- SQL portável na camada de repositório — nada específico de driver.
-- Falha de transcrição/análise (e, nesta história, falha de cálculo de duração) nunca impede assistir ao vídeo — princípio de resiliência do `CLAUDE.md`.
-- Código e identificadores em inglês; mensagens de erro voltadas ao usuário e UI em PT-BR.
-- Svelte 5 com runes sempre (`$state`, `$props`, nunca `export let`/`$:`).
-- Mensagens de commit: uma linha só, formato semântico (`feat:`, `fix:`, `test:`, ...).
-- Bindings do frontend são regeneradas com **`wails3 generate bindings -ts -i ./...`** (as flags `-ts -i` são obrigatórias neste projeto — sem elas o gerador produz classes `.js` em vez das interfaces `.ts` que o frontend consome; confirmado experimentalmente antes deste plano). `frontend/bindings/` é gitignored — a regeneração não aparece em `git status`, mas precisa rodar antes de qualquer alteração no frontend que dependa de tipos/métodos novos.
+- `internal/` never imports Wails (thin layer) — `application.Middleware`/`application.Service` only appear in `services/` and `main.go`.
+- Portable SQL in the repository layer — nothing driver-specific.
+- Transcription/analysis failure (and, in this story, duration-calculation failure) never prevents watching the video — resilience principle from `CLAUDE.md`.
+- Code and identifiers in English; user-facing error messages and UI in PT-BR.
+- Svelte 5 with runes always (`$state`, `$props`, never `export let`/`$:`).
+- Commit messages: single line only, semantic format (`feat:`, `fix:`, `test:`, ...).
+- Frontend bindings are regenerated with **`wails3 generate bindings -ts -i ./...`** (the `-ts -i` flags are mandatory in this project — without them the generator produces `.js` classes instead of the `.ts` interfaces the frontend consumes; confirmed experimentally before this plan). `frontend/bindings/` is gitignored — regeneration doesn't show up in `git status`, but must run before any frontend change that depends on new types/methods.
 
 ---
 
-### Task 1: `internal/media.Duration` — duração do vídeo via ffprobe
+### Task 1: `internal/media.Duration` — video duration via ffprobe
 
 **Files:**
 - Modify: `internal/media/media.go`
 - Test: `internal/media/media_test.go`
 
 **Interfaces:**
-- Produces: `func Duration(ctx context.Context, videoPath string) (time.Duration, error)` — usado pela Task 5 (`services/import.go`).
+- Produces: `func Duration(ctx context.Context, videoPath string) (time.Duration, error)` — used by Task 5 (`services/import.go`).
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [ ] **Step 1: Write the failing test**
 
-Adicionar ao final de `internal/media/media_test.go`:
+Add to the end of `internal/media/media_test.go`:
 
 ```go
 func TestDuration_FfprobeNotInPath(t *testing.T) {
@@ -44,21 +44,21 @@ func TestDuration_FfprobeNotInPath(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar o teste e confirmar que falha**
+- [ ] **Step 2: Run the test and confirm it fails**
 
 Run: `go test ./internal/media/... -run TestDuration_FfprobeNotInPath -v`
-Expected: FAIL — `Duration` ainda não existe (erro de compilação `undefined: Duration`).
+Expected: FAIL — `Duration` doesn't exist yet (compile error `undefined: Duration`).
 
-- [ ] **Step 3: Implementar `Duration`**
+- [ ] **Step 3: Implement `Duration`**
 
-Em `internal/media/media.go`, adicionar (mantendo o `package media` e o `ExtractAudio` já existentes) os imports `strconv` e `strings` e `time`, e a função:
+In `internal/media/media.go`, add (keeping the existing `package media` and `ExtractAudio`) the imports `strconv`, `strings`, and `time`, and the function:
 
 ```go
-// Duration lê a duração do vídeo via ffprobe (companion do ffmpeg, mesma
-// dependência externa já assumida por ExtractAudio) — usado pra gravar
-// lessons.duration_seconds na confirmação da importação (História 5). É
-// metadado intrínseco do vídeo, não produto do pipeline de transcrição:
-// deve funcionar mesmo que extract_audio/transcribe nunca rodem.
+// Duration reads the video's duration via ffprobe (ffmpeg's companion, the
+// same external dependency already assumed by ExtractAudio) — used to write
+// lessons.duration_seconds on import confirmation (Story 5). It's metadata
+// intrinsic to the video, not a product of the transcription pipeline: it
+// must work even if extract_audio/transcribe never run.
 func Duration(ctx context.Context, videoPath string) (time.Duration, error) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		return 0, fmt.Errorf("media: ffprobe não encontrado no PATH: %w", err)
@@ -82,7 +82,7 @@ func Duration(ctx context.Context, videoPath string) (time.Duration, error) {
 }
 ```
 
-O arquivo completo de imports fica:
+The full import block becomes:
 
 ```go
 import (
@@ -95,10 +95,10 @@ import (
 )
 ```
 
-- [ ] **Step 4: Rodar o teste e confirmar que passa**
+- [ ] **Step 4: Run the test and confirm it passes**
 
 Run: `go test ./internal/media/... -v`
-Expected: PASS em `TestDuration_FfprobeNotInPath` e `TestExtractAudio_FfmpegNotInPath` (já existente).
+Expected: PASS on `TestDuration_FfprobeNotInPath` and `TestExtractAudio_FfmpegNotInPath` (already existing).
 
 - [ ] **Step 5: Commit**
 
@@ -109,21 +109,21 @@ git commit -m "feat: adiciona internal/media.Duration via ffprobe"
 
 ---
 
-### Task 2: `internal/db` — coluna de duração na `Lesson`, `SetLessonDuration`, `ListTutors`
+### Task 2: `internal/db` — duration column on `Lesson`, `SetLessonDuration`, `ListTutors`
 
 **Files:**
 - Modify: `internal/db/lessons.go`
 - Modify: `internal/db/lessons_test.go`
 
 **Interfaces:**
-- Consumes: nada de tasks anteriores.
-- Produces: `Lesson.DurationSeconds *int64` (novo campo); `func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error`; `func ListTutors(conn *sql.DB) ([]string, error)`. `FindLessonByPath`/`FindLessonByHash`/`FindLessonByID` mantêm as mesmas assinaturas, mas o `*Lesson` retornado agora carrega `DurationSeconds`. `ListLessons` (a versão sem status, da História 3) **fica intocada nesta task** — `services/library.go:30` ainda a chama, e removê-la aqui deixaria o repositório sem compilar até a Task 6 rodar. `ListLessonsWithStatus` (Task 3) é a substituta; a remoção de `ListLessons` e dos dois testes que a cobrem (`TestListLessons_ReturnsAllOrderedByDateDesc`, `TestListLessons_EmptyReturnsEmptyNotNilError`) acontece **na Task 6**, no mesmo commit que reescreve `services/library.go` pra parar de chamá-la — assim o repositório nunca fica num estado intermediário sem compilar. (Nota de execução: esta correção de sequenciamento foi feita depois que a revisão da Task 2 pegou o build quebrado — a Task 2 originalmente removia `ListLessons` cedo demais.)
+- Consumes: nothing from previous tasks.
+- Produces: `Lesson.DurationSeconds *int64` (new field); `func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error`; `func ListTutors(conn *sql.DB) ([]string, error)`. `FindLessonByPath`/`FindLessonByHash`/`FindLessonByID` keep the same signatures, but the returned `*Lesson` now carries `DurationSeconds`. `ListLessons` (the status-less version, from Story 3) **stays untouched in this task** — `services/library.go:30` still calls it, and removing it here would leave the repository failing to compile until Task 6 runs. `ListLessonsWithStatus` (Task 3) is its replacement; removing `ListLessons` and the two tests covering it (`TestListLessons_ReturnsAllOrderedByDateDesc`, `TestListLessons_EmptyReturnsEmptyNotNilError`) happens **in Task 6**, in the same commit that rewrites `services/library.go` to stop calling it — this way the repository never sits in an intermediate state that fails to compile. (Execution note: this sequencing fix was made after Task 2's review caught the broken build — Task 2 originally removed `ListLessons` too early.)
 
-Este task reescreve `internal/db/lessons.go` por completo (extrai um scanner comum pras três buscas, que hoje repetem a mesma lista de colunas) — arquivo pequeno, mais claro reescrever do que remendar.
+This task rewrites `internal/db/lessons.go` completely (extracting a shared scanner for the three lookups, which today repeat the same column list) — a small file, clearer to rewrite than to patch.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [ ] **Step 1: Write the failing tests**
 
-Em `internal/db/lessons_test.go`, **não mexer** em `TestListLessons_ReturnsAllOrderedByDateDesc` nem `TestListLessons_EmptyReturnsEmptyNotNilError` — ficam como estão, a remoção é só na Task 6. No teste `TestFindLessonByID_FindsExistingAndNilWhenMissing` já existente, adicionar a verificação de duração nula por padrão, trocando o bloco:
+In `internal/db/lessons_test.go`, **do not touch** `TestListLessons_ReturnsAllOrderedByDateDesc` or `TestListLessons_EmptyReturnsEmptyNotNilError` — they stay as they are, removal only happens in Task 6. In the already-existing `TestFindLessonByID_FindsExistingAndNilWhenMissing` test, add the check that duration is nil by default, changing the block:
 
 ```go
 	found, err := FindLessonByID(conn, id)
@@ -135,7 +135,7 @@ Em `internal/db/lessons_test.go`, **não mexer** em `TestListLessons_ReturnsAllO
 	}
 ```
 
-por:
+to:
 
 ```go
 	found, err := FindLessonByID(conn, id)
@@ -150,7 +150,7 @@ por:
 	}
 ```
 
-Adicionar ao final do arquivo:
+Add to the end of the file:
 
 ```go
 func TestSetLessonDuration_UpdatesDurationSeconds(t *testing.T) {
@@ -210,14 +210,14 @@ func TestListTutors_ReturnsDistinctSortedTutors(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./internal/db/... -run 'TestFindLessonByID_FindsExistingAndNilWhenMissing|TestSetLessonDuration_UpdatesDurationSeconds|TestListTutors_ReturnsDistinctSortedTutors' -v`
-Expected: FAIL — `DurationSeconds` não existe em `Lesson`, `SetLessonDuration`/`ListTutors` não existem (erro de compilação).
+Expected: FAIL — `DurationSeconds` doesn't exist on `Lesson`, `SetLessonDuration`/`ListTutors` don't exist (compile error).
 
-- [ ] **Step 3: Reescrever `internal/db/lessons.go`**
+- [ ] **Step 3: Rewrite `internal/db/lessons.go`**
 
-Conteúdo completo do arquivo:
+Full file content:
 
 ```go
 package db
@@ -228,12 +228,12 @@ import (
 	"time"
 )
 
-// Lesson é uma linha de lessons. Além dos dados visíveis ao usuário
-// (LessonDate, Tutor, DurationSeconds), carrega a identidade (path, hash) e
-// o stat-cache (tamanho/mtime) usados pela varredura da História 3 para
-// decidir se o conteúdo precisa ser rehasheado. DurationSeconds é nil até a
-// História 5 gravá-lo (best-effort, via ffprobe, na confirmação da
-// importação) — nunca bloqueia nada por ser nil.
+// Lesson is a row of lessons. Besides the user-visible data
+// (LessonDate, Tutor, DurationSeconds), it carries identity (path, hash) and
+// the stat cache (size/mtime) used by Story 3's scan to
+// decide whether the content needs rehashing. DurationSeconds is nil until
+// Story 5 writes it (best-effort, via ffprobe, at import
+// confirmation) — it never blocks anything by being nil.
 type Lesson struct {
 	ID              int64
 	LessonDate      string
@@ -245,14 +245,14 @@ type Lesson struct {
 	DurationSeconds *int64
 }
 
-// lessonColumns é a lista de colunas (nesta ordem) que scanLessonRow espera
-// — compartilhada por FindLessonByPath/ByHash/ByID pra manter as três
-// consultas idênticas na forma como leem duration_seconds nullable.
+// lessonColumns is the list of columns (in this order) scanLessonRow expects
+// — shared by FindLessonByPath/ByHash/ByID to keep the three
+// queries identical in how they read the nullable duration_seconds.
 const lessonColumns = `id, lesson_date, tutor, video_path, COALESCE(video_hash, ''), COALESCE(file_size, 0), COALESCE(file_mtime, ''), duration_seconds`
 
-// scanLessonRow faz o scan de uma linha selecionada com lessonColumns.
-// Retorna (nil, nil) se a linha não existir (sql.ErrNoRows) — path/hash/id
-// não encontrado é o caso comum, não um erro, pros chamadores.
+// scanLessonRow scans a row selected with lessonColumns.
+// Returns (nil, nil) if the row doesn't exist (sql.ErrNoRows) — a path/hash/id
+// not found is the common case for callers, not an error.
 func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	var l Lesson
 	var duration sql.NullInt64
@@ -270,9 +270,9 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	return &l, nil
 }
 
-// FindLessonByPath busca a lesson cujo video_path é exatamente path. Retorna
-// (nil, nil) se não houver nenhuma — path já registrado é o caso comum, não
-// um erro.
+// FindLessonByPath looks up the lesson whose video_path is exactly path. Returns
+// (nil, nil) if there is none — an already-registered path is the common case, not
+// an error.
 func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+` FROM lessons WHERE video_path = ?`, path)
 	l, err := scanLessonRow(row)
@@ -282,8 +282,8 @@ func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	return l, nil
 }
 
-// FindLessonByHash busca a lesson cujo video_hash é exatamente hash. Retorna
-// (nil, nil) se não houver nenhuma.
+// FindLessonByHash looks up the lesson whose video_hash is exactly hash. Returns
+// (nil, nil) if there is none.
 func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+` FROM lessons WHERE video_hash = ?`, hash)
 	l, err := scanLessonRow(row)
@@ -293,7 +293,7 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	return l, nil
 }
 
-// FindLessonByID busca a lesson por id. Retorna (nil, nil) se não houver.
+// FindLessonByID looks up the lesson by id. Returns (nil, nil) if there is none.
 func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+` FROM lessons WHERE id = ?`, id)
 	l, err := scanLessonRow(row)
@@ -303,11 +303,11 @@ func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	return l, nil
 }
 
-// UpdateLessonPath atualiza video_path/file_size/file_mtime de uma lesson já
-// registrada — usado quando a varredura encontra o mesmo hash num path
-// diferente (o arquivo só foi movido/renomeado, não é uma aula nova).
-// file_mtime é o mtime do arquivo no disco; updated_at (a marca de quando a
-// linha do banco mudou) é sempre "agora", nunca o mtime do arquivo.
+// UpdateLessonPath updates video_path/file_size/file_mtime of an already
+// registered lesson — used when the scan finds the same hash under a different
+// path (the file was just moved/renamed, not a new lesson).
+// file_mtime is the file's mtime on disk; updated_at (the marker for when the
+// database row changed) is always "now", never the file's mtime.
 func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fileMTime string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET video_path = ?, file_size = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
@@ -319,12 +319,12 @@ func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fil
 	return nil
 }
 
-// ListLessons lista todas as lessons registradas, mais recentes primeiro
-// por data da aula — usado pela Biblioteca da História 3 (sem status
-// derivado dos jobs; isso é ListLessonsWithStatus, da História 5). Fica
-// nesta task só até a Task 6 trocar o chamador em services/library.go por
-// ListLessonsWithStatus e remover esta função (mantém o repositório
-// compilando entre as duas tasks).
+// ListLessons lists every registered lesson, most recent first
+// by lesson date — used by Story 3's Library (with no status derived
+// from jobs; that's ListLessonsWithStatus, from Story 5). It stays
+// in this task only until Task 6 swaps the caller in services/library.go for
+// ListLessonsWithStatus and removes this function (keeps the repository
+// compiling between the two tasks).
 func ListLessons(conn *sql.DB) ([]Lesson, error) {
 	rows, err := conn.Query(`SELECT ` + lessonColumns + ` FROM lessons ORDER BY lesson_date DESC, id DESC`)
 	if err != nil {
@@ -351,9 +351,9 @@ func ListLessons(conn *sql.DB) ([]Lesson, error) {
 	return out, nil
 }
 
-// SetLessonDuration grava a duração do vídeo (calculada via ffprobe na
-// confirmação da importação, best-effort — ver ImportService.ConfirmImport)
-// — só é chamado quando o probe teve sucesso.
+// SetLessonDuration writes the video's duration (calculated via ffprobe at
+// import confirmation, best-effort — see ImportService.ConfirmImport)
+// — only called when the probe succeeded.
 func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET duration_seconds = ?, updated_at = ? WHERE id = ?`,
@@ -365,8 +365,8 @@ func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	return nil
 }
 
-// ListTutors lista os tutores distintos já registrados em lessons, em ordem
-// alfabética — alimenta o dropdown de filtro da Biblioteca (História 5).
+// ListTutors lists the distinct tutors already registered in lessons, in
+// alphabetical order — feeds the Library's filter dropdown (Story 5).
 func ListTutors(conn *sql.DB) ([]string, error) {
 	rows, err := conn.Query(`SELECT DISTINCT tutor FROM lessons ORDER BY tutor ASC`)
 	if err != nil {
@@ -389,15 +389,15 @@ func ListTutors(conn *sql.DB) ([]string, error) {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes do pacote e confirmar que passam**
+- [ ] **Step 4: Run the package's tests and confirm they pass**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos — inclusive `TestFindLessonByPathAndByHash_FindExistingRow`, `TestUpdateLessonPath_ChangesPathSizeAndMTime`, `TestLessons_VideoHashUniqueIndexRejectsDuplicate`, `TestListLessons_ReturnsAllOrderedByDateDesc`, `TestListLessons_EmptyReturnsEmptyNotNilError` (já existentes, não devem quebrar com o refactor — `ListLessons` continua existindo nesta task).
+Expected: PASS across the board — including `TestFindLessonByPathAndByHash_FindExistingRow`, `TestUpdateLessonPath_ChangesPathSizeAndMTime`, `TestLessons_VideoHashUniqueIndexRejectsDuplicate`, `TestListLessons_ReturnsAllOrderedByDateDesc`, `TestListLessons_EmptyReturnsEmptyNotNilError` (already existing, shouldn't break with the refactor — `ListLessons` still exists in this task).
 
-Também confirmar que o repositório inteiro ainda compila (não só `internal/db`), já que `services/library.go` ainda chama `db.ListLessons`:
+Also confirm the whole repository still compiles (not just `internal/db`), since `services/library.go` still calls `db.ListLessons`:
 
 Run: `go build ./internal/... ./services/... .`
-Expected: sem erro.
+Expected: no error.
 
 - [ ] **Step 5: Commit**
 
@@ -408,19 +408,19 @@ git commit -m "feat: adiciona duration_seconds e ListTutors em internal/db"
 
 ---
 
-### Task 3: `internal/db` — status derivado dos jobs (`ListLessonsWithStatus`)
+### Task 3: `internal/db` — status derived from jobs (`ListLessonsWithStatus`)
 
 **Files:**
 - Create: `internal/db/lesson_status.go`
 - Create: `internal/db/lesson_status_test.go`
 
 **Interfaces:**
-- Consumes: `Lesson` (Task 2, embutido em `LessonWithStatus`); helpers de teste `mustInsertLessonForJobs`/`mustInsertJob` já existentes em `internal/db/jobs_test.go` (mesmo pacote `db`, reaproveitados sem redefinir).
-- Produces: `type LessonFilter struct { Tutor, DateFrom, DateTo string }`; `type LessonWithStatus struct { Lesson; Status, ErrorMessage string }`; `func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error)` — usado pela Task 6 (`services/library.go`).
+- Consumes: `Lesson` (Task 2, embedded in `LessonWithStatus`); test helpers `mustInsertLessonForJobs`/`mustInsertJob` already existing in `internal/db/jobs_test.go` (same `db` package, reused without redefining).
+- Produces: `type LessonFilter struct { Tutor, DateFrom, DateTo string }`; `type LessonWithStatus struct { Lesson; Status, ErrorMessage string }`; `func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error)` — used by Task 6 (`services/library.go`).
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [ ] **Step 1: Write the failing tests**
 
-Criar `internal/db/lesson_status_test.go`:
+Create `internal/db/lesson_status_test.go`:
 
 ```go
 package db
@@ -558,12 +558,12 @@ func TestListLessonsWithStatus_FiltraPorTutorEPeriodo(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./internal/db/... -run TestListLessonsWithStatus -v`
-Expected: FAIL — `LessonFilter`/`ListLessonsWithStatus` não existem (erro de compilação).
+Expected: FAIL — `LessonFilter`/`ListLessonsWithStatus` don't exist (compile error).
 
-- [ ] **Step 3: Criar `internal/db/lesson_status.go`**
+- [ ] **Step 3: Create `internal/db/lesson_status.go`**
 
 ```go
 // internal/db/lesson_status.go
@@ -574,30 +574,30 @@ import (
 	"fmt"
 )
 
-// LessonFilter filtra ListLessonsWithStatus — todos os campos são opcionais
-// (string vazia = sem filtro), usado pelo filtro por tutor/período da
-// Biblioteca (História 5).
+// LessonFilter filters ListLessonsWithStatus — every field is optional
+// (an empty string = no filter), used by the Library's (Story 5)
+// tutor/date-range filter.
 type LessonFilter struct {
 	Tutor    string
-	DateFrom string // AAAA-MM-DD, inclusive
-	DateTo   string // AAAA-MM-DD, inclusive
+	DateFrom string // YYYY-MM-DD, inclusive
+	DateTo   string // YYYY-MM-DD, inclusive
 }
 
-// LessonWithStatus é uma lesson com o status derivado dos jobs
-// extract_audio/transcribe. Status é sempre um de "processando", "pronta",
-// "erro"; ErrorMessage só é preenchido quando Status == "erro" — ver as
-// regras de derivação em deriveStatus.
+// LessonWithStatus is a lesson with the status derived from the
+// extract_audio/transcribe jobs. Status is always one of "processando", "pronta",
+// "erro"; ErrorMessage is only populated when Status == "erro" — see the
+// derivation rules in deriveStatus.
 type LessonWithStatus struct {
 	Lesson
 	Status       string
 	ErrorMessage string
 }
 
-// ListLessonsWithStatus lista as lessons confirmadas com o status derivado
-// dos jobs, mais recentes primeiro, aplicando filter (campos vazios são
-// ignorados). O filtro de data compara só a parte AAAA-MM-DD de
-// lesson_date (que pode ter horário, formato de <input type="datetime-local">),
-// pra incluir aulas com horário registrado no dia inteiro do intervalo.
+// ListLessonsWithStatus lists confirmed lessons with the status derived
+// from jobs, most recent first, applying filter (empty fields are
+// ignored). The date filter compares only the YYYY-MM-DD part of
+// lesson_date (which may have a time component, the format from <input type="datetime-local">),
+// so it includes lessons with a recorded time throughout the whole day of the range.
 func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error) {
 	query := `
 		SELECT
@@ -658,11 +658,11 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 	return out, nil
 }
 
-// deriveStatus aplica as regras de status da Biblioteca (História 5): erro
-// do extract_audio é a causa raiz e tem prioridade sobre o erro do
-// transcribe (que fica bloqueado quando o extract_audio dele falha — ver
-// claimNextEligibleJob em internal/jobs/worker.go); "pronta" exige o
-// transcribe concluído, não só o extract_audio.
+// deriveStatus applies the Library's status rules (Story 5): an
+// extract_audio error is the root cause and takes priority over a
+// transcribe error (which gets blocked when its extract_audio fails — see
+// claimNextEligibleJob in internal/jobs/worker.go); "pronta" requires
+// transcribe to be done, not just extract_audio.
 func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError string) (status string, message string) {
 	if extractStatus == "error" {
 		return "erro", extractError
@@ -677,10 +677,10 @@ func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos, incluindo os já existentes.
+Expected: PASS across the board, including the already-existing ones.
 
 - [ ] **Step 5: Commit**
 
@@ -698,11 +698,11 @@ git commit -m "feat: adiciona status derivado dos jobs em internal/db"
 - Modify: `internal/db/jobs_test.go`
 
 **Interfaces:**
-- Produces: `func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error)` — usado pela Task 6 (`services/library.go`, `RetryLesson`).
+- Produces: `func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error)` — used by Task 6 (`services/library.go`, `RetryLesson`).
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [ ] **Step 1: Write the failing test**
 
-Adicionar ao final de `internal/db/jobs_test.go`:
+Add to the end of `internal/db/jobs_test.go`:
 
 ```go
 func TestResetErrorJobsForLesson_ResetsOnlyErrorJobsOfThatLesson(t *testing.T) {
@@ -775,24 +775,24 @@ func TestResetErrorJobsForLesson_NoErrorJobsReturnsZeroNoError(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./internal/db/... -run TestResetErrorJobsForLesson -v`
-Expected: FAIL — `ResetErrorJobsForLesson` não existe (erro de compilação).
+Expected: FAIL — `ResetErrorJobsForLesson` doesn't exist (compile error).
 
-- [ ] **Step 3: Implementar `ResetErrorJobsForLesson`**
+- [ ] **Step 3: Implement `ResetErrorJobsForLesson`**
 
-Adicionar ao final de `internal/db/jobs.go`:
+Add to the end of `internal/db/jobs.go`:
 
 ```go
-// ResetErrorJobsForLesson reseta todos os jobs em "error" da lesson pra
-// "pending" (attempts=0, last_error=NULL) — usado pelo botão "Reprocessar"
-// da Biblioteca (História 5). Reseta os dois jobs de uma vez de propósito:
-// quando extract_audio falha em definitivo, o worker já marca transcribe
-// como "error" também (bloqueado por dependência — ver claimNextEligibleJob
-// em internal/jobs/worker.go), e resetar só o extract_audio deixaria o
-// transcribe preso em erro pra sempre. Retorna quantos jobs foram
-// resetados (0 não é erro — a lesson pode não ter nenhum job em erro).
+// ResetErrorJobsForLesson resets every "error" job of the lesson back to
+// "pending" (attempts=0, last_error=NULL) — used by the Library's (Story 5)
+// "Retry" button. Resets both jobs at once on purpose: when
+// extract_audio fails for good, the worker already marks transcribe
+// as "error" too (blocked by dependency — see claimNextEligibleJob
+// in internal/jobs/worker.go), and resetting only extract_audio would leave
+// transcribe stuck in error forever. Returns how many jobs were
+// reset (0 is not an error — the lesson may not have any job in error).
 func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error) {
 	res, err := conn.Exec(
 		`UPDATE jobs SET status = 'pending', attempts = 0, last_error = NULL, updated_at = ? WHERE lesson_id = ? AND status = 'error'`,
@@ -809,10 +809,10 @@ func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error) {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos.
+Expected: PASS across the board.
 
 - [ ] **Step 5: Commit**
 
@@ -823,7 +823,7 @@ git commit -m "feat: adiciona ResetErrorJobsForLesson pro reprocessamento da Bib
 
 ---
 
-### Task 5: `services/import.go` — duração best-effort na confirmação
+### Task 5: `services/import.go` — best-effort duration at confirmation
 
 **Files:**
 - Modify: `services/import.go`
@@ -831,11 +831,11 @@ git commit -m "feat: adiciona ResetErrorJobsForLesson pro reprocessamento da Bib
 
 **Interfaces:**
 - Consumes: `media.Duration` (Task 1), `db.FindLessonByID`/`db.SetLessonDuration` (Task 2).
-- Produces: nenhuma assinatura pública nova — `ImportService.ConfirmImport` mantém `(id int64, lessonDate string, tutor string) error`.
+- Produces: no new public signature — `ImportService.ConfirmImport` keeps `(id int64, lessonDate string, tutor string) error`.
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [ ] **Step 1: Write the failing test**
 
-Adicionar ao final de `services/import_test.go`:
+Add to the end of `services/import_test.go`:
 
 ```go
 func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testing.T) {
@@ -881,14 +881,14 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testi
 }
 ```
 
-- [ ] **Step 2: Rodar o teste e confirmar que passa mesmo sem a mudança**
+- [ ] **Step 2: Run the test and confirm it passes even without the change**
 
 Run: `go test ./services/... -run TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails -v`
-Expected: PASS — este teste específico já passa sem nenhuma mudança de produção, porque `ConfirmImport` hoje simplesmente não grava duração nenhuma (fica sempre nil). O teste serve pra travar o comportamento **depois** que a Step 3 adicionar a chamada ao probe: ele deve continuar passando mesmo com o probe rodando (e falhando, por causa do conteúdo fake). Confirmar isso agora estabelece a baseline antes da mudança.
+Expected: PASS — this particular test already passes with no production change at all, because `ConfirmImport` today simply doesn't write any duration (it always stays nil). The test exists to pin down the behavior **after** Step 3 adds the call to the probe: it should keep passing even with the probe running (and failing, because of the fake content). Confirming this now establishes the baseline before the change.
 
-- [ ] **Step 3: Implementar a chamada best-effort em `ConfirmImport`**
+- [ ] **Step 3: Implement the best-effort call in `ConfirmImport`**
 
-Reescrever `services/import.go` (só a parte de imports, `ConfirmImport` e a nova função — `dbRepo` e o resto do arquivo ficam iguais):
+Rewrite `services/import.go` (only the imports section, `ConfirmImport`, and the new function — `dbRepo` and the rest of the file stay the same):
 
 ```go
 package services
@@ -907,12 +907,12 @@ import (
 )
 ```
 
-Trocar o corpo de `ConfirmImport`:
+Change `ConfirmImport`'s body:
 
 ```go
-// ConfirmImport grava o candidato id como lesson real (lessonDate no
-// formato AAAA-MM-DD, tutor livre) e cria os jobs de processamento. Depois
-// de confirmar, tenta calcular a duração do vídeo (melhor esforço — ver
+// ConfirmImport writes the candidate id as a real lesson (lessonDate in
+// YYYY-MM-DD format, tutor as free text) and creates the processing jobs. After
+// confirming, it tries to calculate the video's duration (best-effort — see
 // setDurationBestEffort).
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error {
 	if lessonDate == "" {
@@ -929,13 +929,13 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	return nil
 }
 
-// setDurationBestEffort calcula a duração do vídeo recém-confirmado via
-// ffprobe e grava em lessons.duration_seconds. Duração é metadado
-// intrínseco do vídeo, não produto do pipeline de transcrição — deve ficar
-// disponível mesmo que o pipeline falhe (princípio de resiliência,
-// CLAUDE.md). Por isso qualquer falha aqui (ffprobe ausente, arquivo
-// inválido, etc.) é só logada: nunca propagada como erro de ConfirmImport,
-// que já confirmou a lesson com sucesso.
+// setDurationBestEffort calculates the newly-confirmed video's duration via
+// ffprobe and writes it to lessons.duration_seconds. Duration is metadata
+// intrinsic to the video, not a product of the transcription pipeline — it
+// must remain available even if the pipeline fails (resilience principle,
+// CLAUDE.md). That's why any failure here (missing ffprobe, invalid file,
+// etc.) is only logged: never propagated as a ConfirmImport error, which has
+// already successfully confirmed the lesson.
 func (s *ImportService) setDurationBestEffort(lessonID int64) {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
 	if err != nil || lesson == nil {
@@ -957,12 +957,12 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 }
 ```
 
-O resto do arquivo (`dbRepo` e seus métodos) fica inalterado.
+The rest of the file (`dbRepo` and its methods) stays unchanged.
 
-- [ ] **Step 4: Rodar os testes do pacote e confirmar que passam**
+- [ ] **Step 4: Run the package's tests and confirm they pass**
 
 Run: `go test ./services/... -v`
-Expected: PASS em todos, incluindo os três testes já existentes de `ImportService` e o novo.
+Expected: PASS across the board, including the three already-existing `ImportService` tests and the new one.
 
 - [ ] **Step 5: Commit**
 
@@ -973,35 +973,35 @@ git commit -m "feat: calcula duracao do video em melhor esforco na confirmacao d
 
 ---
 
-### Task 6: `services/library.go` — status/duração/filtro/reprocessar/Detalhe + bindings
+### Task 6: `services/library.go` — status/duration/filter/retry/Detail + bindings
 
 **Files:**
 - Modify: `services/library.go`
 - Modify: `services/library_test.go`
-- Modify: `internal/db/lessons.go` — remover a função `ListLessons` (deixada de propósito na Task 2; este é o task que troca seu único chamador, `services/library.go`, por `ListLessonsWithStatus` — a remoção acontece no mesmo commit pra nunca deixar o repositório sem compilar entre uma coisa e outra).
-- Modify: `internal/db/lessons_test.go` — remover `TestListLessons_ReturnsAllOrderedByDateDesc` e `TestListLessons_EmptyReturnsEmptyNotNilError` (cobrem a função que este task remove).
-- Regenerate: `frontend/bindings/` (via `wails3 generate bindings -ts -i ./...`, não versionado)
+- Modify: `internal/db/lessons.go` — remove the `ListLessons` function (left in on purpose in Task 2; this is the task that swaps its only caller, `services/library.go`, for `ListLessonsWithStatus` — the removal happens in the same commit so the repository is never left in a state that fails to compile in between).
+- Modify: `internal/db/lessons_test.go` — remove `TestListLessons_ReturnsAllOrderedByDateDesc` and `TestListLessons_EmptyReturnsEmptyNotNilError` (they cover the function this task removes).
+- Regenerate: `frontend/bindings/` (via `wails3 generate bindings -ts -i ./...`, not versioned)
 
 **Interfaces:**
 - Consumes: `db.ListLessonsWithStatus`/`db.LessonFilter` (Task 3), `db.ListTutors` (Task 2), `db.ResetErrorJobsForLesson` (Task 4), `db.FindLessonByID` (Task 2).
-- Produces (consumido pela Task 7/8 do frontend, e pelo `main.go` na Task 7 do backend):
+- Produces (consumed by the frontend's Task 7/8, and by `main.go` in the backend's Task 7):
   - `type Lesson struct { ID int64; LessonDate string; Tutor string; VideoPath string; DurationSeconds *int64; Status string; ErrorMessage string }` (JSON: `id`, `lessonDate`, `tutor`, `videoPath`, `durationSeconds`, `status`, `errorMessage`).
   - `type LessonFilter struct { Tutor, DateFrom, DateTo string }` (JSON: `tutor`, `dateFrom`, `dateTo`).
-  - `func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error)` — **assinatura muda** (antes não tinha parâmetro).
+  - `func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error)` — **signature changes** (previously had no parameter).
   - `func (s *LibraryService) ListTutors() ([]string, error)`.
   - `func (s *LibraryService) RetryLesson(lessonID int64) error`.
   - `func (s *LibraryService) GetLesson(id int64) (Lesson, error)`.
-  - Depois de `wails3 generate bindings -ts -i ./...`, os tipos TS gerados (confirmados experimentalmente) são:
+  - After `wails3 generate bindings -ts -i ./...`, the generated TS types (confirmed experimentally) are:
     - `export interface Lesson { "id": number; "lessonDate": string; "tutor": string; "videoPath": string; "durationSeconds": number | null; "status": string; "errorMessage": string; }`
     - `export interface LessonFilter { "tutor": string; "dateFrom": string; "dateTo": string; }`
     - `ListLessons(filter: $models.LessonFilter): $CancellablePromise<$models.Lesson[] | null>`
     - `ListTutors(): $CancellablePromise<string[] | null>`
     - `RetryLesson(lessonID: number): $CancellablePromise<void>`
-    - `GetLesson(id: number): $CancellablePromise<$models.Lesson>` (rejeita a promise se não encontrado — sem `| null`).
+    - `GetLesson(id: number): $CancellablePromise<$models.Lesson>` (rejects the promise if not found — no `| null`).
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [ ] **Step 1: Write the failing tests**
 
-Reescrever `services/library_test.go` por completo:
+Rewrite `services/library_test.go` completely:
 
 ```go
 package services
@@ -1200,12 +1200,12 @@ func TestLibraryService_GetLesson_FindsExistingAndErrorsWhenMissing(t *testing.T
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./services/... -run TestLibraryService -v`
-Expected: FAIL — `ListLessons` ainda espera zero argumentos, `ListTutors`/`RetryLesson`/`GetLesson`/`LessonFilter` não existem (erro de compilação).
+Expected: FAIL — `ListLessons` still expects zero arguments, `ListTutors`/`RetryLesson`/`GetLesson`/`LessonFilter` don't exist (compile error).
 
-- [ ] **Step 3: Reescrever `services/library.go`**
+- [ ] **Step 3: Rewrite `services/library.go`**
 
 ```go
 package services
@@ -1217,10 +1217,10 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// LibraryService expõe as aulas já confirmadas para a Biblioteca —
-// listagem com status derivado dos jobs e duração (História 5), filtro por
-// tutor/período, reprocessamento de aulas com erro e busca de uma aula pro
-// Detalhe.
+// LibraryService exposes already-confirmed lessons to the Library —
+// listing with status derived from jobs and duration (Story 5), filter by
+// tutor/date range, reprocessing lessons with an error, and looking up a
+// lesson for the Detail view.
 type LibraryService struct {
 	conn *sql.DB
 }
@@ -1229,11 +1229,11 @@ func NewLibraryService(conn *sql.DB) *LibraryService {
 	return &LibraryService{conn: conn}
 }
 
-// Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
-// sempre um de "processando", "pronta", "erro" (ver db.LessonWithStatus);
-// ErrorMessage só é preenchido quando Status == "erro". DurationSeconds é
-// nil até o probe de duração (melhor esforço, na confirmação da
-// importação) ter sucesso.
+// Lesson is a confirmed lesson, in the shape exposed to the frontend. Status is
+// always one of "processando", "pronta", "erro" (see db.LessonWithStatus);
+// ErrorMessage is only populated when Status == "erro". DurationSeconds is
+// nil until the duration probe (best-effort, at import
+// confirmation) succeeds.
 type Lesson struct {
 	ID              int64  `json:"id"`
 	LessonDate      string `json:"lessonDate"`
@@ -1244,16 +1244,16 @@ type Lesson struct {
 	ErrorMessage    string `json:"errorMessage"`
 }
 
-// LessonFilter filtra ListLessons — campos vazios são ignorados (sem
-// filtro naquele critério).
+// LessonFilter filters ListLessons — empty fields are ignored (no
+// filter on that criterion).
 type LessonFilter struct {
 	Tutor    string `json:"tutor"`
 	DateFrom string `json:"dateFrom"`
 	DateTo   string `json:"dateTo"`
 }
 
-// ListLessons lista as aulas confirmadas com status/duração, mais recentes
-// primeiro, aplicando filter.
+// ListLessons lists confirmed lessons with status/duration, most recent
+// first, applying filter.
 func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	rows, err := db.ListLessonsWithStatus(s.conn, db.LessonFilter{
 		Tutor:    filter.Tutor,
@@ -1278,25 +1278,25 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	return out, nil
 }
 
-// ListTutors lista os tutores distintos já registrados, pro dropdown de
-// filtro da Biblioteca.
+// ListTutors lists the distinct tutors already registered, for the
+// Library's filter dropdown.
 func (s *LibraryService) ListTutors() ([]string, error) {
 	return db.ListTutors(s.conn)
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — o worker de
-// jobs (internal/jobs) retoma o pipeline sozinho no próximo poll (~5s), sem
-// precisar acordá-lo explicitamente (mesma decisão da História 4). Não é
-// erro se a lesson não tiver nenhum job em erro no momento.
+// RetryLesson resets the lesson's jobs with errors back to "pending" — the
+// jobs worker (internal/jobs) resumes the pipeline on its own on the next poll
+// (~5s), with no need to explicitly wake it (same decision as Story 4). It is
+// not an error if the lesson currently has no job in error.
 func (s *LibraryService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err
 }
 
-// GetLesson busca uma aula confirmada por id, pro Detalhe (História 5/6).
-// Diferente de ListLessons, não calcula Status/ErrorMessage — o Detalhe só
-// é aberto a partir de uma aula já "pronta" na Biblioteca (ver
-// Library.svelte), então recalcular o status aqui seria trabalho sem uso.
+// GetLesson looks up a confirmed lesson by id, for the Detail view (Story 5/6).
+// Unlike ListLessons, it doesn't compute Status/ErrorMessage — the Detail view
+// is only ever opened from an already "pronta" lesson in the Library (see
+// Library.svelte), so recomputing status here would be wasted work.
 func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	lesson, err := db.FindLessonByID(s.conn, id)
 	if err != nil {
@@ -1315,26 +1315,26 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 }
 ```
 
-- [ ] **Step 3b: Remover `ListLessons` de `internal/db`**
+- [ ] **Step 3b: Remove `ListLessons` from `internal/db`**
 
-Este método (da História 3) fica sem chamador depois da Step 3 acima — `services/library.go` agora chama `db.ListLessonsWithStatus`, não mais `db.ListLessons`. Removê-lo neste mesmo commit (não antes: a Task 2 deixou `ListLessons` intocada de propósito, pra nunca deixar o repositório sem compilar entre as duas tasks).
+This method (from Story 3) is left with no caller after Step 3 above — `services/library.go` now calls `db.ListLessonsWithStatus`, not `db.ListLessons` anymore. Removing it in this same commit (not before: Task 2 left `ListLessons` untouched on purpose, so the repository never failed to compile between the two tasks).
 
-Em `internal/db/lessons.go`, remover a função `ListLessons` inteira (a que lista todas as lessons ordenadas por `lesson_date DESC, id DESC`, sem status).
+In `internal/db/lessons.go`, remove the entire `ListLessons` function (the one that lists all lessons ordered by `lesson_date DESC, id DESC`, without status).
 
-Em `internal/db/lessons_test.go`, remover `TestListLessons_ReturnsAllOrderedByDateDesc` e `TestListLessons_EmptyReturnsEmptyNotNilError` (cobrem a função removida).
+In `internal/db/lessons_test.go`, remove `TestListLessons_ReturnsAllOrderedByDateDesc` and `TestListLessons_EmptyReturnsEmptyNotNilError` (they cover the removed function).
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/db/... ./services/... -v`
-Expected: PASS em todos — nenhum teste deve referenciar `db.ListLessons` depois desta step.
+Expected: PASS across the board — no test should reference `db.ListLessons` after this step.
 
 Run: `go build ./internal/... ./services/... .`
-Expected: sem erro (confirma que remover `ListLessons` não deixou nenhum outro chamador esquecido em nenhum pacote).
+Expected: no error (confirms removing `ListLessons` didn't leave any other caller forgotten in any package).
 
-- [ ] **Step 5: Regenerar os bindings do frontend**
+- [ ] **Step 5: Regenerate the frontend bindings**
 
 Run: `wails3 generate bindings -ts -i ./...`
-Expected: saída `INFO Processed: ... Services, ... Methods, ... Models ...` sem erro. Conferir com `cat frontend/bindings/assistente-idiomas/services/models.ts` e `cat frontend/bindings/assistente-idiomas/services/libraryservice.ts` que os tipos batem com os listados em **Interfaces** acima (nomes de campos, `| null` onde esperado).
+Expected: output `INFO Processed: ... Services, ... Methods, ... Models ...` with no error. Check with `cat frontend/bindings/assistente-idiomas/services/models.ts` and `cat frontend/bindings/assistente-idiomas/services/libraryservice.ts` that the types match what's listed under **Interfaces** above (field names, `| null` where expected).
 
 - [ ] **Step 6: Commit**
 
@@ -1343,11 +1343,11 @@ git add services/library.go services/library_test.go internal/db/lessons.go inte
 git commit -m "feat: status/duracao/filtro/reprocessar/detalhe na LibraryService"
 ```
 
-(`frontend/bindings/` é gitignored — não entra no commit; é regenerado localmente por quem builda o app.)
+(`frontend/bindings/` is gitignored — it's not part of the commit; it's regenerated locally by whoever builds the app.)
 
 ---
 
-### Task 7: Vídeo local ao webview — `VideoAssetMiddleware` + wiring em `main.go`
+### Task 7: Local video to the webview — `VideoAssetMiddleware` + wiring in `main.go`
 
 **Files:**
 - Create: `services/video_asset.go`
@@ -1355,12 +1355,12 @@ git commit -m "feat: status/duracao/filtro/reprocessar/detalhe na LibraryService
 - Modify: `main.go`
 
 **Interfaces:**
-- Consumes: `db.FindLessonByID` (Task 2), `jobs.StorageRootResolver` (já existente em `internal/jobs/worker.go`), `mustInsertLesson(t, conn, date, tutor, videoPath) int64` (helper de teste definido em `services/library_test.go` pela Task 6, reaproveitado aqui sem redefinir — mesmo pacote `services`).
-- Produces: `func VideoAssetMiddleware(conn *sql.DB, storageRoot jobs.StorageRootResolver) application.Middleware` — servido em `GET /media/lesson/{id}`, usado pela Task 8 (frontend) como `src` do `<video>`.
+- Consumes: `db.FindLessonByID` (Task 2), `jobs.StorageRootResolver` (already existing in `internal/jobs/worker.go`), `mustInsertLesson(t, conn, date, tutor, videoPath) int64` (test helper defined in `services/library_test.go` by Task 6, reused here without redefining — same `services` package).
+- Produces: `func VideoAssetMiddleware(conn *sql.DB, storageRoot jobs.StorageRootResolver) application.Middleware` — served at `GET /media/lesson/{id}`, used by the frontend's Task 8 as the `<video>`'s `src`.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [ ] **Step 1: Write the failing tests**
 
-Criar `services/video_asset_test.go`:
+Create `services/video_asset_test.go`:
 
 ```go
 package services
@@ -1444,12 +1444,12 @@ func TestVideoAssetMiddleware_OtherPathsDelegateToNext(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./services/... -run TestVideoAssetMiddleware -v`
-Expected: FAIL — `VideoAssetMiddleware` não existe (erro de compilação).
+Expected: FAIL — `VideoAssetMiddleware` doesn't exist (compile error).
 
-- [ ] **Step 3: Criar `services/video_asset.go`**
+- [ ] **Step 3: Create `services/video_asset.go`**
 
 ```go
 // services/video_asset.go
@@ -1468,23 +1468,23 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// videoAssetPrefix é o path base do endpoint que serve o .mp4 de uma
-// lesson ao webview — resolve o risco técnico 1 do fase-1-mvp.md (vídeo
-// local com suporte a range requests) via http.ServeFile da stdlib, que já
-// trata Range de graça. Ver
+// videoAssetPrefix is the base path of the endpoint that serves a lesson's
+// .mp4 to the webview — resolves fase-1-mvp.md's technical risk 1 (local
+// video with range-request support) via the stdlib's http.ServeFile, which
+// already handles Range for free. See
 // docs/superpowers/specs/2026-07-22-historia-5-biblioteca-real-design.md.
 const videoAssetPrefix = "/media/lesson/"
 
-// VideoAssetMiddleware serve GET /media/lesson/{id} com o vídeo da lesson
-// id; qualquer outro path é delegado a next (o AssetServer padrão do
-// Wails — embedded em produção, proxy pro dev server em `wails3 dev`,
-// confirmado lendo internal/assetserver/build_dev.go da dependência: o
-// webview sempre fala com o servidor Go, que só faz proxy pro Vite
-// internamente quando FRONTEND_DEVSERVER_URL está setado).
-// storageRoot é reavaliado a cada requisição, não uma vez só na criação do
-// middleware — mesma razão de internal/jobs.Worker: storage_root só existe
-// depois do wizard de primeira execução, que roda depois do app já estar
-// de pé.
+// VideoAssetMiddleware serves GET /media/lesson/{id} with lesson id's
+// video; any other path is delegated to next (Wails's default
+// AssetServer — embedded in production, proxied to the dev server in
+// `wails3 dev`, confirmed by reading internal/assetserver/build_dev.go
+// in the dependency: the webview always talks to the Go server, which only
+// proxies to Vite internally when FRONTEND_DEVSERVER_URL is set).
+// storageRoot is re-evaluated on every request, not just once at the
+// middleware's creation — same reason as internal/jobs.Worker:
+// storage_root only exists after the first-run wizard, which runs after the
+// app is already up.
 func VideoAssetMiddleware(conn *sql.DB, storageRoot jobs.StorageRootResolver) application.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1515,14 +1515,14 @@ func VideoAssetMiddleware(conn *sql.DB, storageRoot jobs.StorageRootResolver) ap
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./services/... -v`
-Expected: PASS em todos.
+Expected: PASS across the board.
 
-- [ ] **Step 5: Ligar o middleware em `main.go`**
+- [ ] **Step 5: Wire the middleware into `main.go`**
 
-Reescrever `main.go` por completo:
+Rewrite `main.go` completely:
 
 ```go
 package main
@@ -1596,13 +1596,14 @@ func main() {
 	}
 }
 
-// startJobWorker inicia o pipeline em background (História 4) numa
-// goroutine. storageRoot é resolvido a cada job, não uma vez só aqui — o
-// wizard de primeira execução ainda não rodou neste ponto do startup, então
-// resolvê-lo antecipadamente falharia sempre na primeira sessão do app (ver
+// startJobWorker starts the background pipeline (Story 4) in a
+// goroutine. storageRoot is resolved on every job, not just once here — the
+// first-run wizard hasn't run yet at this point in startup, so resolving it
+// eagerly would always fail on the app's first session (see
 // docs/superpowers/specs/2026-07-22-historia-4-pipeline-jobs-design.md).
-// Só o cache de áudio (que não depende do wizard) é resolvido aqui; se isso
-// falhar, é um problema de disco/permissão e o worker não inicia.
+// Only the audio cache directory (which doesn't depend on the wizard) is resolved
+// here; if that fails, it's a disk/permission problem and the worker doesn't
+// start.
 func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {
 	audioCacheDir, err := config.AudioCacheDir()
 	if err != nil {
@@ -1625,13 +1626,13 @@ func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {
 }
 ```
 
-- [ ] **Step 6: Confirmar que o binário compila**
+- [ ] **Step 6: Confirm the binary builds**
 
 Run: `go build ./internal/... ./services/... .`
-Expected: sem erro (o pacote `build/ios` já falha antes desta mudança por motivo não relacionado — não usar `go build ./...` pra este check).
+Expected: no error. (The `build/ios` package already fails before this change for an unrelated reason — don't use `go build ./...` for this check.)
 
 Run: `go vet ./...`
-Expected: sem erro.
+Expected: no error.
 
 - [ ] **Step 7: Commit**
 
@@ -1642,7 +1643,7 @@ git commit -m "feat: serve video local ao webview via asset handler (risco 1)"
 
 ---
 
-### Task 8: Frontend — filtro/status/duração na Biblioteca + navegação pro Detalhe
+### Task 8: Frontend — filter/status/duration in the Library + navigation to the Detail view
 
 **Files:**
 - Modify: `frontend/src/lib/screens/Library.svelte`
@@ -1650,12 +1651,12 @@ git commit -m "feat: serve video local ao webview via asset handler (risco 1)"
 - Modify: `frontend/src/App.svelte`
 
 **Interfaces:**
-- Consumes (bindings geradas na Task 6): `LibraryService.ListLessons(filter: LessonFilter)`, `LibraryService.ListTutors()`, `LibraryService.RetryLesson(lessonID)`, `LibraryService.GetLesson(id)`, tipos `Lesson`/`LessonFilter` de `../../bindings/assistente-idiomas/services/models`. Endpoint de vídeo da Task 7: `GET /media/lesson/{id}`.
-- Produces: `Library.svelte` ganha prop `onOpenLesson: (lessonId: number) => void`; `LessonDetail.svelte` (novo) recebe `{ lessonId: number; onBack: () => void }`.
+- Consumes (bindings generated in Task 6): `LibraryService.ListLessons(filter: LessonFilter)`, `LibraryService.ListTutors()`, `LibraryService.RetryLesson(lessonID)`, `LibraryService.GetLesson(id)`, the `Lesson`/`LessonFilter` types from `../../bindings/assistente-idiomas/services/models`. Task 7's video endpoint: `GET /media/lesson/{id}`.
+- Produces: `Library.svelte` gains an `onOpenLesson: (lessonId: number) => void` prop; `LessonDetail.svelte` (new) receives `{ lessonId: number; onBack: () => void }`.
 
-Este projeto não tem testes automatizados de componente Svelte (nenhum existe hoje) — a verificação desta task é `npm run check` (type-check) mais a verificação visual manual já pendente das histórias anteriores.
+This project has no automated Svelte component tests (none exist today) — verification for this task is `npm run check` (type-check) plus the manual visual verification already pending from previous stories.
 
-- [ ] **Step 1: Reescrever `frontend/src/lib/screens/Library.svelte`**
+- [ ] **Step 1: Rewrite `frontend/src/lib/screens/Library.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -1701,9 +1702,10 @@ Este projeto não tem testes automatizados de componente Svelte (nenhum existe h
     tutors = (await LibraryService.ListTutors()) ?? [];
   }
 
-  // lessonDate é gravado como "AAAA-MM-DD" ou "AAAA-MM-DDTHH:MM" (formato de
-  // <input type="datetime-local">); aqui só reformata pra exibição em pt-BR
-  // sem depender de fuso horário (não é um timestamp com "Z", é hora local).
+  // lessonDate is stored as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the format
+  // from <input type="datetime-local">); here it's only reformatted for
+  // display in pt-BR without relying on a timezone (it's not a timestamp
+  // with a "Z", it's a local time).
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
@@ -2009,7 +2011,7 @@ Este projeto não tem testes automatizados de componente Svelte (nenhum existe h
 </style>
 ```
 
-- [ ] **Step 2: Criar `frontend/src/lib/screens/LessonDetail.svelte`**
+- [ ] **Step 2: Create `frontend/src/lib/screens/LessonDetail.svelte`**
 
 ```svelte
 <script lang="ts">
@@ -2093,9 +2095,9 @@ Este projeto não tem testes automatizados de componente Svelte (nenhum existe h
 </style>
 ```
 
-- [ ] **Step 3: Ligar a rota do Detalhe em `frontend/src/App.svelte`**
+- [ ] **Step 3: Wire up the Detail route in `frontend/src/App.svelte`**
 
-Reescrever o arquivo completo:
+Rewrite the whole file:
 
 ```svelte
 <script lang="ts">
@@ -2181,10 +2183,10 @@ Reescrever o arquivo completo:
 </style>
 ```
 
-- [ ] **Step 4: Type-check do frontend**
+- [ ] **Step 4: Frontend type-check**
 
 Run: `cd frontend && npm run check`
-Expected: `0 ERRORS`. Se aparecer erro de tipo, o mais provável é o shape gerado na Task 6 ter ficado diferente do documentado em **Interfaces** — conferir `frontend/bindings/assistente-idiomas/services/models.ts` e `libraryservice.ts` contra o código acima e ajustar nomes/tipos, não a lógica.
+Expected: `0 ERRORS`. If a type error shows up, it's most likely that Task 6's generated shape ended up different from what's documented under **Interfaces** — check `frontend/bindings/assistente-idiomas/services/models.ts` and `libraryservice.ts` against the code above and adjust names/types, not the logic.
 
 - [ ] **Step 5: Commit**
 
@@ -2195,18 +2197,18 @@ git commit -m "feat: filtro/status/duracao na Biblioteca e navegacao para o Deta
 
 ---
 
-### Task 9: Verificação final e registro de progresso
+### Task 9: Final verification and progress log entry
 
 **Files:**
 - Modify: `docs/fase-1-mvp.md`
 
-- [ ] **Step 1: Suite Go completa**
+- [ ] **Step 1: Full Go suite**
 
 Run: `go vet ./...`
-Expected: sem saída (limpo).
+Expected: no output (clean).
 
 Run: `go test ./...`
-Expected: `ok` em todos os pacotes com testes (`internal/analysis`, `internal/config`, `internal/db`, `internal/importer`, `internal/jobs`, `internal/media`, `internal/stt`, `services`); `[no test files]` nos demais.
+Expected: `ok` on every package with tests (`internal/analysis`, `internal/config`, `internal/db`, `internal/importer`, `internal/jobs`, `internal/media`, `internal/stt`, `services`); `[no test files]` on the rest.
 
 - [ ] **Step 2: Frontend**
 
@@ -2214,39 +2216,39 @@ Run: `cd frontend && npm run check`
 Expected: `0 ERRORS`.
 
 Run: `cd frontend && npm run build:dev`
-Expected: build de desenvolvimento conclui sem erro (confirma que o Svelte/TS compila de ponta a ponta, incluindo os bindings regenerados).
+Expected: the development build finishes with no error (confirms Svelte/TS compiles end to end, including the regenerated bindings).
 
-- [ ] **Step 3: Build do binário**
+- [ ] **Step 3: Build the binary**
 
 Run: `go build ./internal/... ./services/... .`
-Expected: sem erro. (Não usar `go build ./...`: `build/ios` já falha antes desta história por não ser um alvo de build válido nesta plataforma — pré-existente, fora de escopo.)
+Expected: no error. (Don't use `go build ./...`: `build/ios` already fails before this story for a reason unrelated to it — pre-existing, out of scope.)
 
-- [ ] **Step 4: Atualizar `docs/fase-1-mvp.md`**
+- [ ] **Step 4: Update `docs/fase-1-mvp.md`**
 
-Marcar os critérios de aceite da História 5 (seção `## História 5 — Biblioteca real`) como concluídos, preservando a nota de verificação visual pendente (mesmo padrão das Histórias 1, 3 e 4):
+Check off Story 5's acceptance criteria (`## Story 5 — Real library` section), keeping the note about pending visual verification (same pattern as Stories 1, 3, and 4):
 
 ```markdown
-### Critérios de aceite
-- [x] Lista real do banco: data, tutor, duração, status (processando/pronta/erro), no layout do protótipo.
-- [x] Filtro simples por tutor e período (busca full-text fica para fase futura).
-- [x] Aula `pronta` abre o Detalhe (stub mínimo: data/tutor/vídeo, sem transcrição — a sincronização é da História 6); `processando` mostra estado; `erro` mostra mensagem e ação de reprocessar (recriar job).
+### Acceptance criteria
+- [x] A real list from the database: date, tutor, duration, status (processing/ready/error), in the prototype's layout.
+- [x] Simple filter by tutor and period (full-text search is left for a future phase).
+- [x] A `ready` lesson opens the Detail view (minimal stub: date/tutor/video, no transcript — sync is Story 6); `processing` shows its state; `error` shows a message and a reprocess action (recreate the job).
 ```
 
-Adicionar uma linha à tabela `## Registro de progresso` (ao final do arquivo):
+Add a row to the `## Progress log` table (end of the file):
 
 ```markdown
-| 22/07/2026 | História 5 implementada: status da Biblioteca derivado dos jobs (extract_audio/transcribe) a cada leitura — nunca uma coluna gravada à parte; duração calculada via ffprobe em melhor esforço na confirmação da importação (nunca bloqueia a confirmação); filtro por tutor (dropdown)/período; botão "Reprocessar" reseta os jobs em erro da aula (inclusive o transcribe bloqueado por dependência) sem acordar o worker explicitamente (poll de fallback); Detalhe mínimo (data/tutor/vídeo) resolve o risco técnico 1 do projeto — endpoint `GET /media/lesson/{id}` via `http.ServeFile` da stdlib, que já trata range requests, plugado como `application.Middleware` do Wails v3 | Risco 1 resolvido de verdade (não um placeholder): confirmado lendo o código-fonte do Wails v3 que o webview sempre fala com o servidor Go, tanto em produção (assets embutidos) quanto em `wails3 dev` (proxy pro Vite) — o middleware intercepta antes de qualquer um dos dois; a História 6 reaproveita o mesmo endpoint, só adicionando a transcrição sincronizada; bindings do frontend precisam da flag `-i` além de `-ts` (`wails3 generate bindings -ts -i ./...`) pra gerar interfaces em vez de classes — sem isso o gerador produz `.js` com classes, formato que o frontend deste projeto não usa; fluxo completo (Biblioteca → Detalhe → vídeo tocando) ainda não verificado visualmente numa janela real (sem display neste ambiente de build), mesmo padrão das histórias anteriores |
+| 22/07/2026 | Story 5 implemented: Library status derived from jobs (extract_audio/transcribe) on every read — never a separately stored column; duration computed via ffprobe on a best-effort basis at import confirmation (never blocks confirmation); filter by tutor (dropdown)/period; a "Reprocess" button resets a lesson's errored jobs (including a transcribe blocked by a dependency) without explicitly waking the worker (fallback poll); the minimal Detail view (date/tutor/video) resolves the project's technical risk 1 — a `GET /media/lesson/{id}` endpoint via the stdlib `http.ServeFile`, which already handles range requests, plugged in as a Wails v3 `application.Middleware` | Risk 1 truly resolved (not a placeholder): confirmed by reading Wails v3's source code that the webview always talks to the Go server, both in production (embedded assets) and in `wails3 dev` (proxied to Vite) — the middleware intercepts before either path; Story 6 reuses the same endpoint, just adding the synchronized transcript; frontend bindings need the `-i` flag in addition to `-ts` (`wails3 generate bindings -ts -i ./...`) to generate interfaces instead of classes — without it the generator produces `.js` with classes, a format this project's frontend doesn't use; the full flow (Library → Detail → video playing) still hasn't been visually verified in a real window (no display in this build environment), same pattern as previous stories |
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add docs/fase-1-mvp.md
-git commit -m "docs: marca Historia 5 concluida e registra progresso"
+git commit -m "docs: mark Story 5 complete and record progress"
 ```
 
 ---
 
-## Nota final pro executor
+## Final note for the executor
 
-Depois da Task 9, rodar o app de verdade (`wails3 dev` numa máquina com display) pra confirmar visualmente: Biblioteca mostrando status/duração/filtro, botão "Reprocessar" numa aula com erro proposital (ex.: apagar `ffmpeg` do PATH antes de confirmar uma importação), e o Detalhe reproduzindo o vídeo com seek funcionando (arrastar a barra de progresso) — isso fecha a verificação visual pendente desde a História 1, específica desta fatia.
+After Task 9, run the real app (`wails3 dev` on a machine with a display) to visually confirm: the Library showing status/duration/filter, the "Reprocessar" button on a lesson with a deliberate error (e.g.: remove `ffmpeg` from the PATH before confirming an import), and the Detail view playing the video with seeking working (dragging the progress bar) — this closes the visual verification pending since Story 1, specific to this slice.

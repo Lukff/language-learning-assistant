@@ -1,137 +1,140 @@
-# História 1 — Esqueleto do app: design
+# Story 1 — App skeleton: design
 
-> Spec da primeira fatia de implementação da Fase 1 (`docs/fase-1-mvp.md`, História 1).
-> Objetivo: o app Wails v3 + Svelte 5 abre com a navegação e a identidade visual definidas,
-> sem nenhuma lógica de negócio ainda (DB, importação, jobs ficam para as próximas histórias).
+> Spec for the first implementation slice of Phase 1 (`docs/fase-1-mvp.md`, Story 1).
+> Goal: the Wails v3 + Svelte 5 app opens with navigation and visual identity defined, with no
+> business logic yet (DB, import, jobs are left for the next stories).
 
-## Contexto
+## Context
 
-O projeto está hoje na Fase 0 encerrada (CLI `cmd/spike`, packages `media`/`stt`/`analysis`
-definitivos) e sem nenhum código de UI. Existe um protótipo React validado
-(`docs/prototipo-app-aulas.jsx`) que define a identidade visual (tema escuro, paleta de cores,
-fontes Sora/Inter/JetBrains Mono, sidebar com nav Biblioteca/Progresso/Fila, header com indicador
-de sync) a ser **portado para Svelte 5, não redesenhado**.
+The project is currently at the end of Phase 0 (`cmd/spike` CLI, final `media`/`stt`/`analysis`
+packages) with no UI code at all. There's a validated React prototype
+(`docs/prototipo-app-aulas.jsx`) that defines the visual identity (dark theme, color palette,
+Sora/Inter/JetBrains Mono fonts, sidebar with Library/Progress/Queue nav, header with sync
+indicator) to be **ported to Svelte 5, not redesigned**.
 
-O CLI `wails3` não estava instalado na máquina; foi instalado via
-`go install github.com/wailsapp/wails/v3/cmd/wails3@latest` (versão resultante:
-`v3.0.0-alpha2.117` — esta é a versão que vai pinada no `go.mod`, conforme `CLAUDE.md`).
+The `wails3` CLI wasn't installed on the machine; it was installed via
+`go install github.com/wailsapp/wails/v3/cmd/wails3@latest` (resulting version:
+`v3.0.0-alpha2.117` — this is the version to be pinned in `go.mod`, per `CLAUDE.md`).
 
-## Decisões de escopo já fechadas
+## Scope decisions already settled
 
-- **Header sem SyncPill:** sync é fora de escopo até a Fase 4; o header desta história fica
-  vazio/minimalista, sem indicador de sincronização. Adicionar quando a Fase 4 chegar.
-- **Sem dados fake:** Biblioteca e Fila mostram empty state real (nenhuma aula/job ainda existe,
-  não há DB nesta história). Progresso mostra um placeholder fixo, já que só chega na Fase 3.
+- **Header with no SyncPill:** sync is out of scope until Phase 4; this story's header stays
+  empty/minimal, with no sync indicator. Add it once Phase 4 arrives.
+- **No fake data:** Library and Queue show a real empty state (no lesson/job exists yet, there's
+  no DB in this story). Progress shows a fixed placeholder, since it only arrives in Phase 3.
 
-## Abordagem de scaffolding
+## Scaffolding approach
 
-`wails3 init` gera um projeto standalone (`go.mod`, `go.sum`, `README.md`, `.gitignore` próprios)
-— confirmado com um `init` de teste em diretório temporário fora do repo (removido depois). Rodar
-isso direto na raiz do repositório arriscaria sobrescrever o `go.mod` existente (módulo
-`assistente-idiomas`, com `cmd/spike` e os packages `internal/media|stt|analysis` já em uso).
+`wails3 init` generates a standalone project (its own `go.mod`, `go.sum`, `README.md`,
+`.gitignore`) — confirmed with a test `init` in a temporary directory outside the repo (removed
+afterward). Running this directly at the repo root would risk overwriting the existing `go.mod`
+(module `assistente-idiomas`, with `cmd/spike` and the `internal/media|stt|analysis` packages
+already in use).
 
-Processo:
-1. `wails3 init -n assistente-idiomas -d <tmp> -t svelte` em diretório temporário, para obter os
-   artefatos gerados (template `svelte` = Svelte + TypeScript + Vite; testado gerando
-   **Svelte 5.46.4**, já compatível com a regra de runes do `CLAUDE.md` — sem downgrade
-   necessário).
-2. Copiar para o repo, sem sobrescrever nada existente: `frontend/` (estrutura Vite/Svelte),
-   `build/` (ícones, config de empacotamento por plataforma), `Taskfile.yml`.
-3. **Não copiar** o `go.mod`/`go.sum` gerados. Em vez disso, `go get
-   github.com/wailsapp/wails/v3@v3.0.0-alpha2.117` no `go.mod` existente — preserva o módulo
-   `assistente-idiomas` e as dependências já presentes.
-   - Efeito colateral esperado: o directive `go` do nosso `go.mod` sobe de `1.23.6` para o mínimo
-     exigido pelo wails v3 alpha2.117 (`1.25.0`, confirmado no `go.mod` gerado no teste). O
-     toolchain Go local (`1.23.6`) faz auto-download da versão correta (`GOTOOLCHAIN=auto`, já
-     confirmado no ambiente) na primeira `go build`/`wails3 build`.
-4. `main.go` **escrito à mão**, não o gerado por padrão — o template inclui um `GreetService` e um
-   evento `time` de demonstração que não fazem sentido aqui. Contém só a casca: cria a janela,
-   aponta o asset handler para `frontend/dist` embutido. Nenhum import de `internal/` além do que
-   for estritamente necessário para abrir a janela (nesta história, nenhum — isso começa na
-   História 2 com config/DB).
+Process:
+1. `wails3 init -n assistente-idiomas -d <tmp> -t svelte` in a temporary directory, to get the
+   generated artifacts (the `svelte` template = Svelte + TypeScript + Vite; tested generating
+   **Svelte 5.46.4**, already compatible with the runes rule from `CLAUDE.md` — no downgrade
+   needed).
+2. Copy into the repo, without overwriting anything existing: `frontend/` (Vite/Svelte
+   structure), `build/` (icons, per-platform packaging config), `Taskfile.yml`.
+3. **Do not copy** the generated `go.mod`/`go.sum`. Instead, run `go get
+   github.com/wailsapp/wails/v3@v3.0.0-alpha2.117` on the existing `go.mod` — this preserves the
+   `assistente-idiomas` module and the dependencies already present.
+   - Expected side effect: our `go.mod`'s `go` directive rises from `1.23.6` to the minimum
+     required by wails v3 alpha2.117 (`1.25.0`, confirmed in the `go.mod` generated during the
+     test). The local Go toolchain (`1.23.6`) auto-downloads the correct version
+     (`GOTOOLCHAIN=auto`, already confirmed in the environment) on the first `go build`/`wails3
+     build`.
+4. `main.go` **written by hand**, not the one generated by default — the template includes a demo
+   `GreetService` and a `time` event that don't make sense here. It contains only the shell:
+   creates the window, points the asset handler at the embedded `frontend/dist`. No import from
+   `internal/` beyond what's strictly necessary to open the window (in this story, none — that
+   starts in Story 2 with config/DB).
 
-## Estrutura de diretórios resultante
+## Resulting directory structure
 
 ```
-main.go             # casca Wails v3 (nova)
-frontend/            # Svelte 5 + TypeScript + Vite (novo, do template)
+main.go             # Wails v3 shell (new)
+frontend/            # Svelte 5 + TypeScript + Vite (new, from the template)
   src/
-    App.svelte        # shell: sidebar + header + área de conteúdo
+    App.svelte        # shell: sidebar + header + content area
     lib/
       Sidebar.svelte
       Header.svelte
       screens/
         Library.svelte    # empty state
         Queue.svelte       # empty state
-        Progress.svelte    # placeholder fixo
-    theme.ts            # paleta de cores + fontes (equivalente ao objeto C/F do protótipo)
-build/                # ícones e config de empacotamento (novo, do template)
-cmd/spike/            # inalterado
-internal/             # inalterado
+        Progress.svelte    # fixed placeholder
+    theme.ts            # color palette + fonts (equivalent to the prototype's C/F object)
+build/                # icons and packaging config (new, from the template)
+cmd/spike/            # unchanged
+internal/             # unchanged
 ```
 
-## Frontend — componentes
+## Frontend — components
 
-- **`theme.ts`**: constantes de cor (`bg`, `surface`, `surface2`, `line`, `text`, `mut`, `blue`,
-  `amber`, `green`, `red`) e famílias de fonte (`display` = Sora, `body` = Inter, `mono` =
-  JetBrains Mono), extraídas 1:1 dos objetos `C` e `F` do protótipo. Fontes **auto-hospedadas**
-  como arquivos estáticos em `frontend/src/assets/fonts/` (o template já traz a Inter; Sora e
-  JetBrains Mono são adicionadas do mesmo jeito) — diferente do `@import` de Google Fonts do
-  protótipo, porque o app não deve depender de rede para render básico.
-- **`Sidebar.svelte`**: logo/nome do app, 3 itens de nav (Biblioteca/Progresso/Fila) com ícone e
-  destaque visual do item ativo. Sem o rodapé "Raiz do Drive" (não existe config de storage root
-  ainda — História 2). Sem badge de contagem na Fila (não há jobs reais ainda — Histórias 4/7).
-- **`Header.svelte`**: vazio nesta história (decisão de escopo acima). Existe como componente
-  próprio para não exigir refatoração de layout quando o conteúdo real (sync, breadcrumbs, etc.)
-  chegar em fase futura.
-- **`Library.svelte` / `Queue.svelte`**: empty state simples (texto centralizado, tom neutro:
-  "Nenhuma aula importada ainda" / "Nada na fila no momento"). Sem busca, sem botão de importar
-  ainda (também Histórias futuras) — mas o layout de página (padding, largura máxima) já segue o
-  protótipo para não precisar reajustar depois.
-- **`Progress.svelte`**: placeholder fixo, ex.: "Progresso chega na Fase 3."
-- **Navegação:** um `$state` de tela ativa (`"library" | "progress" | "queue"`) no componente
-  `App.svelte` raiz, trocado pelos cliques na sidebar. Sem router externo (SvelteKit ou similar)
-  — 3 telas fixas sem parâmetros de URL não justificam a dependência.
+- **`theme.ts`**: color constants (`bg`, `surface`, `surface2`, `line`, `text`, `mut`, `blue`,
+  `amber`, `green`, `red`) and font families (`display` = Sora, `body` = Inter, `mono` = JetBrains
+  Mono), extracted 1:1 from the prototype's `C` and `F` objects. Fonts are **self-hosted** as
+  static files under `frontend/src/assets/fonts/` (the template already ships Inter; Sora and
+  JetBrains Mono are added the same way) — unlike the prototype's Google Fonts `@import`, since
+  the app shouldn't depend on the network for a basic render.
+- **`Sidebar.svelte`**: app logo/name, 3 nav items (Library/Progress/Queue) with icon and visual
+  highlight of the active item. No "Drive root" footer (there's no storage root config yet —
+  Story 2). No count badge on Queue (no real jobs yet — Stories 4/7).
+- **`Header.svelte`**: empty in this story (scope decision above). Exists as its own component so
+  it doesn't require a layout refactor once the real content (sync, breadcrumbs, etc.) arrives in
+  a future phase.
+- **`Library.svelte` / `Queue.svelte`**: simple empty state (centered text, neutral tone: "No
+  lessons imported yet" / "Nothing in the queue right now"). No search, no import button yet
+  (also future stories) — but the page layout (padding, max width) already follows the prototype
+  so it doesn't need to be readjusted later.
+- **`Progress.svelte`**: fixed placeholder, e.g. "Progress arrives in Phase 3."
+- **Navigation:** an active-screen `$state` (`"library" | "progress" | "queue"`) in the root
+  `App.svelte` component, switched by sidebar clicks. No external router (SvelteKit or similar) —
+  3 fixed screens with no URL parameters don't justify the dependency.
 
-## Backend (Go) — este slice
+## Backend (Go) — this slice
 
-Só o mínimo para abrir a janela:
-- `main.go`: `application.New` + uma janela (`Width`/`Height` seguindo o protótipo, tema escuro
-  refletido em `BackgroundColour`), `Assets` apontando para `frontend/dist` embutido via
+Only the minimum to open the window:
+- `main.go`: `application.New` + a window (`Width`/`Height` following the prototype, dark theme
+  reflected in `BackgroundColour`), `Assets` pointing at the embedded `frontend/dist` via
   `embed.FS`.
-- Nenhum `Service`/binding Go↔JS nesta história (não há dados para expor ainda).
+- No Go↔JS `Service`/binding in this story (there's no data to expose yet).
 
-## Fluxo de dados
+## Data flow
 
-Nenhum — todas as telas são estáticas/placeholder. O único estado é client-side (tela ativa na
+None — all screens are static/placeholder. The only state is client-side (active screen in the
 sidebar).
 
-## Tratamento de erros
+## Error handling
 
-Nenhum cenário de erro de negócio nesta história (não há chamadas a API, DB ou arquivo). O único
-ponto de atenção é a build em si: `wails3 dev`/`wails3 build` devem completar sem erro nas duas
-máquinas (Windows e Linux) — é o critério de aceite "compilando e abrindo janela".
+No business-error scenario in this story (no API, DB, or file calls). The only point of attention
+is the build itself: `wails3 dev`/`wails3 build` must complete without error on both machines
+(Windows and Linux) — that's the "compiles and opens a window" acceptance criterion.
 
-## Testes / verificação
+## Tests / verification
 
-Sem testes automatizados de componente Svelte nesta história (não há framework de teste de UI
-configurado no projeto ainda, e seria over-engineering para telas estáticas). Verificação:
-- `wails3 dev` abrindo janela e navegação funcionando visualmente, nas máquinas Windows e Linux.
-- `go vet ./...` limpo.
-- Conferência visual manual do tema (cores, fontes) contra o protótipo.
+No automated Svelte component tests in this story (no UI test framework configured in the project
+yet, and it would be over-engineering for static screens). Verification:
+- `wails3 dev` opening the window and navigation working visually, on both Windows and Linux
+  machines.
+- `go vet ./...` clean.
+- Manual visual check of the theme (colors, fonts) against the prototype.
 
-## Fora de escopo desta história
+## Out of scope for this story
 
-DB, config de storage root, keyring, importação de aula, fila de jobs real, dados reais em
-qualquer tela, drag-and-drop, vídeo. Tudo isso é Histórias 2 em diante (`docs/fase-1-mvp.md`).
+DB, storage root config, keyring, lesson import, real job queue, real data on any screen,
+drag-and-drop, video. All of that is Story 2 onward (`docs/fase-1-mvp.md`).
 
-## Critérios de aceite (de `docs/fase-1-mvp.md`, História 1)
+## Acceptance criteria (from `docs/fase-1-mvp.md`, Story 1)
 
-- [ ] Projeto Wails v3 (versão pinada no `go.mod`) + Svelte 5 (runes) compilando e abrindo janela
-      nas máquinas Windows e Linux.
-- [ ] Camada fina respeitada: `internal/` sem imports de Wails; o app referencia os packages da
-      Fase 0 sem copiá-los (não se aplica ainda diretamente nesta história, já que nenhum package
-      de fase 0 é usado no esqueleto — mas nenhum import futuro deve quebrar essa regra).
-- [ ] Sidebar com Biblioteca / Progresso (placeholder) / Fila, e cabeçalho — portados do
-      protótipo React (tema escuro, Sora/Inter/JetBrains Mono).
-- [ ] Convenções Svelte 5 do `CLAUDE.md` aplicadas (nenhuma sintaxe legada).
+- [ ] Wails v3 project (version pinned in `go.mod`) + Svelte 5 (runes) compiling and opening a
+      window on both Windows and Linux machines.
+- [ ] Thin-layer principle respected: `internal/` has no Wails imports; the app references the
+      Phase 0 packages without copying them (not directly applicable yet in this story, since no
+      Phase 0 package is used in the skeleton — but no future import should break this rule).
+- [ ] Sidebar with Library / Progress (placeholder) / Queue, and header — ported from the React
+      prototype (dark theme, Sora/Inter/JetBrains Mono).
+- [ ] Svelte 5 conventions from `CLAUDE.md` applied (no legacy syntax).

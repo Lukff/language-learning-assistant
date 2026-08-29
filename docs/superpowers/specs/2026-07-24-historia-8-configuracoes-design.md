@@ -1,92 +1,93 @@
-# História 8 — Configurações básicas (path + credencial): design
+# Story 8 — Basic Settings (path + credential): design
 
-> Cobre a História 8 completa (`docs/fase-1-mvp.md`). Escopo mínimo deliberado: só o que cobre o
-> gap conhecido registrado no progresso da História 2 (credencial de keyring perdida/limpa sem UI
-> de recuperação) e a necessidade de reapontar a raiz de armazenamento quando o usuário move a
-> pasta por conta própria (novo disco, reorganização). Seleção de provedor STT/LLM, estimativa de
-> custo e o restante das Configurações completas continuam fora de escopo — Fase 5.
+> Covers the full Story 8 (`docs/fase-1-mvp.md`). Deliberately minimal scope: only what covers the
+> known gap logged in Story 2's progress notes (keyring credential lost/cleared with no recovery
+> UI) and the need to repoint the storage root when the user moves the folder on their own (new
+> disk, reorganization). STT/LLM provider selection, cost estimation, and the rest of the full
+> Settings screen remain out of scope — Phase 5.
 
-## Contexto e motivação
+## Context and motivation
 
-Duas lacunas conhecidas desde histórias anteriores:
+Two known gaps from previous stories:
 
-1. **Credencial:** se a credencial da ElevenLabs for perdida/limpa do keyring depois do wizard de
-   first-run (História 2), o app não detecta isso sozinho e não havia UI pra recadastrar — só
-   apagar `config.json` e refazer o wizard inteiro.
-2. **Pasta de armazenamento:** o `config.json` guarda um path absoluto e específico da máquina
-   (`storage_root`). Se o usuário mover essa pasta manualmente (fora do app), hoje não há como
-   reapontar sem editar o JSON à mão.
+1. **Credential:** if the ElevenLabs credential is lost/cleared from the keyring after the
+   first-run wizard (Story 2), the app doesn't detect this on its own and there was no UI to
+   re-register it — only deleting `config.json` and redoing the whole wizard.
+2. **Storage folder:** `config.json` stores an absolute, machine-specific path (`storage_root`).
+   If the user moves this folder manually (outside the app), there's currently no way to repoint
+   it without hand-editing the JSON.
 
-Esta história introduz uma tela de Configurações que resolve as duas, reaproveitando ao máximo o
-que já existe (dialog de pasta do wizard, varredura por hash da História 3, `config.SaveSTTAPIKey`)
-— nenhuma lógica de negócio nova além da checagem de "vídeo ausente".
+This story introduces a Settings screen that resolves both, reusing as much as possible of what
+already exists (the wizard's folder dialog, Story 3's hash-based scan, `config.SaveSTTAPIKey`) —
+no new business logic beyond the "missing video" check.
 
-## Decisões de escopo
+## Scope decisions
 
-- **Troca de pasta não move nem copia arquivos.** O usuário já moveu a pasta manualmente fora do
-  app; o app só grava o novo `storage_root` e reconcilia o que puder.
-- **Troca de pasta nunca é bloqueada.** Mesmo que vídeos não sejam encontrados na pasta nova, a
-  troca é aceita — os ausentes só ficam sinalizados, nunca impedem o usuário de seguir em frente.
-- **Reconciliação por hash reaproveita a varredura da História 3** (`importer.Scan`): arquivo
-  encontrado em path diferente (mesmo hash) tem o `video_path` atualizado automaticamente — cobre
-  o caso de vídeos renomeados na mudança de pasta. Efeito colateral aceito e desejado: vídeos novos
-  encontrados na pasta nova (sem lesson correspondente) também viram candidatos pendentes, mesmo
-  comportamento de "Sincronizar pasta".
-- **"Vídeo ausente" é sempre recalculado, nunca persistido.** Mesmo padrão do status
-  processando/pronta/erro (`internal/db/lesson_status.go`, `deriveStatus`) — derivado a cada
-  leitura, nunca uma coluna gravada à parte. Autocura: se o arquivo reaparecer no path esperado
-  (por exemplo, outra rodada de "Sincronizar pasta" resolveu por hash, ou o usuário devolveu o
-  arquivo manualmente), o aviso some sozinho na próxima vez que a Biblioteca carregar.
-- **Credencial nunca é exibida** — só um status booleano ("configurada" / "não configurada"); o
-  campo de (re)cadastro está sempre disponível, sem pré-preencher nada.
-- **Configurações é uma tela própria** (rota, não modal), acessada por um ícone de engrenagem no
-  `Header` — não entra na lista de navegação da Sidebar (não é usada no dia a dia como
-  Biblioteca/Fila).
-- **Resumo da varredura pós-troca de pasta aparece como texto fixo na própria tela de
-  Configurações** (mesmo formato `new/updated/skipped/errors` que a Biblioteca já usa pra
-  "Sincronizar pasta") — sem toast, sem evento novo do Wails (é uma única tela, sem necessidade de
-  notificar outras abas).
+- **Changing the folder doesn't move or copy files.** The user has already moved the folder
+  manually outside the app; the app just records the new `storage_root` and reconciles whatever
+  it can.
+- **Changing the folder is never blocked.** Even if videos aren't found in the new folder, the
+  change is accepted — missing ones are just flagged, never preventing the user from moving
+  forward.
+- **Hash-based reconciliation reuses Story 3's scan** (`importer.Scan`): a file found at a
+  different path (same hash) automatically has its `video_path` updated — this covers the case of
+  videos renamed during the folder move. Accepted and intended side effect: new videos found in
+  the new folder (with no matching lesson) also become pending candidates, the same behavior as
+  "Sync folder".
+- **"Missing video" is always recalculated, never persisted.** Same pattern as the
+  processing/ready/error status (`internal/db/lesson_status.go`, `deriveStatus`) — derived on
+  every read, never a separately stored column. Self-healing: if the file reappears at the
+  expected path (for example, another "Sync folder" run resolved it by hash, or the user put the
+  file back manually), the warning disappears on its own the next time the Library loads.
+- **The credential is never displayed** — only a boolean status ("configured" / "not configured");
+  the (re-)registration field is always available, never pre-filled with anything.
+- **Settings is its own screen** (a route, not a modal), accessed via a gear icon in the `Header`
+  — it doesn't appear in the Sidebar's navigation list (it isn't used day-to-day like
+  Library/Queue).
+- **The post-folder-change scan summary appears as static text on the Settings screen itself**
+  (the same `new/updated/skipped/errors` format the Library already uses for "Sync folder") — no
+  toast, no new Wails event (it's a single screen, no need to notify other tabs).
 
-## Arquitetura
+## Architecture
 
 ```
 services/
-  settings.go            # NOVO: SettingsService
-  storage_folder.go       # NOVO: helper compartilhado de dialog+validação de escrita
-  setup.go                 # ChooseStorageFolder passa a delegar pro helper compartilhado
-  library.go               # ListLessons/GetLesson ganham VideoMissing (checagem de existência)
-  import.go                # dbRepo (não-exportado) é reaproveitado por SettingsService, mesmo pacote
-main.go                    # registra SettingsService; passa storageRoot também pra LibraryService
+  settings.go            # NEW: SettingsService
+  storage_folder.go       # NEW: shared folder-picker + write-validation helper
+  setup.go                 # ChooseStorageFolder now delegates to the shared helper
+  library.go               # ListLessons/GetLesson gain VideoMissing (existence check)
+  import.go                # dbRepo (unexported) is reused by SettingsService, same package
+main.go                    # registers SettingsService; also passes storageRoot to LibraryService
 frontend/src/lib/
-  Header.svelte            # ícone de engrenagem
-  screens/Settings.svelte  # NOVO
-  screens/Library.svelte   # badge "vídeo ausente" por lesson
-App.svelte                 # nova rota { screen: "settings" }
+  Header.svelte            # gear icon
+  screens/Settings.svelte  # NEW
+  screens/Library.svelte   # "missing video" badge per lesson
+App.svelte                 # new { screen: "settings" } route
 ```
 
-Nenhum pacote novo em `internal/` — `internal/importer.Scan` e `internal/config` já cobrem tudo
-que a lógica de negócio precisa; `services/` só orquestra.
+No new package under `internal/` — `internal/importer.Scan` and `internal/config` already cover
+everything the business logic needs; `services/` just orchestrates.
 
-### `services/storage_folder.go` (novo, extraído de `setup.go`)
+### `services/storage_folder.go` (new, extracted from `setup.go`)
 
 ```go
-// chooseStorageFolder abre o dialog nativo de escolha de pasta e valida que
-// ela é gravável. Retorna path vazio (sem erro) se o usuário cancelar.
-// Compartilhado por SetupService (wizard) e SettingsService (troca de pasta).
+// chooseStorageFolder opens the native folder-picker dialog and validates
+// that it's writable. Returns an empty path (no error) if the user cancels.
+// Shared by SetupService (wizard) and SettingsService (folder change).
 func chooseStorageFolder(title string) (string, error)
 
-func isDirWritable(dir string) error // movido de setup.go, sem mudança de comportamento
+func isDirWritable(dir string) error // moved from setup.go, no behavior change
 ```
 
-`SetupService.ChooseStorageFolder` passa a chamar `chooseStorageFolder("Escolha a pasta onde as
-aulas ficarão guardadas")`; `SettingsService.ChooseStorageFolder` chama a mesma função com um
-título ligeiramente diferente ("Escolha a nova pasta — os arquivos já devem estar lá dentro").
+`SetupService.ChooseStorageFolder` now calls `chooseStorageFolder("Escolha a pasta onde as
+aulas ficarão guardadas")`; `SettingsService.ChooseStorageFolder` calls the same function with a
+slightly different title ("Escolha a nova pasta — os arquivos já devem estar lá dentro").
 
-### `services/settings.go` (novo)
+### `services/settings.go` (new)
 
 ```go
-// SettingsService cobre a tela de Configurações (História 8): ver/trocar a
-// raiz de armazenamento e (re)cadastrar a credencial do provedor STT.
+// SettingsService covers the Settings screen (Story 8): viewing/changing the
+// storage root and (re-)registering the STT provider credential.
 type SettingsService struct {
     conn        *sql.DB
     storageRoot func() (string, error)
@@ -94,26 +95,27 @@ type SettingsService struct {
 
 func NewSettingsService(conn *sql.DB, storageRoot func() (string, error)) *SettingsService
 
-// GetStorageRoot retorna a storage_root configurada atualmente.
+// GetStorageRoot returns the currently configured storage_root.
 func (s *SettingsService) GetStorageRoot() (string, error)
 
-// ChooseStorageFolder abre o dialog nativo (mesma validação de escrita do
-// wizard) e retorna o path escolhido, sem gravar nada ainda.
+// ChooseStorageFolder opens the native dialog (same write validation as the
+// wizard) and returns the chosen path, without saving anything yet.
 func (s *SettingsService) ChooseStorageFolder() (string, error)
 
-// ChangeStorageFolder grava newRoot em config.json (sempre, mesmo que a
-// varredura a seguir encontre problemas) e roda a mesma reconciliação por
-// hash da História 3. Nunca bloqueia a troca. ScanSummary é o mesmo tipo já
-// definido em import.go (services.ScanSummary) — mesmo pacote, reaproveitado
-// sem duplicar o formato de resumo.
+// ChangeStorageFolder saves newRoot to config.json (always, even if the
+// scan that follows runs into problems) and runs the same hash-based
+// reconciliation as Story 3. Never blocks the change. ScanSummary is the
+// same type already defined in import.go (services.ScanSummary) — same
+// package, reused without duplicating the summary format.
 func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, error)
 
-// HasSTTCredential indica se há uma credencial gravada no keyring, sem
-// revelar o valor. false (sem erro) se simplesmente não configurada ainda
-// (keyring.ErrNotFound); erro só em falha real de acesso ao keyring.
+// HasSTTCredential reports whether a credential is stored in the keyring,
+// without revealing its value. false (no error) if simply not configured
+// yet (keyring.ErrNotFound); error only on an actual keyring access
+// failure.
 func (s *SettingsService) HasSTTCredential() (bool, error)
 
-// SaveSTTAPIKey grava/sobrescreve a credencial — delega direto pra
+// SaveSTTAPIKey saves/overwrites the credential — delegates straight to
 // config.SaveSTTAPIKey.
 func (s *SettingsService) SaveSTTAPIKey(apiKey string) error
 ```
@@ -133,9 +135,10 @@ func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, erro
     }
     sum, err := importer.Scan(newRoot, &dbRepo{conn: s.conn})
     if err != nil {
-        // storage_root já foi trocado nesse ponto — decisão consciente (ver
-        // "Tratamento de erros"): reconciliação é best-effort, a troca em si
-        // não deve ser revertida por uma falha de varredura.
+        // storage_root has already been changed at this point — a
+        // deliberate decision (see "Error handling"): reconciliation is
+        // best-effort, and the folder change itself shouldn't be rolled
+        // back because of a scan failure.
         return ScanSummary{}, err
     }
     return ScanSummary{New: sum.New, Updated: sum.Updated, Skipped: sum.Skipped, Errors: sum.Errors}, nil
@@ -157,33 +160,33 @@ func (s *SettingsService) HasSTTCredential() (bool, error) {
 }
 ```
 
-`config.GetSTTAPIKey` hoje envolve o erro do `keyring` com `fmt.Errorf("...: %w", err)` — como já
-usa `%w`, `errors.Is(err, keyring.ErrNotFound)` continua funcionando através do wrap.
+`config.GetSTTAPIKey` already wraps the `keyring` error with `fmt.Errorf("...: %w", err)` — since
+it already uses `%w`, `errors.Is(err, keyring.ErrNotFound)` keeps working through the wrap.
 
-### `services/library.go` (estendido)
+### `services/library.go` (extended)
 
 ```go
 type LibraryService struct {
     conn        *sql.DB
-    storageRoot func() (string, error) // NOVO — mesmo resolver que o worker/middleware já usam
+    storageRoot func() (string, error) // NEW — same resolver the worker/middleware already use
 }
 
 func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *LibraryService
 
 type Lesson struct {
-    // ... campos existentes ...
-    VideoMissing bool `json:"videoMissing"` // NOVO
+    // ... existing fields ...
+    VideoMissing bool `json:"videoMissing"` // NEW
 }
 ```
 
-`ListLessons`/`GetLesson` passam a chamar um helper interno:
+`ListLessons`/`GetLesson` now call an internal helper:
 
 ```go
-// videoMissing indica se o arquivo de vídeo de uma lesson não é encontrado
-// na storage_root atual. Qualquer erro de os.Stat (não só "não existe") é
-// tratado como ausente — resiliência: nunca deixa a Biblioteca quebrar por
-// causa disso, e não vale a pena diferenciar "ausente" de "sem permissão"
-// nesta fatia.
+// videoMissing reports whether a lesson's video file cannot be found in
+// the current storage_root. Any os.Stat error (not just "doesn't exist")
+// is treated as missing — resilience: this should never break the
+// Library, and it's not worth distinguishing "missing" from "no
+// permission" in this slice.
 func (s *LibraryService) videoMissing(videoPath string) bool {
     root, err := s.storageRoot()
     if err != nil {
@@ -198,14 +201,14 @@ func (s *LibraryService) videoMissing(videoPath string) bool {
 
 ```go
 importService := services.NewImportService(conn)
-libraryService := services.NewLibraryService(conn, storageRoot) // storageRoot já existe (closure sobre config.Load)
+libraryService := services.NewLibraryService(conn, storageRoot) // storageRoot already exists (closure over config.Load)
 
 Services: []application.Service{
     application.NewService(services.NewSetupService()),
     application.NewService(importService),
     application.NewService(libraryService),
     application.NewService(services.NewQueueService(conn)),
-    application.NewService(services.NewSettingsService(conn, storageRoot)), // NOVO
+    application.NewService(services.NewSettingsService(conn, storageRoot)), // NEW
 },
 ```
 
@@ -213,8 +216,8 @@ Services: []application.Service{
 
 ### `Header.svelte`
 
-Ícone de engrenagem (⚙) alinhado à direita do cabeçalho existente; `onclick` chama uma prop
-`onOpenSettings: () => void` (mesmo padrão de callback que `Sidebar` já usa com `onNavigate`).
+A gear icon (⚙) aligned to the right of the existing header; `onclick` calls an `onOpenSettings:
+() => void` prop (the same callback pattern `Sidebar` already uses with `onNavigate`).
 
 ### `App.svelte`
 
@@ -224,156 +227,161 @@ type Route =
   | { screen: "lesson-detail"; lessonId: number }
   | { screen: "progress" }
   | { screen: "queue" }
-  | { screen: "settings" }; // NOVO
+  | { screen: "settings" }; // NEW
 ```
 
-`<Header onOpenSettings={() => (route = { screen: "settings" })} />`; `Sidebar` continua recebendo
-só `route.screen` mapeado pra `"library"` quando a rota é `"lesson-detail"` ou `"settings"` (mesmo
-tratamento que já existe pra `"lesson-detail"`), já que nenhuma das duas é um item de nav.
+`<Header onOpenSettings={() => (route = { screen: "settings" })} />`; `Sidebar` still receives
+only `route.screen`, mapped to `"library"` when the route is `"lesson-detail"` or `"settings"`
+(the same treatment already applied to `"lesson-detail"`), since neither is a nav item.
 
-### `Settings.svelte` (novo)
+### `Settings.svelte` (new)
 
-Duas seções, no mesmo estilo visual das demais telas (`theme.ts`, cards com `colors.surface2`):
+Two sections, in the same visual style as the other screens (`theme.ts`, cards with
+`colors.surface2`):
 
-1. **Armazenamento**
-   - Texto com a `storage_root` atual (`SettingsService.GetStorageRoot`, carregado no `onMount`).
-   - Botão "Trocar pasta" → `ChooseStorageFolder()` → se path não vazio, chama
-     `ChangeStorageFolder(path)`; botão mostra estado de carregamento enquanto a promise não
-     resolve (varredura pode levar alguns segundos, mesma ordem de grandeza documentada na
-     História 3: ~1-3s por vídeo).
-   - Resultado (sucesso ou erro) fica em texto fixo abaixo do botão: sucesso mostra
-     `N novas, M atualizadas, S puladas, E erros`; erro mostra a mensagem.
+1. **Storage**
+   - Text showing the current `storage_root` (`SettingsService.GetStorageRoot`, loaded on
+     `onMount`).
+   - "Change folder" button → `ChooseStorageFolder()` → if the path isn't empty, calls
+     `ChangeStorageFolder(path)`; the button shows a loading state while the promise is pending
+     (the scan can take a few seconds, the same order of magnitude documented in Story 3:
+     ~1-3s per video).
+   - The result (success or error) is shown as static text below the button: success shows
+     `N new, M updated, S skipped, E errors`; an error shows the message.
 
-2. **Credencial do provedor STT**
-   - Status carregado no `onMount` via `HasSTTCredential()`: "Credencial configurada" ou "Nenhuma
-     credencial configurada" (ou mensagem de erro se a chamada falhar).
-   - Campo `<input type="password">` + botão "Salvar", sempre visível e vazio (nunca pré-
-     preenchido); ao salvar com sucesso, atualiza o status pra "Credencial configurada" e limpa o
-     campo; erro aparece inline, mesmo padrão do passo 2 do `SetupWizard`.
+2. **STT provider credential**
+   - Status loaded on `onMount` via `HasSTTCredential()`: "Credential configured" or "No
+     credential configured" (or an error message if the call fails).
+   - A `<input type="password">` field plus a "Save" button, always visible and empty (never
+     pre-filled); on a successful save, updates the status to "Credential configured" and clears
+     the field; an error shows inline, the same pattern as step 2 of `SetupWizard`.
 
 ### `Library.svelte` / `LessonDetail.svelte`
 
-Lesson com `videoMissing: true` ganha um badge curto ("vídeo não encontrado na pasta atual"),
-visualmente na mesma família do aviso de "erro" (cor de alerta), mas como um indicador
-independente do `status` do pipeline — uma aula `pronta` (transcrição ok) pode estar com
-`videoMissing: true` ao mesmo tempo, e o badge aparece nos dois casos sem interferir no texto do
-`status` existente.
+A lesson with `videoMissing: true` gets a short badge ("video not found in the current folder"),
+visually in the same family as the "error" warning (alert color), but as an indicator independent
+of the pipeline `status` — a `ready` lesson (transcription ok) can have `videoMissing: true` at
+the same time, and the badge shows up in both cases without interfering with the existing
+`status` text.
 
-## Fluxo de dados
+## Data flow
 
-**Trocar pasta:**
+**Changing the folder:**
 
 ```
-Settings.svelte: clique "Trocar pasta"
-  → SettingsService.ChooseStorageFolder() (dialog nativo + valida escrita)
-  → usuário confirma (path não vazio)
-  → SettingsService.ChangeStorageFolder(novaPasta)
-        → isDirWritable(novaPasta)
-        → config.Save({storage_root: novaPasta})        // sempre grava, mesmo se a varredura a seguir falhar
-        → importer.Scan(novaPasta, &dbRepo{conn})
-              → hash já conhecido, path novo  → db.UpdateLessonPath (renomeado/movido)
-              → hash desconhecido             → vira pending_import (mesmo fluxo de sempre)
-              → stat bate (inalterado)        → pulado
+Settings.svelte: click "Change folder"
+  → SettingsService.ChooseStorageFolder() (native dialog + write validation)
+  → user confirms (path not empty)
+  → SettingsService.ChangeStorageFolder(newFolder)
+        → isDirWritable(newFolder)
+        → config.Save({storage_root: newFolder})        // always saved, even if the scan below fails
+        → importer.Scan(newFolder, &dbRepo{conn})
+              → known hash, new path    → db.UpdateLessonPath (renamed/moved)
+              → unknown hash            → becomes pending_import (same flow as always)
+              → stat matches (unchanged) → skipped
         ← ScanSummary { new, updated, skipped, errors }
-  ← texto fixo na tela com o resumo
+  ← static text on screen with the summary
 ```
 
-**Credencial:**
+**Credential:**
 
 ```
-Settings.svelte: onMount → HasSTTCredential() → mostra status
-Settings.svelte: clique "Salvar" → SaveSTTAPIKey(apiKey) → config.SaveSTTAPIKey (keyring)
+Settings.svelte: onMount → HasSTTCredential() → shows status
+Settings.svelte: click "Save" → SaveSTTAPIKey(apiKey) → config.SaveSTTAPIKey (keyring)
 ```
 
-**Vídeo ausente (recalculado a cada carregamento da Biblioteca, independente de Configurações):**
+**Missing video (recalculated on every Library load, independent of Settings):**
 
 ```
 Library.svelte: onMount/refresh → LibraryService.ListLessons(filter)
-  → db.ListLessonsWithStatus(...)                        // inalterado
-  → para cada lesson: os.Stat(storageRoot + "/" + video_path)
-        existe     → VideoMissing = false
-        não existe → VideoMissing = true
-  ← []Lesson (com VideoMissing)
+  → db.ListLessonsWithStatus(...)                        // unchanged
+  → for each lesson: os.Stat(storageRoot + "/" + video_path)
+        exists     → VideoMissing = false
+        not found  → VideoMissing = true
+  ← []Lesson (with VideoMissing)
 ```
 
-Nenhum evento novo do Wails — tudo é request/response direto, mesmo padrão dos demais serviços;
-não há múltiplas telas/abas abertas simultaneamente que precisem ser notificadas.
+No new Wails event — everything is a direct request/response, the same pattern as the other
+services; there aren't multiple screens/tabs open at once that would need to be notified.
 
-## Tratamento de erros
+## Error handling
 
-- **Dialog cancelado** (`ChooseStorageFolder` retorna vazio): `Settings.svelte` não chama
-  `ChangeStorageFolder`, sem erro.
-- **Pasta escolhida sem permissão de escrita**: `isDirWritable` recusa antes de gravar
-  `storage_root` — "pasta sem permissão de escrita".
-- **Erro ao gravar `config.json`**: `ChangeStorageFolder` retorna erro, `storage_root` antigo
-  continua valendo (o `config.Save` que falhou não chega a substituir o arquivo).
-- **Erro durante a varredura** (`importer.Scan` retorna `err != nil`, ex.: `root` não é mais
-  acessível no meio da varredura): nesse ponto `storage_root` **já foi trocado** — decisão
-  consciente, já que a pasta em si foi validada como gravável antes; a reconciliação é
-  best-effort e uma falha nela não deveria impedir o usuário de já ter apontado pra pasta certa.
-  Erro aparece no texto fixo da tela.
-- **Erros por arquivo dentro da varredura** (arquivo ilegível, permissão): não abortam — já é o
-  comportamento de `importer.Scan` (conta em `Errors`, segue os demais); aparecem no resumo.
-- **Falha ao gravar credencial no keyring** (Secret Service indisponível no Linux, risco 3): mesma
-  mensagem já usada no wizard (`services/setup.go`).
-- **Falha ao ler status da credencial** (`HasSTTCredential`): distingue "não configurada"
-  (`keyring.ErrNotFound`, não é erro) de falha real de acesso (mensagem de erro, mesma do wizard).
-- **`os.Stat` do vídeo falha por motivo diferente de "não existe"** (ex. permissão): tratado como
-  `VideoMissing = true` também — resiliência; não vale a pena diferenciar o motivo nesta fatia.
-- **Princípio de resiliência mantido:** nada nesta história impede assistir a uma aula cujo vídeo
-  está de fato presente; `VideoMissing` é só informativo, nunca bloqueia o Detalhe.
+- **Dialog cancelled** (`ChooseStorageFolder` returns empty): `Settings.svelte` doesn't call
+  `ChangeStorageFolder`, no error.
+- **Chosen folder without write permission**: `isDirWritable` rejects it before saving
+  `storage_root` — "folder without write permission".
+- **Error writing `config.json`**: `ChangeStorageFolder` returns an error, the old `storage_root`
+  keeps being used (the `config.Save` that failed never replaces the file).
+- **Error during the scan** (`importer.Scan` returns `err != nil`, e.g. `root` becomes
+  inaccessible mid-scan): at this point `storage_root` **has already been changed** — a
+  deliberate decision, since the folder itself was already validated as writable beforehand; the
+  reconciliation is best-effort and a failure in it shouldn't prevent the user from having
+  already pointed to the right folder. The error shows up in the screen's static text.
+- **Per-file errors during the scan** (unreadable file, permissions): don't abort — this is
+  already `importer.Scan`'s behavior (counted in `Errors`, continues with the rest); they show up
+  in the summary.
+- **Failure saving the credential to the keyring** (Secret Service unavailable on Linux, risk 3):
+  same message already used in the wizard (`services/setup.go`).
+- **Failure reading the credential status** (`HasSTTCredential`): distinguishes "not configured"
+  (`keyring.ErrNotFound`, not an error) from an actual access failure (error message, same as the
+  wizard).
+- **`os.Stat` on the video fails for a reason other than "doesn't exist"** (e.g. permission):
+  also treated as `VideoMissing = true` — resilience; not worth distinguishing the reason in this
+  slice.
+- **Resilience principle upheld:** nothing in this story prevents watching a lesson whose video
+  is actually present; `VideoMissing` is purely informational, it never blocks the Detail view.
 
-## Fora de escopo desta história
+## Out of scope for this story
 
-- Mover ou copiar arquivos automaticamente ao trocar de pasta.
-- Seleção de provedor STT/LLM, estimativa de custo, qualquer outro campo de configuração além de
-  `storage_root` e da credencial (Fase 5, `docs/fase-1-mvp.md`).
-- Validar `raw_json_path` (transcrições brutas) contra a pasta nova — só `video_path` é checado;
-  perder o JSON bruto não impede assistir à aula nem afeta a transcrição já persistida em
-  `transcripts.utterances`.
-- Editar `storage_root` digitando o path manualmente (só via dialog nativo, mesmo padrão do
-  wizard) — evita paths inválidos digitados à mão.
-- Cancelar uma varredura em andamento.
+- Automatically moving or copying files when changing folders.
+- STT/LLM provider selection, cost estimation, or any other configuration field besides
+  `storage_root` and the credential (Phase 5, `docs/fase-1-mvp.md`).
+- Validating `raw_json_path` (raw transcripts) against the new folder — only `video_path` is
+  checked; losing the raw JSON doesn't prevent watching the lesson or affect the transcription
+  already persisted in `transcripts.utterances`.
+- Editing `storage_root` by typing the path manually (only via the native dialog, same pattern as
+  the wizard) — avoids hand-typed invalid paths.
+- Cancelling a scan in progress.
 
-## Testes
+## Tests
 
-**`services/settings_test.go`** (novo, mesmo padrão dos demais em `services/`):
-- `ChangeStorageFolder`: banco em `t.TempDir()` + duas pastas temporárias simulando origem/destino
-  já movidos; lesson com hash existente aparecendo em path diferente na pasta nova tem
-  `video_path` atualizado; `config.Load()` reflete a pasta nova depois da chamada.
-- `ChangeStorageFolder` com pasta sem permissão de escrita: retorna erro, `storage_root` antigo
-  preservado (config não é tocado).
-- `HasSTTCredential`: fake `secretStore` (mesmo padrão de `credentials_test.go`) cobrindo os três
-  casos — configurada, não configurada (`ErrNotFound`), erro real de acesso.
-- `SaveSTTAPIKey`: teste fino confirmando que delega pra `config.SaveSTTAPIKey`.
+**`services/settings_test.go`** (new, same pattern as the rest of `services/`):
+- `ChangeStorageFolder`: database in `t.TempDir()` + two temp folders simulating an
+  already-moved source/destination; a lesson with an existing hash appearing at a different path
+  in the new folder gets its `video_path` updated; `config.Load()` reflects the new folder after
+  the call.
+- `ChangeStorageFolder` with a folder without write permission: returns an error, the old
+  `storage_root` is preserved (config isn't touched).
+- `HasSTTCredential`: fake `secretStore` (same pattern as `credentials_test.go`) covering the
+  three cases — configured, not configured (`ErrNotFound`), real access error.
+- `SaveSTTAPIKey`: a thin test confirming it delegates to `config.SaveSTTAPIKey`.
 
-**`services/library_test.go`** (estendido):
-- `ListLessons`/`GetLesson` com `storageRoot` de teste (`t.TempDir()`): lesson cujo `video_path`
-  existe no disco (arquivo vazio já basta pro `os.Stat`) → `VideoMissing: false`; lesson cujo
-  arquivo não existe → `VideoMissing: true`.
+**`services/library_test.go`** (extended):
+- `ListLessons`/`GetLesson` with a test `storageRoot` (`t.TempDir()`): a lesson whose
+  `video_path` exists on disk (an empty file is enough for `os.Stat`) → `VideoMissing: false`; a
+  lesson whose file doesn't exist → `VideoMissing: true`.
 
-**`internal/importer`**: nenhum teste novo — `Scan` já é coberto pela suíte da História 3 e não
-muda de comportamento, só passa a ser chamado de mais um lugar (`SettingsService`, além de
+**`internal/importer`**: no new tests — `Scan` is already covered by Story 3's suite and its
+behavior doesn't change, it's just called from one more place (`SettingsService`, in addition to
 `ImportService.ScanFolder`).
 
-**Verificação manual** (mesmo padrão registrado nas histórias anteriores, pendente de janela real
-em Windows/Linux): abrir Configurações pelo ícone do Header; trocar a pasta de armazenamento de
-verdade movendo um vídeo com nome diferente e confirmar que a Biblioteca reflete o `video_path`
-novo; apagar um vídeo do disco e confirmar que a Biblioteca mostra "vídeo ausente" sem quebrar a
-tela; recadastrar a credencial e confirmar que o status muda pra "configurada".
+**Manual verification** (same pattern logged in previous stories, pending a real window on
+Windows/Linux): open Settings via the Header icon; actually change the storage folder by moving a
+video under a different name and confirm the Library reflects the new `video_path`; delete a video
+from disk and confirm the Library shows "missing video" without breaking the screen; re-register
+the credential and confirm the status changes to "configured".
 
-## Critérios de aceite (de `docs/fase-1-mvp.md`, História 8)
+## Acceptance criteria (from `docs/fase-1-mvp.md`, Story 8)
 
-- [ ] Tela de Configurações acessível por um ícone no Header, mostra a raiz de armazenamento
-      configurada e permite trocá-la (dialog nativo + validação de escrita), sem mover arquivos —
-      o usuário já os moveu manualmente. A troca nunca é bloqueada por vídeos não encontrados.
-- [ ] Trocar a pasta roda a mesma reconciliação por hash da História 3: vídeos com nome diferente
-      na pasta nova têm o `video_path` atualizado automaticamente; vídeos cujo hash não é
-      encontrado na pasta nova ficam sinalizados como "vídeo ausente" na Biblioteca (recalculado a
-      cada carregamento, nunca uma coluna persistida) até o arquivo aparecer de novo no path
-      esperado.
-- [ ] Campo pra (re)cadastrar a credencial do provedor STT (ElevenLabs) via `go-keyring`,
-      reaproveitando `config.SaveSTTAPIKey`; a tela mostra se já há credencial configurada (sem
-      revelar o valor) — cobre o gap conhecido da História 2.
-- [ ] Sem seleção de provedor, estimativa de custo ou qualquer outra opção de configuração — isso
-      é Fase 5.
+- [ ] Settings screen reachable via a Header icon, shows the configured storage root and allows
+      changing it (native dialog + write validation), without moving files — the user has already
+      moved them manually. The change is never blocked by videos that aren't found.
+- [ ] Changing the folder runs the same hash-based reconciliation as Story 3: videos with a
+      different name in the new folder automatically have their `video_path` updated; videos
+      whose hash isn't found in the new folder are flagged as "missing video" in the Library
+      (recalculated on every load, never a persisted column) until the file shows up again at the
+      expected path.
+- [ ] A field to (re-)register the STT provider credential (ElevenLabs) via `go-keyring`, reusing
+      `config.SaveSTTAPIKey`; the screen shows whether a credential is already configured (without
+      revealing its value) — covers the known gap from Story 2.
+- [ ] No provider selection, cost estimation, or any other configuration option — that's Phase 5.

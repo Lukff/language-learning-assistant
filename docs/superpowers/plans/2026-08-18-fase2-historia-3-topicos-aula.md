@@ -1,44 +1,44 @@
-# Fase 2, História 3 — Tópicos da aula: plano de implementação
+# Phase 2, Story 3 — Lesson Topics: implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Levar `analyze_topics` para o app sob demanda, com tópicos editáveis (chips no Detalhe + renomear global em Configurações), prompt v2 com granularidade geral e reaproveitamento dos tópicos existentes.
+**Goal:** Bring `analyze_topics` to the app on demand, with editable topics (chips in Detail + global rename in Settings), prompt v2 with general granularity and reuse of existing topics.
 
-**Architecture:** Tópicos viram entidade `topics` (como professores), `lesson_topics` passa a apontar por `topic_id` (migration 00006 com backfill). `lesson_topics` vira a fonte da verdade da UI; `analysis_results` guarda só "rodou?" + raw + modelo. O `AnalysisService` ganha Get/Analyze/ReprocessTopics (espelhando correções), e um novo `TopicsService` cobre o CRUD de entidade. A lista de tópicos existentes é anexada ao conteúdo enviado ao modelo (helper puro), sem mudar a interface de task.
+**Architecture:** Topics become a `topics` entity (like teachers), `lesson_topics` now points via `topic_id` (migration 00006 with backfill). `lesson_topics` becomes the UI's source of truth; `analysis_results` only keeps "did it run?" + raw + model. `AnalysisService` gains Get/Analyze/ReprocessTopics (mirroring corrections), and a new `TopicsService` covers the entity's CRUD. The list of existing topics is appended to the content sent to the model (a pure helper), without changing the task interface.
 
-**Tech Stack:** Go (stdlib + modernc.org/sqlite + goose + go-keyring, já presentes), Wails v3 (pinada), Svelte 5 (runes).
+**Tech Stack:** Go (stdlib + modernc.org/sqlite + goose + go-keyring, already present), Wails v3 (pinned), Svelte 5 (runes).
 
 **Spec:** `docs/superpowers/specs/2026-08-18-historia-3-topicos-aula-design.md`
 
 ## Global Constraints
 
-- Go recente; stdlib preferida. Driver SQLite `modernc.org/sqlite`; migrations `goose` embutidas (`//go:embed migrations/*.sql`).
-- **Código/identificadores em inglês; mensagens de erro ao usuário, textos de análise e docs em PT-BR.**
-- **SQL portável** na camada de repositório — a única dependência de driver é o helper `isUniqueConstraintError` já existente em `internal/db/teachers.go`.
-- **Frontend Svelte 5 com runes, sempre** (`$state`/`$derived`/`$effect`/`$props`; nunca sintaxe legada).
-- Wails v3 versão pinada no `go.mod` — não alterar versão.
-- Commits em **uma linha**, formato semântico (`tipo: descrição`).
-- Fixtures de teste sintéticas (nada de aula real / nome de tutor real).
-- `prompts/embed.go` usa `//go:embed *.md` — um novo `.md` em `prompts/` é embutido automaticamente, sem mexer no embed.
+- Recent Go; stdlib preferred. SQLite driver `modernc.org/sqlite`; embedded `goose` migrations (`//go:embed migrations/*.sql`).
+- **Code/identifiers in English; user-facing error messages, analysis text, and docs in PT-BR.**
+- **Portable SQL** in the repository layer — the only driver dependency is the `isUniqueConstraintError` helper already existing in `internal/db/teachers.go`.
+- **Frontend Svelte 5 with runes, always** (`$state`/`$derived`/`$effect`/`$props`; never legacy syntax).
+- Wails v3 pinned version in `go.mod` — don't change the version.
+- Commits on **one line**, semantic format (`type: description`).
+- Synthetic test fixtures (no real lesson / real tutor name).
+- `prompts/embed.go` uses `//go:embed *.md` — a new `.md` in `prompts/` is embedded automatically, with no change to the embed needed.
 
 ---
 
-### Task 1: Migration `00006_topics.sql` + `ReplaceLessonTopics` por id + backfill
+### Task 1: Migration `00006_topics.sql` + `ReplaceLessonTopics` by id + backfill
 
-A migration muda o schema de `lesson_topics` (de `topic TEXT` para `topic_id INTEGER`), o que quebra o `ReplaceLessonTopics` atual (insere `topic`). Esta task faz a migration e a mudança de assinatura juntas para o pacote `db` ficar verde.
+The migration changes `lesson_topics`'s schema (from `topic TEXT` to `topic_id INTEGER`), which breaks the current `ReplaceLessonTopics` (it inserts `topic`). This task does the migration and the signature change together so the `db` package stays green.
 
 **Files:**
 - Create: `internal/db/migrations/00006_topics.sql`
-- Modify: `internal/db/analysis_results.go` (função `ReplaceLessonTopics`)
+- Modify: `internal/db/analysis_results.go` (function `ReplaceLessonTopics`)
 - Modify: `internal/db/analysis_results_test.go` (`TestReplaceLessonTopics_ReplacesEntirely` + novo helper `insertTopicFixture`)
 - Modify: `internal/db/migration_backfill_test.go` (novo teste)
 
 **Interfaces:**
-- Produces: `func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error` (assinatura MUDADA — `[]int64`, não `[]string`); tabela `topics` e `lesson_topics(topic_id)`.
+- Produces: `func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error` (signature CHANGED — `[]int64`, not `[]string`); `topics` table and `lesson_topics(topic_id)`.
 
-- [ ] **Step 1: Escrever a migration**
+- [ ] **Step 1: Write the migration**
 
-Criar `internal/db/migrations/00006_topics.sql`:
+Create `internal/db/migrations/00006_topics.sql`:
 
 ```sql
 -- +goose Up
@@ -78,9 +78,9 @@ ALTER TABLE lesson_topics_old RENAME TO lesson_topics;
 DROP TABLE topics;
 ```
 
-- [ ] **Step 2: Escrever o teste de backfill (falha antes da migration existir)**
+- [ ] **Step 2: Write the backfill test (fails before the migration exists)**
 
-Adicionar a `internal/db/migration_backfill_test.go`:
+Add to `internal/db/migration_backfill_test.go`:
 
 ```go
 func TestMigration00006_BackfillsTopicsFromExistingLessonTopics(t *testing.T) {
@@ -101,8 +101,8 @@ func TestMigration00006_BackfillsTopicsFromExistingLessonTopics(t *testing.T) {
 		t.Fatalf("UpTo(5) erro inesperado: %v", err)
 	}
 
-	// Schema pré-migration 6: lesson_topics(topic TEXT). Precisa de teacher e
-	// lesson (lessons já aponta por teacher_id desde a migration 5).
+	// Pre-migration-6 schema: lesson_topics(topic TEXT). Needs a teacher and
+	// a lesson (lessons has pointed via teacher_id since migration 5).
 	now := "2026-08-18T10:00:00Z"
 	resT, err := conn.Exec(`INSERT INTO teachers (name, created_at, updated_at) VALUES ('Sarah M.', ?, ?)`, now, now)
 	if err != nil {
@@ -162,20 +162,20 @@ func TestMigration00006_BackfillsTopicsFromExistingLessonTopics(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Rodar o teste de backfill para ver falhar**
+- [ ] **Step 3: Run the backfill test to see it fail**
 
 Run: `go test ./internal/db/ -run TestMigration00006 -v`
-Expected: FAIL — `goose: no migrations to run` ou erro de versão 6 inexistente (a migration ainda não existe).
+Expected: FAIL — `goose: no migrations to run` or an error about nonexistent version 6 (the migration doesn't exist yet).
 
-- [ ] **Step 4: Mudar `ReplaceLessonTopics` para ids**
+- [ ] **Step 4: Change `ReplaceLessonTopics` to ids**
 
-Em `internal/db/analysis_results.go`, substituir a implementação de `ReplaceLessonTopics`:
+In `internal/db/analysis_results.go`, replace `ReplaceLessonTopics`'s implementation:
 
 ```go
-// ReplaceLessonTopics apaga os vínculos existentes e insere os novos (por
-// topic_id) — a lista é sempre derivada por inteiro do resultado mais
-// recente de analyze_topics, nunca um merge incremental. INSERT OR IGNORE
-// absorve um tópico duplicado que o chamador eventualmente repita.
+// ReplaceLessonTopics deletes the existing links and inserts the new ones
+// (by topic_id) — the list is always derived wholesale from the most recent
+// analyze_topics result, never an incremental merge. INSERT OR IGNORE
+// absorbs a duplicate topic that the caller might repeat.
 func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 	tx, err := conn.Begin()
 	if err != nil {
@@ -198,9 +198,9 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 }
 ```
 
-- [ ] **Step 5: Atualizar o teste existente de `ReplaceLessonTopics`**
+- [ ] **Step 5: Update the existing `ReplaceLessonTopics` test**
 
-Em `internal/db/analysis_results_test.go`, adicionar o helper `insertTopicFixture` (SQL cru, para esta task não depender da Task 2) e substituir `TestReplaceLessonTopics_ReplacesEntirely`:
+In `internal/db/analysis_results_test.go`, add the `insertTopicFixture` helper (raw SQL, so this task doesn't depend on Task 2) and replace `TestReplaceLessonTopics_ReplacesEntirely`:
 
 ```go
 func insertTopicFixture(t *testing.T, conn *sql.DB, name string) int64 {
@@ -254,33 +254,33 @@ func TestReplaceLessonTopics_ReplacesEntirely(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Rodar os testes do pacote db**
+- [ ] **Step 6: Run the db package's tests**
 
 Run: `go test ./internal/db/ -v`
-Expected: PASS (inclui `TestMigration00006` e `TestReplaceLessonTopics`).
+Expected: PASS (includes `TestMigration00006` and `TestReplaceLessonTopics`).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add internal/db/migrations/00006_topics.sql internal/db/analysis_results.go internal/db/analysis_results_test.go internal/db/migration_backfill_test.go
-git commit -m "feat: migration topics + lesson_topics por topic_id"
+git commit -m "feat: topics + lesson_topics migration keyed by topic_id"
 ```
 
 ---
 
-### Task 2: Repositório `internal/db/topics.go` + testes
+### Task 2: `internal/db/topics.go` repository + tests
 
 **Files:**
 - Create: `internal/db/topics.go`
 - Create: `internal/db/topics_test.go`
 
 **Interfaces:**
-- Consumes: `execer` e `isUniqueConstraintError` (já existem em `teachers.go`); schema da Task 1.
+- Consumes: `execer` and `isUniqueConstraintError` (already exist in `teachers.go`); Task 1's schema.
 - Produces: `Topic{ID int64, Name string}`, `ListTopics(conn) ([]Topic, error)`, `GetOrCreateTopicByName(conn, name) (int64, error)`, `RenameTopic(conn, id, newName) error`, `ListLessonTopics(conn, lessonID) ([]Topic, error)`, `AddLessonTopic(conn, lessonID, topicID) error`, `RemoveLessonTopic(conn, lessonID, topicID) error`.
 
-- [ ] **Step 1: Escrever o teste (falha)**
+- [ ] **Step 1: Write the test (fails)**
 
-Criar `internal/db/topics_test.go`:
+Create `internal/db/topics_test.go`:
 
 ```go
 package db
@@ -431,12 +431,12 @@ func TestAddAndRemoveLessonTopic(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar para ver falhar**
+- [ ] **Step 2: Run it to see it fail**
 
 Run: `go test ./internal/db/ -run 'TestGetOrCreateTopicByName|TestListTopics|TestRenameTopic|TestAddAndRemoveLessonTopic' -v`
 Expected: FAIL — `undefined: GetOrCreateTopicByName` (etc.).
 
-- [ ] **Step 3: Implementar `internal/db/topics.go`**
+- [ ] **Step 3: Implement `internal/db/topics.go`**
 
 ```go
 // internal/db/topics.go
@@ -450,16 +450,16 @@ import (
 	"time"
 )
 
-// Topic é uma linha de topics — a entidade que substitui a antiga coluna
-// lesson_topics.topic (ver História 3 da Fase 2). Nome é único: renomear é
-// um UPDATE de uma linha só, refletido em todas as aulas via JOIN.
+// Topic is a topics row — the entity that replaces the old
+// lesson_topics.topic column (see Phase 2's Story 3). Name is unique:
+// renaming is a single-row UPDATE, reflected across all lessons via JOIN.
 type Topic struct {
 	ID   int64
 	Name string
 }
 
-// ListTopics lista os tópicos cadastrados em ordem alfabética — alimenta o
-// painel "Tópicos" de Configurações e a lista de reaproveitamento do prompt.
+// ListTopics lists the registered topics in alphabetical order — feeds the
+// "Tópicos" panel in Settings and the prompt's reuse list.
 func ListTopics(conn *sql.DB) ([]Topic, error) {
 	rows, err := conn.Query(`SELECT id, name FROM topics ORDER BY name ASC`)
 	if err != nil {
@@ -481,8 +481,8 @@ func ListTopics(conn *sql.DB) ([]Topic, error) {
 	return out, nil
 }
 
-// getOrCreateTopicByName resolve um nome (aparado) para um topic_id —
-// reusa execer (teachers.go) pra rodar solto ou dentro de uma transação.
+// getOrCreateTopicByName resolves a (trimmed) name to a topic_id — reuses
+// execer (teachers.go) so it can run standalone or inside a transaction.
 func getOrCreateTopicByName(q execer, name string) (int64, error) {
 	name = strings.TrimSpace(name)
 	var id int64
@@ -513,8 +513,8 @@ func GetOrCreateTopicByName(conn *sql.DB, name string) (int64, error) {
 	return getOrCreateTopicByName(conn, name)
 }
 
-// RenameTopic renomeia o tópico id — reflete em todas as aulas dele
-// automaticamente (JOIN). Colisão (UNIQUE) vira um erro legível.
+// RenameTopic renames topic id — automatically reflected across all its
+// lessons (JOIN). A collision (UNIQUE) becomes a readable error.
 func RenameTopic(conn *sql.DB, id int64, newName string) error {
 	newName = strings.TrimSpace(newName)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -528,8 +528,8 @@ func RenameTopic(conn *sql.DB, id int64, newName string) error {
 	return nil
 }
 
-// ListLessonTopics devolve os tópicos de lessonID (JOIN topics), em ordem
-// alfabética.
+// ListLessonTopics returns lessonID's topics (JOIN topics), in
+// alphabetical order.
 func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 	rows, err := conn.Query(
 		`SELECT t.id, t.name FROM lesson_topics lt JOIN topics t ON t.id = lt.topic_id WHERE lt.lesson_id = ? ORDER BY t.name ASC`,
@@ -554,8 +554,8 @@ func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 	return out, nil
 }
 
-// AddLessonTopic vincula topicID a lessonID (INSERT OR IGNORE — já vinculado
-// não é erro).
+// AddLessonTopic links topicID to lessonID (INSERT OR IGNORE — already
+// linked isn't an error).
 func AddLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	_, err := conn.Exec(`INSERT OR IGNORE INTO lesson_topics (lesson_id, topic_id) VALUES (?, ?)`, lessonID, topicID)
 	if err != nil {
@@ -564,7 +564,7 @@ func AddLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	return nil
 }
 
-// RemoveLessonTopic desvincula topicID de lessonID (não apaga a entidade).
+// RemoveLessonTopic unlinks topicID from lessonID (doesn't delete the entity).
 func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	_, err := conn.Exec(`DELETE FROM lesson_topics WHERE lesson_id = ? AND topic_id = ?`, lessonID, topicID)
 	if err != nil {
@@ -574,34 +574,34 @@ func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes do pacote db**
+- [ ] **Step 4: Run the db package's tests**
 
 Run: `go test ./internal/db/ -v`
-Expected: PASS (Task 1 + Task 2 juntas).
+Expected: PASS (Tasks 1 + 2 together).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add internal/db/topics.go internal/db/topics_test.go
-git commit -m "feat: repositório de tópicos (entidade + vínculos por aula)"
+git commit -m "feat: topics repository (entity + per-lesson links)"
 ```
 
 ---
 
-### Task 3: Deleção seletiva na troca de falante
+### Task 3: Selective deletion on speaker swap
 
 **Files:**
-- Modify: `internal/db/analysis_results.go` (renomear `DeleteAnalysisResultsForLesson` → `DeleteSpeakerDependentAnalysisResults` e mudar SQL)
+- Modify: `internal/db/analysis_results.go` (rename `DeleteAnalysisResultsForLesson` → `DeleteSpeakerDependentAnalysisResults` and change the SQL)
 - Modify: `services/library.go` (`SetStudentSpeaker`)
-- Modify: `internal/db/analysis_results_test.go` (renomear/reescrever o teste de deleção)
+- Modify: `internal/db/analysis_results_test.go` (rename/rewrite the deletion test)
 
 **Interfaces:**
-- Consumes: `UpsertAnalysisResult`, `UpsertPrompt` (existem); `insertLessonFixture` (helper do pacote db); `GetOrCreateTopicByName`/`AddLessonTopic` (Task 2).
+- Consumes: `UpsertAnalysisResult`, `UpsertPrompt` (already exist); `insertLessonFixture` (a `db` package helper); `GetOrCreateTopicByName`/`AddLessonTopic` (Task 2).
 - Produces: `func DeleteSpeakerDependentAnalysisResults(conn *sql.DB, lessonID int64) error`.
 
-- [ ] **Step 1: Escrever o teste novo (falha por símbolo ausente)**
+- [ ] **Step 1: Write the new test (fails due to a missing symbol)**
 
-Em `internal/db/analysis_results_test.go`, substituir `TestDeleteAnalysisResultsForLesson_DeletesAllTasksForLessonOnly` por:
+In `internal/db/analysis_results_test.go`, replace `TestDeleteAnalysisResultsForLesson_DeletesAllTasksForLessonOnly` with:
 
 ```go
 func TestDeleteSpeakerDependentAnalysisResults_PreservesTopicsAndOtherLessons(t *testing.T) {
@@ -627,7 +627,7 @@ func TestDeleteSpeakerDependentAnalysisResults_PreservesTopicsAndOtherLessons(t 
 		t.Fatalf("UpsertAnalysisResult() lessonB erro: %v", err)
 	}
 
-	// lesson_topics de lessonA deve sobreviver à troca de falante.
+	// lessonA's lesson_topics must survive the speaker swap.
 	topicID, err := GetOrCreateTopicByName(conn, "viagens")
 	if err != nil {
 		t.Fatalf("GetOrCreateTopicByName() erro inesperado: %v", err)
@@ -672,22 +672,23 @@ func TestDeleteSpeakerDependentAnalysisResults_PreservesTopicsAndOtherLessons(t 
 }
 ```
 
-- [ ] **Step 2: Rodar para ver falhar**
+- [ ] **Step 2: Run it to see it fail**
 
 Run: `go test ./internal/db/ -run TestDeleteSpeakerDependentAnalysisResults -v`
 Expected: FAIL — `undefined: DeleteSpeakerDependentAnalysisResults`.
 
-- [ ] **Step 3: Renomear e mudar a função**
+- [ ] **Step 3: Rename and change the function**
 
-Em `internal/db/analysis_results.go`, substituir `DeleteAnalysisResultsForLesson` por:
+In `internal/db/analysis_results.go`, replace `DeleteAnalysisResultsForLesson` with:
 
 ```go
-// DeleteSpeakerDependentAnalysisResults apaga as análises que dependem de
-// quem é aluno/tutor na aula (tudo exceto analyze_topics) — chamada quando o
-// mapeamento aluno/tutor muda (services.LibraryService.SetStudentSpeaker).
-// analyze_topics não menciona Aluno/Tutor no prompt e sobrevive; lesson_topics
-// também fica intacto (a tabela é a fonte da verdade dos chips, independente
-// da análise).
+// DeleteSpeakerDependentAnalysisResults deletes the analyses that depend on
+// who is the student/tutor in the lesson (everything except analyze_topics)
+// — called when the student/tutor mapping changes
+// (services.LibraryService.SetStudentSpeaker). analyze_topics doesn't
+// mention Student/Tutor in its prompt and survives; lesson_topics also stays
+// intact (the table is the chips' source of truth, independent of the
+// analysis).
 func DeleteSpeakerDependentAnalysisResults(conn *sql.DB, lessonID int64) error {
 	if _, err := conn.Exec(`DELETE FROM analysis_results WHERE lesson_id = ? AND task != 'analyze_topics'`, lessonID); err != nil {
 		return fmt.Errorf("apagar análises dependentes de falante da lesson %d: %w", lessonID, err)
@@ -696,21 +697,21 @@ func DeleteSpeakerDependentAnalysisResults(conn *sql.DB, lessonID int64) error {
 }
 ```
 
-- [ ] **Step 4: Atualizar o chamador**
+- [ ] **Step 4: Update the caller**
 
-Em `services/library.go`, na função `SetStudentSpeaker` (linha ~179), trocar:
+In `services/library.go`, in the `SetStudentSpeaker` function (line ~179), change:
 
 ```go
 		if err := db.DeleteAnalysisResultsForLesson(s.conn, lessonID); err != nil {
 ```
 
-por:
+to:
 
 ```go
 		if err := db.DeleteSpeakerDependentAnalysisResults(s.conn, lessonID); err != nil {
 ```
 
-- [ ] **Step 5: Rodar os testes**
+- [ ] **Step 5: Run the tests**
 
 Run: `go test ./internal/db/ ./services/ -v`
 Expected: PASS.
@@ -719,12 +720,12 @@ Expected: PASS.
 
 ```bash
 git add internal/db/analysis_results.go internal/db/analysis_results_test.go services/library.go
-git commit -m "feat: troca de falante preserva tópicos (deleção seletiva)"
+git commit -m "feat: speaker swap preserves topics (selective deletion)"
 ```
 
 ---
 
-### Task 4: Pacote `internal/analysis` — `NewTopicsTask` v2, `ParseTopicsResult`, `AppendExistingTopics` + prompt v2
+### Task 4: `internal/analysis` package — `NewTopicsTask` v2, `ParseTopicsResult`, `AppendExistingTopics` + prompt v2
 
 **Files:**
 - Create: `prompts/analyze-topics-v2.md`
@@ -732,12 +733,12 @@ git commit -m "feat: troca de falante preserva tópicos (deleção seletiva)"
 - Modify: `internal/analysis/tasks_topics_test.go`
 
 **Interfaces:**
-- Consumes: `mustLoadPrompt`, `task[T]`, `parseTopics` (existem).
+- Consumes: `mustLoadPrompt`, `task[T]`, `parseTopics` (already exist).
 - Produces: `func NewTopicsTask() TaskDef` (version 2, prompt v2), `func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error)`, `func AppendExistingTopics(transcript string, existing []string) string`.
 
-- [ ] **Step 1: Escrever o prompt v2**
+- [ ] **Step 1: Write the prompt v2**
 
-Criar `prompts/analyze-topics-v2.md`:
+Create `prompts/analyze-topics-v2.md`:
 
 ```markdown
 # Prompt de análise — Tópicos da aula (v2)
@@ -776,9 +777,9 @@ A transcrição da aula será enviada na mensagem seguinte, com cada fala numera
 "Aluno:" ou "Tutor:".
 ```
 
-- [ ] **Step 2: Escrever os testes (falham)**
+- [ ] **Step 2: Write the tests (fail)**
 
-Em `internal/analysis/tasks_topics_test.go`, adicionar:
+In `internal/analysis/tasks_topics_test.go`, add:
 
 ```go
 func TestNewTopicsTask_HasNameVersionAndPrompt(t *testing.T) {
@@ -832,14 +833,14 @@ Tópicos já utilizados em outras aulas (reutilize quando fizer sentido):
 }
 ```
 
-- [ ] **Step 3: Rodar para ver falhar**
+- [ ] **Step 3: Run it to see it fail**
 
 Run: `go test ./internal/analysis/ -run 'TestNewTopicsTask|TestParseTopicsResult|TestAppendExistingTopics' -v`
 Expected: FAIL — `undefined: NewTopicsTask`, `undefined: ParseTopicsResult`, `undefined: AppendExistingTopics`.
 
-- [ ] **Step 4: Implementar**
+- [ ] **Step 4: Implement**
 
-Em `internal/analysis/tasks_topics.go`, substituir o conteúdo por:
+In `internal/analysis/tasks_topics.go`, replace the content with:
 
 ```go
 // internal/analysis/tasks_topics.go
@@ -861,14 +862,14 @@ func parseTopics(raw json.RawMessage, utteranceCount int) ([]string, error) {
 	return parsed.Topics, nil
 }
 
-// NewTopicsTask devolve a tarefa de tópicos na versão 2 do prompt
-// (granularidade geral + reaproveitamento de tópicos existentes).
+// NewTopicsTask returns the topics task on prompt version 2
+// (general granularity + reuse of existing topics).
 func NewTopicsTask() TaskDef {
 	return task[[]string]{name: "analyze_topics", version: 2, prompt: mustLoadPrompt("analyze-topics-v2.md"), parse: parseTopics}
 }
 
-// ParseTopicsResult decodifica um result_json persistido (array JSON de
-// strings — resultJSON é json.Marshal([]string), sem envelope) de volta em
+// ParseTopicsResult decodes a persisted result_json (a JSON array of
+// strings — resultJSON is json.Marshal([]string), no envelope) back into
 // []string.
 func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error) {
 	var out []string
@@ -878,9 +879,9 @@ func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error) {
 	return out, nil
 }
 
-// AppendExistingTopics anexa a lista de tópicos já existentes ao conteúdo da
-// transcrição, num bloco final que o prompt v2 reconhece. Devolve transcript
-// inalterado quando não há tópicos existentes.
+// AppendExistingTopics appends the list of already-existing topics to the
+// transcript content, in a trailing block that the v2 prompt recognizes.
+// Returns the transcript unchanged when there are no existing topics.
 func AppendExistingTopics(transcript string, existing []string) string {
 	if len(existing) == 0 {
 		return transcript
@@ -897,16 +898,16 @@ func AppendExistingTopics(transcript string, existing []string) string {
 }
 ```
 
-- [ ] **Step 5: Rodar os testes**
+- [ ] **Step 5: Run the tests**
 
 Run: `go test ./internal/analysis/ -v`
-Expected: PASS (inclui os `TestParseTopics_*` existentes, que continuam passando — `parseTopics` não mudou).
+Expected: PASS (includes the existing `TestParseTopics_*`, which keep passing — `parseTopics` didn't change).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add prompts/analyze-topics-v2.md internal/analysis/tasks_topics.go internal/analysis/tasks_topics_test.go
-git commit -m "feat: tarefa de tópicos v2 (granularidade + reaproveitamento)"
+git commit -m "feat: topics task v2 (granularity + reuse)"
 ```
 
 ---
@@ -918,12 +919,12 @@ git commit -m "feat: tarefa de tópicos v2 (granularidade + reaproveitamento)"
 - Create: `services/topics_test.go`
 
 **Interfaces:**
-- Consumes: `db.GetOrCreateTopicByName`, `db.AddLessonTopic`, `db.RemoveLessonTopic`, `db.ListTopics`, `db.RenameTopic` (Task 2); helpers `openTestDB`/`mustInsertLesson`/`testStorageRoot` (existem).
+- Consumes: `db.GetOrCreateTopicByName`, `db.AddLessonTopic`, `db.RemoveLessonTopic`, `db.ListTopics`, `db.RenameTopic` (Task 2); helpers `openTestDB`/`mustInsertLesson`/`testStorageRoot` (already exist).
 - Produces: `type Topic struct { ID int64 `json:"id"`; Name string `json:"name"` }`, `type TopicsService struct{}`, `NewTopicsService(conn) *TopicsService`, `(*TopicsService) ListTopics() ([]Topic, error)`, `RenameTopic(id, newName) error`, `AddTopic(lessonID, name) (Topic, error)`, `RemoveTopic(lessonID, topicID) error`.
 
-- [ ] **Step 1: Escrever o teste (falha)**
+- [ ] **Step 1: Write the test (fails)**
 
-Criar `services/topics_test.go`:
+Create `services/topics_test.go`:
 
 ```go
 package services
@@ -1043,12 +1044,12 @@ func TestTopicsService_RenameTopic_ReflectsGlobally(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar para ver falhar**
+- [ ] **Step 2: Run it to see it fail**
 
 Run: `go test ./services/ -run 'TestTopicsService' -v`
 Expected: FAIL — `undefined: NewTopicsService`.
 
-- [ ] **Step 3: Implementar `services/topics.go`**
+- [ ] **Step 3: Implement `services/topics.go`**
 
 ```go
 // services/topics.go
@@ -1062,16 +1063,17 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// Topic é um tópico cadastrado, no formato exposto ao frontend — entidade
-// reutilizada por TopicsService (gestão) e por AnalysisService (TopicsResult).
+// Topic is a registered topic, in the format exposed to the frontend — an
+// entity reused by TopicsService (management) and by AnalysisService
+// (TopicsResult).
 type Topic struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 }
 
-// TopicsService cobre a gestão de tópicos como entidade (História 3): listar
-// pro painel de Configurações, renomear globalmente, e adicionar/remover o
-// vínculo de um tópico a uma aula específica (chips do Detalhe).
+// TopicsService covers topic management as an entity (Story 3): listing
+// for the Settings panel, renaming globally, and adding/removing a topic's
+// link to a specific lesson (Detail's chips).
 type TopicsService struct {
 	conn *sql.DB
 }
@@ -1096,9 +1098,9 @@ func (s *TopicsService) RenameTopic(id int64, newName string) error {
 	return db.RenameTopic(s.conn, id, newName)
 }
 
-// AddTopic resolve o nome para uma entidade (criando se necessário) e vincula
-// à lessonID. Devolve o tópico resolvido; o frontend re-busca GetTopics depois
-// para reconciliar nomes canônicos.
+// AddTopic resolves the name to an entity (creating it if necessary) and
+// links it to lessonID. Returns the resolved topic; the frontend re-fetches
+// GetTopics afterward to reconcile canonical names.
 func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -1114,13 +1116,13 @@ func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 	return Topic{ID: id, Name: name}, nil
 }
 
-// RemoveTopic desvincula topicID de lessonID (não apaga a entidade).
+// RemoveTopic unlinks topicID from lessonID (doesn't delete the entity).
 func (s *TopicsService) RemoveTopic(lessonID, topicID int64) error {
 	return db.RemoveLessonTopic(s.conn, lessonID, topicID)
 }
 ```
 
-- [ ] **Step 4: Rodar os testes**
+- [ ] **Step 4: Run the tests**
 
 Run: `go test ./services/ -v`
 Expected: PASS.
@@ -1129,7 +1131,7 @@ Expected: PASS.
 
 ```bash
 git add services/topics.go services/topics_test.go
-git commit -m "feat: TopicsService (gestão de tópicos como entidade)"
+git commit -m "feat: TopicsService (topics managed as an entity)"
 ```
 
 ---
@@ -1141,12 +1143,12 @@ git commit -m "feat: TopicsService (gestão de tópicos como entidade)"
 - Modify: `services/analysis_test.go` (estender o fake + novos testes)
 
 **Interfaces:**
-- Consumes: `db.FindLessonByID`, `db.FindTranscriptByLessonID`, `db.FindAnalysisResult`, `db.ListTopics`, `db.ListLessonTopics`, `db.GetOrCreateTopicByName`, `db.ReplaceLessonTopics`, `db.UpsertPrompt`, `db.UpsertAnalysisResult`; `analysis.NewTopicsTask`/`ParseTopicsResult`/`AppendExistingTopics`/`FormatTranscript`; `analysisRawRelPath`/`writeRawResponse` (existentes neste arquivo); `Topic` (Task 5).
+- Consumes: `db.FindLessonByID`, `db.FindTranscriptByLessonID`, `db.FindAnalysisResult`, `db.ListTopics`, `db.ListLessonTopics`, `db.GetOrCreateTopicByName`, `db.ReplaceLessonTopics`, `db.UpsertPrompt`, `db.UpsertAnalysisResult`; `analysis.NewTopicsTask`/`ParseTopicsResult`/`AppendExistingTopics`/`FormatTranscript`; `analysisRawRelPath`/`writeRawResponse` (already existing in this file); `Topic` (Task 5).
 - Produces: `type TopicsResult struct { Analyzed bool `json:"analyzed"`; Items []Topic `json:"items"` }`, `(*AnalysisService) GetTopics(lessonID int64) (TopicsResult, error)`, `AnalyzeTopics(...)`, `ReprocessTopics(...)`.
 
-- [ ] **Step 1: Estender o fake provider para capturar o input**
+- [ ] **Step 1: Extend the fake provider to capture the input**
 
-Em `services/analysis_test.go`, adicionar o campo `lastInput string` ao struct `fakeAnalysisProvider` e gravá-lo em `Complete`:
+In `services/analysis_test.go`, add the `lastInput string` field to the `fakeAnalysisProvider` struct and record it in `Complete`:
 
 ```go
 type fakeAnalysisProvider struct {
@@ -1164,9 +1166,9 @@ func (p *fakeAnalysisProvider) Complete(ctx context.Context, systemPrompt, trans
 }
 ```
 
-- [ ] **Step 2: Escrever os testes (falham)**
+- [ ] **Step 2: Write the tests (fail)**
 
-Adicionar a `services/analysis_test.go`:
+Add to `services/analysis_test.go`:
 
 ```go
 func TestAnalysisService_GetTopics_NotAnalyzedYet(t *testing.T) {
@@ -1347,30 +1349,30 @@ func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T)
 }
 ```
 
-**Nota:** os novos testes usam `strings` e `fmt` — `services/analysis_test.go` já importa `fmt`; adicionar `"strings"` ao bloco de imports.
+**Note:** the new tests use `strings` and `fmt` — `services/analysis_test.go` already imports `fmt`; add `"strings"` to the import block.
 
-- [ ] **Step 3: Rodar para ver falhar**
+- [ ] **Step 3: Run it to see it fail**
 
 Run: `go test ./services/ -run 'TestAnalysisService_.*Topic' -v`
-Expected: FAIL — `undefined: svc.GetTopics` (etc.) e `TopicsResult` inexistente.
+Expected: FAIL — `undefined: svc.GetTopics` (etc.) and nonexistent `TopicsResult`.
 
-- [ ] **Step 4: Implementar em `services/analysis.go`**
+- [ ] **Step 4: Implement in `services/analysis.go`**
 
-Adicionar após o bloco de correções (reaproveita `analysisRawRelPath`/`writeRawResponse`/imports já presentes):
+Add after the corrections block (reuses `analysisRawRelPath`/`writeRawResponse`/imports already present):
 
 ```go
 const topicsTaskName = "analyze_topics"
 
-// TopicsResult é o resultado de analyze_topics exposto ao frontend. Items
-// vem de lesson_topics (fonte da verdade, editável); Analyzed indica se a
-// tarefa já rodou (linha em analysis_results).
+// TopicsResult is analyze_topics's result exposed to the frontend. Items
+// comes from lesson_topics (the editable source of truth); Analyzed
+// indicates whether the task has already run (a row in analysis_results).
 type TopicsResult struct {
 	Analyzed bool    `json:"analyzed"`
 	Items    []Topic `json:"items"`
 }
 
-// GetTopics devolve os tópicos atuais da lesson (de lesson_topics) sem chamar
-// a API — Analyzed == false se a tarefa nunca rodou.
+// GetTopics returns the lesson's current topics (from lesson_topics)
+// without calling the API — Analyzed == false if the task never ran.
 func (s *AnalysisService) GetTopics(lessonID int64) (TopicsResult, error) {
 	return s.currentTopics(lessonID)
 }
@@ -1504,7 +1506,7 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 }
 ```
 
-- [ ] **Step 5: Rodar os testes**
+- [ ] **Step 5: Run the tests**
 
 Run: `go test ./services/ -v`
 Expected: PASS.
@@ -1513,60 +1515,60 @@ Expected: PASS.
 
 ```bash
 git add services/analysis.go services/analysis_test.go
-git commit -m "feat: análise de tópicos sob demanda (Get/Analyze/Reprocess)"
+git commit -m "feat: on-demand topic analysis (Get/Analyze/Reprocess)"
 ```
 
 ---
 
-### Task 7: Registrar `TopicsService` no `main.go`
+### Task 7: Register `TopicsService` in `main.go`
 
 **Files:**
 - Modify: `main.go`
 
-- [ ] **Step 1: Adicionar o serviço**
+- [ ] **Step 1: Add the service**
 
-Em `main.go`, na lista `Services`, após `application.NewService(services.NewTeacherService(conn))`, adicionar:
+In `main.go`, in the `Services` list, after `application.NewService(services.NewTeacherService(conn))`, add:
 
 ```go
 			application.NewService(services.NewTopicsService(conn)),
 ```
 
-- [ ] **Step 2: Compilar**
+- [ ] **Step 2: Compile**
 
 Run: `go build ./...`
-Expected: PASS (sem erros).
+Expected: PASS (no errors).
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add main.go
-git commit -m "feat: registra TopicsService no app Wails"
+git commit -m "feat: register TopicsService in the Wails app"
 ```
 
 ---
 
-### Task 8: Bindings + frontend (chips no Detalhe + painel Tópicos em Configurações)
+### Task 8: Bindings + frontend (chips in Detail + Tópicos panel in Settings)
 
 **Files:**
 - Modify: `frontend/src/lib/screens/LessonDetail.svelte`
 - Modify: `frontend/src/lib/screens/Settings.svelte`
-- (Gerados automaticamente, não editar à mão): `frontend/bindings/assistente-idiomas/services/topicsservice.ts`, `.../analysisservice.ts`, `.../models.ts`
+- (Auto-generated, don't edit by hand): `frontend/bindings/assistente-idiomas/services/topicsservice.ts`, `.../analysisservice.ts`, `.../models.ts`
 
-- [ ] **Step 1: Regenerar bindings**
+- [ ] **Step 1: Regenerate bindings**
 
 Run: `wails3 generate bindings -ts -i ./...`
-Expected: gera `topicsservice.ts` (TopicsService), novos métodos em `analysisservice.ts` (GetTopics/AnalyzeTopics/ReprocessTopics) e `Topic`/`TopicsResult` em `models.ts`.
+Expected: generates `topicsservice.ts` (TopicsService), new methods in `analysisservice.ts` (GetTopics/AnalyzeTopics/ReprocessTopics), and `Topic`/`TopicsResult` in `models.ts`.
 
-- [ ] **Step 2: LessonDetail — imports e estado**
+- [ ] **Step 2: LessonDetail — imports and state**
 
-Em `LessonDetail.svelte`, adicionar os imports e o estado. Trocar a linha de import de models para incluir `TopicsResult`, e adicionar o import do TopicsService:
+In `LessonDetail.svelte`, add the imports and the state. Change the models import line to include `TopicsResult`, and add the TopicsService import:
 
 ```ts
   import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
   import type { Lesson, Transcript, CorrectionsResult, TopicsResult } from "../../../bindings/assistente-idiomas/services/models";
 ```
 
-E, junto dos outros `$state`, adicionar:
+And, alongside the other `$state`s, add:
 
 ```ts
   let topics: TopicsResult | null = $state(null);
@@ -1575,9 +1577,9 @@ E, junto dos outros `$state`, adicionar:
   let newTopicName: string = $state("");
 ```
 
-- [ ] **Step 3: LessonDetail — funções**
+- [ ] **Step 3: LessonDetail — functions**
 
-Adicionar (perto de `fetchCorrectionsIfReady`/`analyzeCorrections`):
+Add (near `fetchCorrectionsIfReady`/`analyzeCorrections`):
 
 ```ts
   async function fetchTopicsIfReady() {
@@ -1646,13 +1648,13 @@ Adicionar (perto de `fetchCorrectionsIfReady`/`analyzeCorrections`):
   }
 ```
 
-- [ ] **Step 4: LessonDetail — chamar `fetchTopicsIfReady`**
+- [ ] **Step 4: LessonDetail — call `fetchTopicsIfReady`**
 
-Em `refreshAfterSpeakerChange` (após `await fetchCorrectionsIfReady()`) e em `onMount` (após `await fetchCorrectionsIfReady()`), adicionar `await fetchTopicsIfReady();`.
+In `refreshAfterSpeakerChange` (after `await fetchCorrectionsIfReady()`) and in `onMount` (after `await fetchCorrectionsIfReady()`), add `await fetchTopicsIfReady();`.
 
-- [ ] **Step 5: LessonDetail — markup dos chips**
+- [ ] **Step 5: LessonDetail — chips markup**
 
-Logo após o bloco `.header-row` (após o `</div>` do header-row, antes do `<div class="grid">`), adicionar:
+Right after the `.header-row` block (after the header-row's `</div>`, before `<div class="grid">`), add:
 
 ```svelte
     <div class="topics-row">
@@ -1691,7 +1693,7 @@ Logo após o bloco `.header-row` (após o `</div>` do header-row, antes do `<div
 
 - [ ] **Step 6: LessonDetail — CSS**
 
-Adicionar ao bloco `<style>`:
+Add to the `<style>` block:
 
 ```css
   .topics-row {
@@ -1723,9 +1725,9 @@ Adicionar ao bloco `<style>`:
   }
 ```
 
-- [ ] **Step 7: Settings — painel Tópicos**
+- [ ] **Step 7: Settings — Tópicos panel**
 
-Em `Settings.svelte`, adicionar o import e o estado:
+In `Settings.svelte`, add the import and the state:
 
 ```ts
   import * as TopicsService from "../../../bindings/assistente-idiomas/services/topicsservice";
@@ -1740,7 +1742,7 @@ Em `Settings.svelte`, adicionar o import e o estado:
   let topicRenameErrors: Record<number, string> = $state({});
 ```
 
-E as funções (espelhando `loadTeachers`/`renameTeacher`, com nomes de tópico):
+And the functions (mirroring `loadTeachers`/`renameTeacher`, with topic names):
 
 ```ts
   async function loadTopics(justRenamedId?: number) {
@@ -1772,7 +1774,7 @@ E as funções (espelhando `loadTeachers`/`renameTeacher`, com nomes de tópico)
   }
 ```
 
-Adicionar `loadTopics()` ao `Promise.all` do `onMount` e, após a `</section>` de "Professores", adicionar a nova seção:
+Add `loadTopics()` to the `onMount`'s `Promise.all` and, after the "Professores" `</section>`, add the new section:
 
 ```svelte
     <section class="card" style="background: {colors.surface}; border: 1px solid {colors.line};">
@@ -1807,64 +1809,64 @@ Adicionar `loadTopics()` ao `Promise.all` do `onMount` e, após a `</section>` d
     </section>
 ```
 
-- [ ] **Step 8: Checar frontend**
+- [ ] **Step 8: Check the frontend**
 
 Run: `pnpm run check`
-Expected: PASS (svelte-check sem erros de tipo).
+Expected: PASS (svelte-check with no type errors).
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add frontend/src/lib/screens/LessonDetail.svelte frontend/src/lib/screens/Settings.svelte frontend/bindings/assistente-idiomas/
-git commit -m "feat: chips de tópicos no Detalhe e painel Tópicos em Configurações"
+git commit -m "feat: topic chips in Detail and Topics panel in Settings"
 ```
 
 ---
 
-### Task 9: Verificação final + registro no doc da fase
+### Task 9: Final verification + recording in the phase doc
 
 **Files:**
-- Modify: `docs/fase-2-analise-llm.md` (Registro de progresso + checkboxes de aceite)
+- Modify: `docs/fase-2-analise-llm.md` (Progress log + acceptance checkboxes)
 
-- [ ] **Step 1: Rodar a suíte Go completa**
+- [ ] **Step 1: Run the full Go suite**
 
 Run: `go test ./...`
 Expected: PASS.
 
-- [ ] **Step 2: Rodar go vet**
+- [ ] **Step 2: Run go vet**
 
 Run: `go vet ./...`
-Expected: sem saída de erro.
+Expected: no error output.
 
-- [ ] **Step 3: Rodar build do frontend e do app**
+- [ ] **Step 3: Run the frontend and app build**
 
-Run: `pnpm run build` (em `frontend/`) e depois `wails3 build`
-Expected: PASS nos dois.
+Run: `pnpm run build` (in `frontend/`) and then `wails3 build`
+Expected: PASS on both.
 
-- [ ] **Step 4: Atualizar o doc da fase**
+- [ ] **Step 4: Update the phase doc**
 
-Em `docs/fase-2-analise-llm.md`, marcar os critérios de aceite da História 3 que são verificáveis por código/teste (todos, exceto o último — a decisão em `docs/notas-analise-llm.md` depende de observação em aula real), e adicionar uma linha no "Registro de progresso" no mesmo formato das anteriores:
+In `docs/fase-2-analise-llm.md`, check off Story 3's acceptance criteria that are verifiable by code/test (all except the last one — the decision in `docs/notas-analise-llm.md` depends on observing a real lesson), and add a line to the "Progress log" in the same format as the previous ones:
 
 ```markdown
-| 18/08/2026 | História 3 implementada: tópicos viram entidade `topics` (migration 00006 com backfill), `lesson_topics` por `topic_id` vira a fonte da verdade da UI; `AnalysisService` ganha Get/Analyze/ReprocessTopics (sob demanda, idempotente, grava em `analysis_results` + `lesson_topics`); `TopicsService` cobre adicionar/remover por aula e renomear global; prompt v2 com granularidade geral + reaproveitamento dos tópicos existentes (anexados à mensagem); chips no Detalhe + painel "Tópicos" em Configurações; troca de falante passa a preservar tópicos (deleção seletiva por dependência de falante) | `go test ./...`, `go vet ./...`, `pnpm run check`/`build` confirmados limpos; verificação manual em aula real (granularidade, reaproveitamento, edição de chips, renome global) e a decisão em `docs/notas-analise-llm.md` seguem pendentes — mesmo padrão das histórias anteriores |
+| 18/08/2026 | Story 3 implemented: topics become a `topics` entity (migration 00006 with backfill), `lesson_topics` by `topic_id` becomes the UI's source of truth; `AnalysisService` gains Get/Analyze/ReprocessTopics (on demand, idempotent, writes to `analysis_results` + `lesson_topics`); `TopicsService` covers add/remove per lesson and global rename; prompt v2 with general granularity + reuse of existing topics (appended to the message); chips in the Detail view + a "Topics" panel in Settings; switching speakers now preserves topics (selective deletion by speaker dependency) | `go test ./...`, `go vet ./...`, `pnpm run check`/`build` confirmed clean; manual verification on a real lesson (granularity, reuse, chip editing, global rename) and the decision in `docs/notas-analise-llm.md` are still pending — same pattern as previous stories |
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add docs/fase-2-analise-llm.md
-git commit -m "docs: registra implementação da História 3 (tópicos da aula)"
+git commit -m "docs: record implementation of Story 3 (lesson topics)"
 ```
 
 ---
 
-## Validação manual (humano, fecha a história — NÃO é tarefa deste plano)
+## Manual validation (human, closes the story — NOT a task in this plan)
 
-Depois deste plano, o dev roda `wails3 dev` numa aula real e observa:
+After this plan, the dev runs `wails3 dev` on a real lesson and observes:
 
-1. "Analisar tópicos" gera chips com granularidade geral (não detalhada demais).
-2. Numa segunda aula sobre assunto parecido, o modelo **reutiliza** o tópico existente em vez de criar uma variação redundante.
-3. Adicionar/remover chips funciona; renomear em Configurações reflete em todas as aulas.
-4. Trocar "quem é você" em Editar aula preserva os tópicos (e descarta correções).
+1. "Analisar tópicos" generates chips with general granularity (not overly detailed).
+2. On a second lesson about a similar subject, the model **reuses** the existing topic instead of creating a redundant variation.
+3. Adding/removing chips works; renaming in Settings is reflected across all lessons.
+4. Switching "quem é você" in Edit lesson preserves the topics (and discards corrections).
 
-Registrar a decisão (manter/refinar/descartar) em `docs/notas-analise-llm.md` e marcar o último critério de aceite da História 3 — é isso que fecha a história.
+Record the decision (keep/refine/discard) in `docs/notas-analise-llm.md` and check off Story 3's last acceptance criterion — that's what closes the story.

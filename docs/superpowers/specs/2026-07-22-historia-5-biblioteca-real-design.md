@@ -1,156 +1,158 @@
-# História 5 — Biblioteca real
+# Story 5 — Real Library — design
 
-> Spec de design. Histórias e critérios de aceite em `docs/fase-1-mvp.md`.
+> Design spec. Stories and acceptance criteria in `docs/fase-1-mvp.md`.
 
-## Contexto
+## Context
 
-A Biblioteca hoje (História 3) só lista lessons cruas — data, tutor, path — e candidatos
-pendentes de revisão. A História 4 fez o pipeline de jobs (`extract_audio` → `transcribe`)
-rodar em background, mas nenhuma tela consome status de job ainda. Esta história fecha esse
-elo: a Biblioteca passa a mostrar status real (processando/pronta/erro), duração, filtro por
-tutor/período, e abre um Detalhe (mínimo, mas com vídeo de verdade) ao clicar numa aula pronta.
+The Library today (Story 3) only lists raw lessons — date, tutor, path — and candidates
+pending review. Story 4 got the jobs pipeline (`extract_audio` → `transcribe`) running in the
+background, but no screen consumes job status yet. This story closes that gap: the Library now
+shows real status (processing/ready/error), duration, filter by tutor/date range, and opens a
+Detail view (minimal, but with a real video) when a ready lesson is clicked.
 
-De quebra, esta fatia resolve o **risco técnico 1** do `fase-1-mvp.md` (servir vídeo local ao
-webview com suporte a range requests) mais cedo do que o previsto — em vez de um stub sem
-vídeo, o Detalhe já reproduz o arquivo local via um endpoint dedicado. A História 6 herda esse
-endpoint pronto e só adiciona a transcrição sincronizada por cima.
+As a bonus, this slice resolves the project's **technical risk 1** (`fase-1-mvp.md`) — serving
+the local video to the webview with range-request support — earlier than planned. Instead of a
+stub with no video, the Detail view already plays the local file through a dedicated endpoint.
+Story 6 inherits this ready-made endpoint and only adds the synchronized transcript on top.
 
-## Decisões
+## Decisions
 
-### Duração do vídeo
+### Video duration
 
-Calculada via `ffprobe` (companion do `ffmpeg`, mesma dependência externa já assumida) no
-momento da **confirmação da importação** (`ImportService.ConfirmImport`), não durante o job
-`extract_audio`. Duração é metadado intrínseco do vídeo, não produto do pipeline de
-transcrição — deve ficar disponível mesmo que o pipeline falhe por completo, consistente com o
-princípio de resiliência ("falha de transcrição/análise nunca impede assistir ao vídeo").
+Calculated via `ffprobe` (ffmpeg's companion, the same external dependency already assumed) at
+the moment of **import confirmation** (`ImportService.ConfirmImport`), not during the
+`extract_audio` job. Duration is metadata intrinsic to the video, not a product of the
+transcription pipeline — it must remain available even if the pipeline fails entirely,
+consistent with the resilience principle ("a transcription/analysis failure never prevents
+watching the video").
 
-Falha do `ffprobe` (binário ausente, arquivo de fixture inválido em teste, etc.) **nunca**
-impede a confirmação: é best-effort, logada e ignorada — `duration_seconds` fica `NULL` e a
-lesson é confirmada normalmente. Isso também mantém os testes existentes de
-`services/import_test.go` (que usam um `.mp4` fake, conteúdo arbitrário) passando sem exigir
-`ffprobe` real no ambiente de teste.
+An `ffprobe` failure (missing binary, invalid fixture file in tests, etc.) **never** blocks
+confirmation: it's best-effort, logged, and ignored — `duration_seconds` stays `NULL` and the
+lesson is confirmed normally. This also keeps the existing tests in `services/import_test.go`
+(which use a fake `.mp4` with arbitrary content) passing without requiring a real `ffprobe` in
+the test environment.
 
-### Status derivado dos jobs
+### Status derived from jobs
 
-Não há coluna de status em `lessons` — é sempre derivado, na hora da leitura, a partir dos dois
-jobs da lesson (`extract_audio`, `transcribe`):
+There is no status column on `lessons` — it is always derived, at read time, from the lesson's
+two jobs (`extract_audio`, `transcribe`):
 
-1. `extract_audio.status == "error"` → **erro**, mensagem = `extract_audio.last_error` (causa
-   raiz).
-2. senão `transcribe.status == "error"` → **erro**, mensagem = `transcribe.last_error` (falha
-   real de STT, já que o caso "bloqueado por dependência" cai no item 1).
-3. senão `transcribe.status == "done"` → **pronta**.
-4. senão (qualquer combinação de `pending`/`running`) → **processando**.
+1. `extract_audio.status == "error"` → **erro**, message = `extract_audio.last_error` (root
+   cause).
+2. else `transcribe.status == "error"` → **erro**, message = `transcribe.last_error` (a real STT
+   failure, since the "blocked by dependency" case is already covered by item 1).
+3. else `transcribe.status == "done"` → **pronta**.
+4. else (any combination of `pending`/`running`) → **processando**.
 
-### Reprocessar
+### Retry
 
-Reseta **todos** os jobs em `error` da lesson de uma vez (`status='pending'`, `attempts=0`,
-`last_error=NULL`) — não só o que causou o erro raiz. Isso importa porque quando
-`extract_audio` falha definitivamente, o worker já marca `transcribe` como `error` também (job
-bloqueado, ver `claimNextEligibleJob` em `internal/jobs/worker.go`). Resetar só o
-`extract_audio` deixaria o `transcribe` preso em `error` permanentemente. Não há criação de job
-novo — evita duplicar linhas e quebrar a suposição de "um job por kind por lesson" que
-`db.FindJob` já assume.
+Resets **all** jobs of the lesson that are in `error` at once (`status='pending'`, `attempts=0`,
+`last_error=NULL`) — not just the one that caused the root error. This matters because when
+`extract_audio` fails definitively, the worker already marks `transcribe` as `error` too (a
+blocked job, see `claimNextEligibleJob` in `internal/jobs/worker.go`). Resetting only
+`extract_audio` would leave `transcribe` stuck in `error` permanently. No new job is created —
+this avoids duplicating rows and breaking the "one job per kind per lesson" assumption that
+`db.FindJob` already relies on.
 
-Não chama `Worker.Wake()` — mesma decisão deliberada da História 4: o poll de fallback
-(~5s) já é imperceptível numa fila de background, e ligar `Wake()` ao fluxo de retry exigiria
-expor a instância do `Worker` a `services/`, aumentando o acoplamento sem ganho perceptível.
+Does not call `Worker.Wake()` — the same deliberate decision as Story 4: the fallback poll
+(~5s) is already imperceptible in a background queue, and wiring `Wake()` into the retry flow
+would require exposing the `Worker` instance to `services/`, increasing coupling for no
+noticeable gain.
 
-### Filtro
+### Filter
 
-Dropdown de tutor (populado por `SELECT DISTINCT tutor FROM lessons`, sem digitação livre) +
-dois campos de data (de/até, mesmo formato `AAAA-MM-DD` de `lesson_date`). Todos os parâmetros
-são opcionais; a busca full-text por trecho de conversa fica pra fase futura (fora de escopo,
-já registrado no `fase-1-mvp.md`).
+A tutor dropdown (populated from `SELECT DISTINCT tutor FROM lessons`, no free typing) + two
+date fields (from/to, same `YYYY-MM-DD` format as `lesson_date`). All parameters are optional;
+full-text search over conversation snippets is left for a future phase (out of scope, already
+noted in `fase-1-mvp.md`).
 
-### Detalhe: vídeo real via asset handler dedicado
+### Detail view: real video via a dedicated asset handler
 
-`AssetOptions.Middleware` (Wails v3) intercepta `GET /media/lesson/{id}` antes do handler
-padrão (`AssetFileServerFS` em produção, dev server em `wails3 dev`): resolve a lesson por id no
-banco, monta o path absoluto (`storage_root` + `video_path`), e serve com `http.ServeContent` da
-stdlib — que já trata `Range` requests, sem lógica manual de range. Id inexistente ou arquivo
-ausente no disco → `404`. Todo outro path passa direto pro handler padrão, sem interferência no
-resto do app.
+`AssetOptions.Middleware` (Wails v3) intercepts `GET /media/lesson/{id}` before the default
+handler (`AssetFileServerFS` in production, the dev server in `wails3 dev`): it looks up the
+lesson by id in the database, builds the absolute path (`storage_root` + `video_path`), and
+serves it with the stdlib's `http.ServeContent` — which already handles `Range` requests, with
+no manual range logic. A nonexistent id or a missing file on disk → `404`. Every other path
+passes straight through to the default handler, with no interference with the rest of the app.
 
-Isso é a resolução real do risco 1 (não um placeholder): a História 6 reaproveita o mesmo
-endpoint, adicionando só a transcrição rolável, clique-pula-vídeo e highlight de playback.
+This is the real resolution of risk 1 (not a placeholder): Story 6 reuses the same endpoint,
+only adding the scrollable transcript, click-to-seek, and playback highlighting.
 
-O Detalhe desta história é deliberadamente mínimo: cabeçalho (data/tutor), botão "← Biblioteca",
-`<video controls>` apontando pro endpoint. Sem transcrição, sem sync — isso é escopo integral da
-História 6.
+The Detail view in this story is deliberately minimal: header (date/tutor), a "← Library"
+button, `<video controls>` pointing at the endpoint. No transcript, no sync — that's the full
+scope of Story 6.
 
-## Mudanças por camada
+## Changes by layer
 
 ### `internal/media`
 - `Duration(ctx context.Context, videoPath string) (time.Duration, error)` via `ffprobe`,
-  seguindo o mesmo padrão de `ExtractAudio` (checa `exec.LookPath`, roda o comando, erro
-  envolvido com contexto).
+  following the same pattern as `ExtractAudio` (checks `exec.LookPath`, runs the command, wraps
+  the error with context).
 
 ### `internal/db`
 - `SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error`.
 - `ListTutors(conn *sql.DB) ([]string, error)`.
-- `LessonFilter{ Tutor, DateFrom, DateTo string }` (todos opcionais).
+- `LessonFilter{ Tutor, DateFrom, DateTo string }` (all optional).
 - `LessonWithStatus` — `Lesson` + `DurationSeconds *int64` + `ExtractStatus/ExtractError` +
   `TranscribeStatus/TranscribeError`.
 - `ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error)` — via
-  `LEFT JOIN jobs` duas vezes (uma por kind), com `WHERE` condicional pros filtros presentes.
+  `LEFT JOIN jobs` twice (once per kind), with a conditional `WHERE` for the filters present.
 - `ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error)` — `UPDATE jobs SET
-  status='pending', attempts=0, last_error=NULL WHERE lesson_id=? AND status='error'`, retorna
-  quantos jobs foram resetados.
-- `ListLessons` (sem status) permanece só se ainda tiver chamador depois da migração de
-  `library.go` — senão é removida (a fatia anterior a introduziu só pra esta tela).
+  status='pending', attempts=0, last_error=NULL WHERE lesson_id=? AND status='error'`, returns
+  how many jobs were reset.
+- `ListLessons` (without status) stays only if it still has a caller after `library.go`'s
+  migration — otherwise it's removed (the previous slice introduced it only for this screen).
 
 ### `services`
-- `ImportService.ConfirmImport`: depois de `db.ConfirmPendingImport`, busca a lesson recém-criada
-  e chama `media.Duration` em melhor esforço (log + ignora erro), gravando via
+- `ImportService.ConfirmImport`: after `db.ConfirmPendingImport`, looks up the newly-created
+  lesson and calls `media.Duration` on a best-effort basis (log + ignore error), writing it via
   `db.SetLessonDuration`.
-- `LibraryService.ListLessons(filter LessonFilterInput) ([]Lesson, error)`: troca a assinatura
-  atual (sem args) — chama `db.ListLessonsWithStatus`, deriva `Status`/`ErrorMessage` por lesson
-  conforme as regras acima, expõe `DurationSeconds *int64`.
+- `LibraryService.ListLessons(filter LessonFilterInput) ([]Lesson, error)`: changes the current
+  signature (no args) — calls `db.ListLessonsWithStatus`, derives `Status`/`ErrorMessage` per
+  lesson according to the rules above, exposes `DurationSeconds *int64`.
 - `LibraryService.ListTutors() ([]string, error)`.
-- `LibraryService.RetryLesson(lessonID int64) error` — chama `db.ResetErrorJobsForLesson`;
-  não é erro se zero jobs foram resetados (idempotente, sem necessidade de checar estado antes).
-- Sem método de serviço pra URL do vídeo: o path `/media/lesson/{id}` é previsível a partir só
-  do `lessonId` que o frontend já tem (vindo de `ListLessons`), então o Svelte monta a string
-  direto (`` `/media/lesson/${lesson.id}` ``) — um método de serviço só pra isso seria
-  indireção sem ganho.
-- Novo `services/video_asset.go`: `VideoAssetMiddleware(conn *sql.DB, storageRoot
-  StorageRootResolver) application.Middleware` — mora em `services/` (não em `internal/`) porque
-  precisa do tipo `application.Middleware`/`application.Handler`, e `internal/` nunca importa
-  Wails (camada fina, ver `CLAUDE.md`). Reaproveita o mesmo tipo `StorageRootResolver` de
-  `internal/jobs` (resolvido a cada requisição, não uma vez só — mesma razão da História 4: o
-  wizard de primeira execução roda depois do app já estar de pé).
+- `LibraryService.RetryLesson(lessonID int64) error` — calls `db.ResetErrorJobsForLesson`;
+  it is not an error if zero jobs were reset (idempotent, no need to check state beforehand).
+- No service method for the video URL: the `/media/lesson/{id}` path is predictable from just
+  the `lessonId` the frontend already has (coming from `ListLessons`), so Svelte builds the
+  string directly (`` `/media/lesson/${lesson.id}` ``) — a service method just for that would be
+  indirection with no benefit.
+- New `services/video_asset.go`: `VideoAssetMiddleware(conn *sql.DB, storageRoot
+  StorageRootResolver) application.Middleware` — lives in `services/` (not `internal/`) because
+  it needs the `application.Middleware`/`application.Handler` type, and `internal/` never
+  imports Wails (thin layer, see `CLAUDE.md`). Reuses the same `StorageRootResolver` type from
+  `internal/jobs` (resolved on every request, not just once — same reason as Story 4: the
+  first-run wizard runs after the app is already up).
 
 ### `main.go`
-- Registra `services.VideoAssetMiddleware(conn, storageRoot)` em `AssetOptions.Middleware`,
-  usando o mesmo closure `storageRoot` já construído em `startJobWorker`.
+- Registers `services.VideoAssetMiddleware(conn, storageRoot)` in `AssetOptions.Middleware`,
+  using the same `storageRoot` closure already built in `startJobWorker`.
 
 ### Frontend
-- `frontend/src/lib/screens/Library.svelte`: badges de status, duração formatada, filtro
-  (tutor dropdown + intervalo de datas), botão "Reprocessar" nas aulas com erro, clique em aula
-  pronta navega pro Detalhe.
-- `frontend/src/lib/screens/LessonDetail.svelte` (novo): cabeçalho, `<video controls>`, botão
-  voltar.
-- `frontend/src/App.svelte`: estado de rota simples (`library` | `lesson-detail`), sem lib de
-  roteamento (escopo pequeno demais pra justificar).
-- Bindings Wails regeneradas (`wails3 dev`/`generate bindings`) refletindo as novas assinaturas.
+- `frontend/src/lib/screens/Library.svelte`: status badges, formatted duration, filter (tutor
+  dropdown + date range), a "Retry" button on lessons with errors, clicking a ready lesson
+  navigates to the Detail view.
+- `frontend/src/lib/screens/LessonDetail.svelte` (new): header, `<video controls>`, back button.
+- `frontend/src/App.svelte`: simple route state (`library` | `lesson-detail`), no routing library
+  (too small a scope to justify one).
+- Regenerated Wails bindings (`wails3 dev`/`generate bindings`) reflecting the new signatures.
 
-## Fora de escopo (não implementar aqui)
+## Out of scope (not to implement here)
 
-Busca full-text, transcrição no Detalhe, clique-pula-vídeo, highlight de playback (tudo
-História 6); tela de Fila e badge de contagem de jobs ativos (História 7); qualquer análise LLM.
+Full-text search, transcript in the Detail view, click-to-seek, playback highlighting (all
+Story 6); Queue screen and active-jobs count badge (Story 7); any LLM analysis.
 
-## Testes
+## Tests
 
-- `internal/media`: teste de `Duration` sem `ffprobe` no PATH (padrão já usado em
+- `internal/media`: `Duration` test without `ffprobe` on the PATH (same pattern already used in
   `TestExtractAudio_FfmpegNotInPath`).
-- `internal/db`: cobertura de `ListLessonsWithStatus` (todas as combinações de status derivado),
-  `ResetErrorJobsForLesson`, `ListTutors`, filtro por tutor/período.
-- `services`: `LibraryService.ListLessons` com filtro, `RetryLesson` (reseta os dois jobs quando
-  `transcribe` foi bloqueado), `ImportService.ConfirmImport` continua passando com fixture de
-  vídeo fake (duração fica `NULL`, sem falhar a confirmação).
-- Endpoint de vídeo: teste de integração leve validando que uma requisição com `Range` retorna
-  `206 Partial Content` e o corpo esperado (via `httptest`), e que id inexistente retorna `404`.
-- Verificação visual (janela real) do fluxo Biblioteca → Detalhe → vídeo tocando continua
-  pendente nas máquinas Windows/Linux, mesmo padrão das histórias anteriores.
+- `internal/db`: coverage of `ListLessonsWithStatus` (every combination of derived status),
+  `ResetErrorJobsForLesson`, `ListTutors`, filter by tutor/date range.
+- `services`: `LibraryService.ListLessons` with a filter, `RetryLesson` (resets both jobs when
+  `transcribe` was blocked), `ImportService.ConfirmImport` still passes with a fake video
+  fixture (duration stays `NULL`, without failing confirmation).
+- Video endpoint: a lightweight integration test validating that a request with `Range` returns
+  `206 Partial Content` and the expected body (via `httptest`), and that a nonexistent id
+  returns `404`.
+- Visual verification (real window) of the Library → Detail → video-playing flow remains
+  pending on Windows/Linux machines, same pattern as the previous stories.

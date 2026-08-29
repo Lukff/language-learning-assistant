@@ -1,81 +1,81 @@
-# Notas de qualidade — análise via LLM
+# Quality notes — LLM-based analysis
 
-> Registro de observações por provedor/aula, seguindo os critérios da História 3 em
-> `docs/fase-0-validacao.md`. Anotações **parafraseadas** — sem transcrever trechos literais da
-> fala, nomes de tutores ou qualquer dado que identifique aula/pessoa específica. Alimenta a
-> decisão registrada em `docs/decisoes-tecnologia.md` (seção "Análise via LLM").
+> A record of observations by provider/lesson, following the criteria from Story 3 in
+> `docs/fase-0-validacao.md`. Notes are **paraphrased** — no literal transcription of speech
+> passages, tutor names, or any data identifying a specific lesson/person. Feeds the
+> decision recorded in `docs/decisoes-tecnologia.md` ("LLM-based analysis" section).
 
 ## DeepSeek (`deepseek-v4-flash`)
 
-### Aula 01
+### Lesson 01
 
-- **Qualidade geral:** muito boa — avaliação do dev: "mais do que suficiente pra essa aplicação,
-  funcionou muito bem". Convenceu já na primeira execução.
-- **Correções:** nenhuma correção apontada nesta aula (lista `corrections` veio vazia). Não avaliado
-  ainda se isso reflete ausência real de erros na fala do aluno ou uma tendência do modelo a ser
-  conservador — só fica claro comparando com mais aulas.
-- **Vocabulário:** 20 itens extraídos, cobrindo tanto vocabulário temático da conversa (ex.: termos
-  do dia a dia, expressões idiomáticas) quanto vocabulário mais técnico que surgiu no papo (ex.:
-  termos de linguística). Nenhum item claramente inválido ou fora de contexto observado.
-- **Expressões do tutor:** 9 expressões extraídas, cada uma com nota de contexto em PT-BR. Leitura
-  do dev: notas de contexto claras e úteis, do tipo que ajuda a reaproveitar a expressão depois.
-- **Formato/parsing:** resposta veio como JSON puro (via prefill + `stop` na Chat Prefix Completion
-  do DeepSeek), parseada sem erro na primeira tentativa — 1/1 execução bem-sucedida.
-- **Custo real:** 8.575 tokens de prompt + 725 de completion = 9.300 tokens totais → ~US$ 0,0014
-  (menos de um décimo de centavo de dólar), nos preços do tier `deepseek-v4-flash`.
-- **Outras observações:** a API rejeita `response_format: json_object` combinado com prefill
-  (erro 400 numa primeira tentativa, antes de ajustar o client) — corrigido no código
-  (`internal/analysis/openai_compatible.go`), sem impacto na qualidade da resposta observada.
+- **Overall quality:** very good — the dev's assessment: "more than enough for this application,
+  worked very well." Convincing already on the first run.
+- **Corrections:** no correction flagged in this lesson (the `corrections` list came back empty). Not yet
+  evaluated whether this reflects a real absence of errors in the student's speech or a tendency of
+  the model to be conservative — that only becomes clear when comparing more lessons.
+- **Vocabulary:** 20 items extracted, covering both thematic vocabulary from the conversation (e.g.,
+  everyday terms, idiomatic expressions) and more technical vocabulary that came up in the chat (e.g.,
+  linguistics terms). No item clearly invalid or out of context was observed.
+- **Tutor expressions:** 9 expressions extracted, each with a context note in PT-BR. The dev's read:
+  context notes were clear and useful, the kind that helps reuse the expression later.
+- **Format/parsing:** the response came back as pure JSON (via prefill + `stop` in DeepSeek's Chat
+  Prefix Completion), parsed without error on the first try — 1/1 successful run.
+- **Real cost:** 8,575 prompt tokens + 725 completion tokens = 9,300 total tokens → ~US$0.0014
+  (less than a tenth of a US cent), at `deepseek-v4-flash` tier pricing.
+- **Other observations:** the API rejects `response_format: json_object` combined with prefill
+  (a 400 error on a first attempt, before adjusting the client) — fixed in the code
+  (`internal/analysis/openai_compatible.go`), with no impact on the observed response quality.
 
-## DeepSeek (`deepseek-v4-pro`) — teste pontual, não é a decisão
+## DeepSeek (`deepseek-v4-pro`) — one-off test, not the decision
 
-Rodado uma vez na aula 01 (mesmo transcript do teste com Flash), pra comparação — modelo não faz
-parte do provedor default (`NewDeepSeekProvider` continua fixo em `deepseek-v4-flash`); model id
-trocado manualmente e revertido logo em seguida.
+Run once on lesson 01 (the same transcript as the Flash test), for comparison — this model isn't
+part of the default provider (`NewDeepSeekProvider` remains fixed on `deepseek-v4-flash`); the
+model id was changed manually and reverted right after.
 
-- **Correções:** 6 apontadas (contra 0 do Flash na mesma aula) — cobrindo fluência de frases
-  fragmentadas e erros de gramática (ordem de advérbio, tempo verbal, substantivo incorreto). Uma
-  das 6, porém, é um falso positivo do próprio prompt: o item aparece na lista `corrections` mas a
-  `explanation` diz explicitamente que não havia erro ali — sinal de imprecisão a refinar no
-  prompt, não apenas uma questão do modelo escolhido.
-- **Vocabulário:** 19 itens, qualidade similar ao Flash.
-- **Expressões do tutor:** 9, qualidade similar ao Flash.
-- **Custo real:** 8.575 tokens de prompt + 1.594 de completion = 10.169 totais → ~US$ 0,0051 (~3,6x
-  o custo do Flash na mesma aula).
-- **Avaliação do dev:** análise um pouco imprecisa em alguns pontos — mais uma questão de
-  refinamento do prompt do que do modelo em si. Não convenceu o suficiente pra justificar o custo
-  maior agora, mas fica **como backup** para uma futura opção de análise mais aprofundada.
+- **Corrections:** 6 flagged (against 0 from Flash on the same lesson) — covering fragmented-sentence
+  fluency and grammar errors (adverb order, verb tense, incorrect noun). One of the 6, however, is a
+  false positive from the prompt itself: the item appears in the `corrections` list but the
+  `explanation` explicitly says there was no error there — a sign of an inaccuracy to refine in the
+  prompt, not just a matter of the chosen model.
+- **Vocabulary:** 19 items, similar quality to Flash.
+- **Tutor expressions:** 9, similar quality to Flash.
+- **Real cost:** 8,575 prompt tokens + 1,594 completion tokens = 10,169 total → ~US$0.0051 (~3.6x
+  the cost of Flash on the same lesson).
+- **Dev's assessment:** the analysis was somewhat imprecise in places — more a matter of
+  refining the prompt than the model itself. Not convincing enough to justify the higher cost right
+  now, but kept **as a backup** for a future more in-depth analysis option.
 
-## História 2 da Fase 2 — Piloto: Correções do aluno (`analyze-corrections-v1`)
+## Phase 2 Story 2 — Pilot: Student corrections (`analyze-corrections-v1`)
 
-Verificação manual do fluxo completo (credencial → escolha de falante → "Analisar correções" →
-correção inline no Detalhe → "Reprocessar correções" → descarte ao trocar falante), rodando
-`wails3 dev` numa aula real.
+Manual verification of the full flow (credential → speaker selection → "Analyze corrections" →
+inline correction in the Detail view → "Reprocess corrections" → discard on speaker switch), running
+`wails3 dev` on a real lesson.
 
-- **Aulas observadas:** 1.
-- **Fluxo/UI:** funcionou como desenhado em todos os passos do roteiro de verificação (dica antes
-  de escolher o falante, botão de análise, estados "Analisando…"/"Reprocessar correções",
-  confirmação ao reprocessar, descarte com aviso ao trocar de falante).
-- **Qualidade das correções:** boa o suficiente pra essa etapa (piloto), mas com uma inconsistência
-  clara no prompt: o modelo aponta como erro repetições de palavra que fazem parte do processo de
-  pensar em voz alta do aluno (hesitação, autocorreção natural em fala) — não é útil marcar isso
-  como correção de inglês nessa funcionalidade. É ajuste de prompt (`prompts/analyze-corrections-v1.md`),
-  não de modelo.
-- **Fallback de correção não localizada:** ocorreu — algumas correções vieram na resposta do
-  modelo mas não bateram com o texto real da fala (matching por texto/índice não encontrou o
-  trecho). Não quantificado aula a aula ainda; a UI já trata esse caso sem quebrar a tela.
-- **Decisão:** **manter a tarefa como está** — a infraestrutura (credencial, disparo sob demanda,
-  persistência idempotente, exibição inline, resiliência a erro) está validada e correta. O
-  refinamento do prompt (ignorar repetição/hesitação como não-erro, reduzir fallback de
-  "não localizada") fica registrado como trabalho futuro, esperado nesta etapa de piloto — não
-  bloqueia o fechamento da História 2.
+- **Lessons observed:** 1.
+- **Flow/UI:** worked as designed at every step of the verification script (a hint before
+  selecting the speaker, the analysis button, "Analyzing…"/"Reprocess corrections" states,
+  confirmation on reprocessing, discard with a warning when switching speakers).
+- **Correction quality:** good enough for this stage (pilot), but with a clear inconsistency
+  in the prompt: the model flags as an error word repetitions that are part of the student's
+  thinking-out-loud process (hesitation, natural self-correction in speech) — it's not useful to
+  mark that as an English correction in this feature. It's a prompt fix (`prompts/analyze-corrections-v1.md`),
+  not a model issue.
+- **"Not located" correction fallback:** it occurred — some corrections came back in the model's
+  response but didn't match the actual utterance text (text/index matching didn't find the
+  passage). Not yet quantified lesson by lesson; the UI already handles this case without breaking the screen.
+- **Decision:** **keep the task as-is** — the infrastructure (credential, on-demand trigger,
+  idempotent persistence, inline display, error resilience) is validated and correct. The
+  prompt refinement (ignoring repetition/hesitation as not-an-error, reducing the
+  "not located" fallback) is recorded as future work, expected at this pilot stage — it does not
+  block closing Story 2.
 
-## Candidatos não testados (on hold)
+## Untested candidates (on hold)
 
-Qwen, GLM, Anthropic (Claude) e OpenAI (GPT) não foram executados — a qualidade do DeepSeek já
-convenceu na primeira aula, então a comparação opcional prevista na História 3 foi conscientemente
-dispensada por ora. Ver `docs/decisoes-tecnologia.md` para o racional completo.
+Qwen, GLM, Anthropic (Claude), and OpenAI (GPT) haven't been run — DeepSeek's quality already
+convinced on the first lesson, so the optional comparison planned in Story 3 was consciously
+skipped for now. See `docs/decisoes-tecnologia.md` for the full rationale.
 
-**Exploração futura registrada (não é decisão nem prioridade atual):** avaliar modelos "flash"
-ainda mais simples/baratos que os já usados para tarefas complementares de análise (não a análise
-principal — ex.: classificações auxiliares, sumarizações leves).
+**Future exploration recorded (not a decision or current priority):** evaluate even simpler/cheaper
+"flash" models than the ones already in use, for complementary analysis tasks (not the
+main analysis — e.g., auxiliary classifications, light summarization).

@@ -58,7 +58,7 @@ third-party dependencies.
 - HTTP client timeout: a single generous timeout (10 minutes) at the `http.Client` level, for
   consistency with the other 3 providers.
 - No elaborate flags, no parallelism, no sophisticated retry.
-- Commit messages: one line, semantic format (`tipo: descrição`) — do not run `git commit`
+- Commit messages: one line, semantic format (`type: description`) — do not run `git commit`
   automatically; stage only (`git add`), per this project's established workflow preference.
 
 ---
@@ -150,55 +150,55 @@ import (
 func TestMapElevenLabsResponse(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "elevenlabs_response.json"))
 	if err != nil {
-		t.Fatalf("erro lendo fixture: %v", err)
+		t.Fatalf("error reading fixture: %v", err)
 	}
 
 	result, err := mapElevenLabsResponse(raw)
 	if err != nil {
-		t.Fatalf("mapElevenLabsResponse retornou erro: %v", err)
+		t.Fatalf("mapElevenLabsResponse returned an error: %v", err)
 	}
 
 	if len(result.Utterances) != 2 {
-		t.Fatalf("esperava 2 utterances, obteve %d", len(result.Utterances))
+		t.Fatalf("expected 2 utterances, got %d", len(result.Utterances))
 	}
 
 	first := result.Utterances[0]
 	if first.Speaker != "speaker_0" {
-		t.Errorf("Speaker = %q, esperava %q", first.Speaker, "speaker_0")
+		t.Errorf("Speaker = %q, expected %q", first.Speaker, "speaker_0")
 	}
 	if first.Text != "Hi, how was your week?" {
-		t.Errorf("Text = %q, inesperado", first.Text)
+		t.Errorf("Text = %q, unexpected", first.Text)
 	}
 	if first.Start != 420*time.Millisecond {
-		t.Errorf("Start = %v, esperava %v", first.Start, 420*time.Millisecond)
+		t.Errorf("Start = %v, expected %v", first.Start, 420*time.Millisecond)
 	}
 	if len(first.Words) != 5 {
-		t.Fatalf("esperava 5 words, obteve %d", len(first.Words))
+		t.Fatalf("expected 5 words, got %d", len(first.Words))
 	}
 	if first.Words[0].Text != "Hi," {
-		t.Errorf("Words[0].Text = %q, inesperado", first.Words[0].Text)
+		t.Errorf("Words[0].Text = %q, unexpected", first.Words[0].Text)
 	}
 
 	second := result.Utterances[1]
 	if second.Speaker != "speaker_1" {
-		t.Errorf("Speaker = %q, esperava %q", second.Speaker, "speaker_1")
+		t.Errorf("Speaker = %q, expected %q", second.Speaker, "speaker_1")
 	}
 	if len(second.Words) != 13 {
-		t.Fatalf("esperava 13 words, obteve %d", len(second.Words))
+		t.Fatalf("expected 13 words, got %d", len(second.Words))
 	}
 	if second.Words[8].Text != "saudade" {
-		t.Errorf("Words[8].Text = %q, esperava %q", second.Words[8].Text, "saudade")
+		t.Errorf("Words[8].Text = %q, expected %q", second.Words[8].Text, "saudade")
 	}
 
 	if string(result.RawResponse) != string(raw) {
-		t.Error("RawResponse deveria preservar o JSON bruto exatamente como recebido")
+		t.Error("RawResponse should preserve the raw JSON exactly as received")
 	}
 }
 
 func TestMapElevenLabsResponse_InvalidJSON(t *testing.T) {
 	_, err := mapElevenLabsResponse([]byte("not json"))
 	if err == nil {
-		t.Fatal("esperava erro para JSON inválido, obteve nil")
+		t.Fatal("expected an error for invalid JSON, got nil")
 	}
 }
 
@@ -215,21 +215,21 @@ func TestMapElevenLabsResponse_ExcludesNonWordEntriesFromWords(t *testing.T) {
 
 	result, err := mapElevenLabsResponse(raw)
 	if err != nil {
-		t.Fatalf("mapElevenLabsResponse retornou erro: %v", err)
+		t.Fatalf("mapElevenLabsResponse returned an error: %v", err)
 	}
 	if len(result.Utterances) != 1 {
-		t.Fatalf("esperava 1 utterance, obteve %d", len(result.Utterances))
+		t.Fatalf("expected 1 utterance, got %d", len(result.Utterances))
 	}
 
 	u := result.Utterances[0]
 	if u.Text != "Well (laughs) ok" {
-		t.Errorf("Text = %q, esperava %q", u.Text, "Well (laughs) ok")
+		t.Errorf("Text = %q, expected %q", u.Text, "Well (laughs) ok")
 	}
 	if len(u.Words) != 2 {
-		t.Fatalf("esperava 2 words (spacing/audio_event excluídos), obteve %d", len(u.Words))
+		t.Fatalf("expected 2 words (spacing/audio_event excluded), got %d", len(u.Words))
 	}
 	if u.Words[0].Text != "Well" || u.Words[1].Text != "ok" {
-		t.Errorf("Words = %+v, inesperado", u.Words)
+		t.Errorf("Words = %+v, unexpected", u.Words)
 	}
 }
 ```
@@ -263,23 +263,25 @@ type elevenLabsWord struct {
 	SpeakerID string  `json:"speaker_id"`
 }
 
-// mapElevenLabsResponse converte o JSON bruto do endpoint POST
-// /v1/speech-to-text do ElevenLabs Scribe para o domínio comum stt.Result.
-// Mantida separada da chamada HTTP (elevenlabs.go) para ser testável com
-// fixture, sem precisar de rede.
+// mapElevenLabsResponse converts the raw JSON from ElevenLabs Scribe's
+// POST /v1/speech-to-text endpoint into the shared stt.Result domain.
+// Kept separate from the HTTP call (elevenlabs.go) so it's testable with a
+// fixture, with no network needed.
 //
-// Ao contrário da Gladia/AssemblyAI/Deepgram, a API não agrupa a resposta em
-// utterances — devolve um array plano de words[], cada uma com type
-// (word/spacing/audio_event) e speaker_id. O agrupamento em turnos de fala é
-// feito aqui: uma nova Utterance começa sempre que o speaker_id muda.
+// Unlike Gladia/AssemblyAI/Deepgram, the API doesn't group the response
+// into utterances — it returns a flat words[] array, each entry with a
+// type (word/spacing/audio_event) and speaker_id. Grouping into speech
+// turns happens here: a new Utterance starts every time speaker_id
+// changes.
 //
-// Também não há campo de status a validar: a resposta síncrona só existe
-// quando a transcrição já terminou com sucesso — um erro chega como HTTP
-// não-2xx, tratado em elevenlabs.go antes desta função ser chamada.
+// There's also no status field to validate: the synchronous response only
+// exists once the transcription has already finished successfully — an
+// error arrives as a non-2xx HTTP status, handled in elevenlabs.go before
+// this function is called.
 func mapElevenLabsResponse(raw []byte) (*Result, error) {
 	var parsed elevenLabsResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("json inválido: %w", err)
+		return nil, fmt.Errorf("invalid json: %w", err)
 	}
 
 	return &Result{
@@ -288,16 +290,17 @@ func mapElevenLabsResponse(raw []byte) (*Result, error) {
 	}, nil
 }
 
-// groupElevenLabsWords agrupa entradas consecutivas do array plano de words
-// pelo mesmo speaker_id em uma Utterance. O texto da utterance concatena o
-// texto bruto de toda entrada do grupo (word, spacing e audio_event) na
-// ordem original, preservando o espaçamento e mantendo marcadores de eventos
-// não-verbais (ex.: "(laughs)") como contexto de leitura — decisão de
-// produto, não filtrar. Só entradas type=="word" viram stt.Word: a lista de
-// palavras clicáveis do domínio é só fala real, mesmo critério usado por
-// Gladia/AssemblyAI/Deepgram. Não há segmentação por pausa de silêncio
-// dentro do mesmo locutor — só a troca de speaker_id abre uma nova
-// Utterance (decisão registrada na spec: evitar heurística extra no spike).
+// groupElevenLabsWords groups consecutive entries of the flat words array
+// with the same speaker_id into an Utterance. The utterance's text
+// concatenates the raw text of every entry in the group (word, spacing,
+// and audio_event) in original order, preserving the spacing and keeping
+// non-verbal event markers (e.g. "(laughs)") as reading context — a
+// product decision, not to be filtered out. Only type=="word" entries
+// become stt.Word: the domain's clickable word list is only actual
+// speech, same criterion used by Gladia/AssemblyAI/Deepgram. There's no
+// silence-gap segmentation within the same speaker — only a speaker_id
+// change opens a new Utterance (decision recorded in the spec: avoid
+// extra heuristics in the spike).
 func groupElevenLabsWords(items []elevenLabsWord) []Utterance {
 	utterances := make([]Utterance, 0)
 	var current *Utterance
@@ -391,20 +394,20 @@ import (
 
 const elevenLabsBaseURL = "https://api.elevenlabs.io/v1/speech-to-text"
 
-// ElevenLabsProvider implementa stt.Provider usando a API do ElevenLabs Scribe.
+// ElevenLabsProvider implements stt.Provider using the ElevenLabs Scribe API.
 //
-// Modelo usado: "scribe_v2" — modelo atual documentado pela ElevenLabs,
-// multilíngue nativo (90+ idiomas). A API não expõe um parâmetro explícito de
-// "modo multi/code-switching" como o Deepgram; nenhum language_code é
-// enviado, deixando a detecção automática cobrir troca de idioma no meio da
-// fala (PT/ES no meio do inglês do aluno).
+// Model used: "scribe_v2" — the current model documented by ElevenLabs,
+// natively multilingual (90+ languages). The API doesn't expose an
+// explicit "multi/code-switching mode" parameter like Deepgram; no
+// language_code is sent, letting automatic detection cover the language
+// switch mid-speech (PT/ES in the middle of the student's English).
 //
-// num_speakers=2 é sempre passado: aulas do Cambly são 1:1 (aluno e tutor),
-// então esse hint melhora a diarização sem custo.
+// num_speakers=2 is always passed: Cambly lessons are 1:1 (student and
+// tutor), so this hint improves diarization at no cost.
 //
-// Assim como o Deepgram, a API batch do ElevenLabs é síncrona: uma única
-// chamada POST (aqui multipart, por exigir upload do arquivo de áudio) já
-// retorna a transcrição completa — sem upload prévio nem polling de job.
+// Like Deepgram, ElevenLabs' batch API is synchronous: a single POST call
+// (here multipart, since it requires uploading the audio file) already
+// returns the complete transcription — no prior upload nor job polling.
 type ElevenLabsProvider struct {
 	apiKey string
 	client *http.Client
@@ -412,11 +415,11 @@ type ElevenLabsProvider struct {
 
 func NewElevenLabsProvider(apiKey string) (*ElevenLabsProvider, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("stt: ELEVENLABS_API_KEY vazia")
+		return nil, fmt.Errorf("stt: ELEVENLABS_API_KEY empty")
 	}
-	// Timeout generoso: cobre o envio do WAV inteiro da aula (dezenas de MB)
-	// mais o processamento síncrono no servidor. Mesmo valor usado pelos
-	// outros três provedores, por consistência.
+	// Generous timeout: covers uploading the lesson's entire WAV (tens of
+	// MB) plus the synchronous processing on the server. Same value used
+	// by the other three providers, for consistency.
 	return &ElevenLabsProvider{apiKey: apiKey, client: &http.Client{Timeout: 10 * time.Minute}}, nil
 }
 
@@ -425,20 +428,20 @@ func (p *ElevenLabsProvider) Name() string { return "elevenlabs" }
 func (p *ElevenLabsProvider) Transcribe(ctx context.Context, audioPath string) (*Result, error) {
 	req, err := p.buildRequest(ctx, audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("stt: montar requisição elevenlabs: %w", err)
+		return nil, fmt.Errorf("stt: build elevenlabs request: %w", err)
 	}
 
 	raw, err := p.do(req)
 	if err != nil {
-		return nil, fmt.Errorf("stt: transcrever elevenlabs: %w", err)
+		return nil, fmt.Errorf("stt: elevenlabs transcription: %w", err)
 	}
 
 	result, err := mapElevenLabsResponse(raw)
 	if err != nil {
-		// Preserva o JSON bruto mesmo em falha de parse: a chamada à API já foi
-		// feita (custa dinheiro), então o chamador deve conseguir salvar
-		// result.RawResponse em disco mesmo com err != nil.
-		return &Result{RawResponse: raw}, fmt.Errorf("stt: parsear resposta elevenlabs: %w", err)
+		// Preserve the raw JSON even on a parse failure: the API call was
+		// already made (it costs money), so the caller should still be able
+		// to save result.RawResponse to disk even with err != nil.
+		return &Result{RawResponse: raw}, fmt.Errorf("stt: parse elevenlabs response: %w", err)
 	}
 	return result, nil
 }
@@ -485,8 +488,9 @@ func (p *ElevenLabsProvider) buildRequest(ctx context.Context, audioPath string)
 	return req, nil
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if
+// the status isn't 2xx (the message includes the status and body, for
+// debugging).
 func (p *ElevenLabsProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -576,8 +580,8 @@ per-provider failure loop already handle any name present in this map.
 Current `.env.example`:
 
 ```
-# Copie este arquivo para .env e preencha com sua chave real.
-# O .env nunca deve ser commitado (já está no .gitignore).
+# Copy this file to .env and fill in your real key.
+# .env should never be committed (it's already in .gitignore).
 GLADIA_API_KEY=
 ASSEMBLYAI_API_KEY=
 DEEPGRAM_API_KEY=
@@ -586,8 +590,8 @@ DEEPGRAM_API_KEY=
 Change it to:
 
 ```
-# Copie este arquivo para .env e preencha com sua chave real.
-# O .env nunca deve ser commitado (já está no .gitignore).
+# Copy this file to .env and fill in your real key.
+# .env should never be committed (it's already in .gitignore).
 GLADIA_API_KEY=
 ASSEMBLYAI_API_KEY=
 DEEPGRAM_API_KEY=
@@ -622,8 +626,8 @@ that happens later, directly with the human, same as the other 3 providers.
 
 ---
 
-## Após este plano
+## After this plan
 
-- Todos os 4 candidatos de STT (`docs/fase-0-validacao.md`) têm cliente implementado — próximo
-  passo é a comparação lado a lado e a decisão registrada em `docs/decisoes-tecnologia.md`
-  (História 2), usando `docs/notas-stt.md` como insumo.
+- All 4 STT candidates (`docs/fase-0-validacao.md`) have a client implemented — the next step
+  is the side-by-side comparison and the decision recorded in `docs/decisoes-tecnologia.md`
+  (Story 2), using `docs/notas-stt.md` as input.

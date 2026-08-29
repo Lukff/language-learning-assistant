@@ -1,93 +1,92 @@
-# História 3 — Renomeação padronizada do arquivo ao confirmar: design
+# Story 3 — Standardized filename on confirmation: design
 
-> Fatia adicional à História 3 (`docs/fase-1-mvp.md`), sobre o fluxo de confirmação
-> (`ImportService.ConfirmImport`) já implementado e descrito em
-> `docs/superpowers/specs/2026-07-22-historia-3-importar-aula-design.md`. Não reabre o que já
-> foi entregue naquela fatia (varredura, staging, dedupe) — só adiciona um passo novo depois da
-> confirmação, e uma validação nova antes dela.
+> Additional slice on top of Story 3 (`docs/fase-1-mvp.md`), on the confirmation flow
+> (`ImportService.ConfirmImport`) already implemented and described in
+> `docs/superpowers/specs/2026-07-22-historia-3-importar-aula-design.md`. Does not reopen what was
+> already delivered in that slice (scanning, staging, dedupe) — it only adds a new step after
+> confirmation, and a new validation before it.
 
-## Contexto e motivação
+## Context and motivation
 
-Hoje, `ConfirmPendingImport` grava `video_path` exatamente como o arquivo foi encontrado na
-varredura — nome original do download do Cambly (ou qualquer nome que o arquivo já tivesse).
-Isso deixa a raiz de armazenamento com nomes inconsistentes entre si, dificultando localizar um
-arquivo específico fora do app (Explorer/Finder, backup manual, etc.).
+Today, `ConfirmPendingImport` writes `video_path` exactly as the file was found by the scan —
+the original name from the Cambly download (or whatever name the file already had). This leaves
+the storage root with inconsistent names across files, making it harder to locate a specific
+file outside the app (Explorer/Finder, manual backup, etc.).
 
-Decisão: depois que o usuário preenche os metadados (data, horário, tutor) no modal de
-confirmação, o arquivo de vídeo é renomeado *in place* (mesma pasta) para um nome padronizado
-derivado desses metadados.
+Decision: after the user fills in the metadata (date, time, tutor) in the confirmation modal, the
+video file is renamed *in place* (same folder) to a standardized name derived from that metadata.
 
-**Consequência acoplada:** para o nome ser derivável de forma confiável, horário deixa de ser
-opcional — data, horário e tutor passam a ser **todos obrigatórios** para confirmar um
-candidato. Um candidato sem algum desses continua em `pending_imports` (pendente), a
-confirmação é recusada com erro claro.
+**Coupled consequence:** for the name to be reliably derivable, time stops being optional — date,
+time, and tutor all become **mandatory** to confirm a candidate. A candidate missing any of these
+stays in `pending_imports` (pending), and confirmation is refused with a clear error.
 
-## Formato do nome
+## Filename format
 
 ```
-AAAA-MM-DD_HHHMM_tutor-slug.ext
+YYYY-MM-DD_HHHMM_tutor-slug.ext
 ```
 
-Exemplo: tutor "Maria José", 2026-07-23 14:30 → `2026-07-23_14H30_maria-jose.mp4`.
+Example: tutor "Maria José", 2026-07-23 14:30 → `2026-07-23_14H30_maria-jose.mp4`.
 
-- Separador de hora: `H` entre hora e minuto (`14H30`), não `:` (inválido em nome de arquivo no
-  Windows) nem `-` (ambíguo com o próprio separador de data).
-- Separador entre data e hora: `_`.
-- Extensão: preservada do arquivo original, em minúsculas.
-- **Sem fallback "sem horário"**: a validação em `ConfirmImport` (ver abaixo) garante que
-  `lessonDate` sempre chega aqui com data **e** horário. Não há mais candidato a confirmação sem
-  horário.
+- Hour separator: `H` between hour and minute (`14H30`), not `:` (invalid in a filename on
+  Windows) nor `-` (ambiguous with the date separator itself).
+- Separator between date and time: `_`.
+- Extension: preserved from the original file, lowercased.
+- **No "no time" fallback**: the validation in `ConfirmImport` (see below) guarantees that
+  `lessonDate` always arrives here with both date **and** time. There is no longer a confirmation
+  candidate without a time.
 
-### Slug do tutor
+### Tutor slug
 
-- Minúsculas.
-- Acentos removidos via tabela de substituição manual (á→a, ã→a, ç→c, etc. — cobre PT/ES, os
-  idiomas de code-switching do projeto); sem dependência nova (`CLAUDE.md`: dependência externa
-  só com justificativa, e isso é resolvível em stdlib com uma tabela pequena).
-- Qualquer sequência de caracteres fora de `[a-z0-9]` (espaços, pontuação, etc.) vira um único
-  `-`; sem `-` nas pontas.
-- Tutor vazio nunca chega aqui — já é validado como obrigatório em `ConfirmImport` (validação
-  pré-existente, mantida).
+- Lowercase.
+- Accents removed via a manual substitution table (á→a, ã→a, ç→c, etc. — covers PT/ES, the
+  code-switching languages of the project); no new dependency (`CLAUDE.md`: external dependency
+  only with justification, and this is solvable in stdlib with a small table).
+- Any run of characters outside `[a-z0-9]` (spaces, punctuation, etc.) becomes a single `-`; no
+  `-` at the ends.
+- An empty tutor never reaches here — it's already validated as mandatory in `ConfirmImport`
+  (pre-existing validation, kept as-is).
 
-### Colisão de nome
+### Name collision
 
-Duas aulas confirmadas com o mesmo instante (minuto) e mesmo tutor gerariam o mesmo nome-alvo
-(raro, mas possível). Se o nome-alvo já existe no diretório **e não é o próprio arquivo sendo
-renomeado**, tenta sufixos `-2`, `-3`, ... antes da extensão (`..._maria-jose-2.mp4`) até achar
-um nome livre.
+Two lessons confirmed at the same instant (minute) with the same tutor would produce the same
+target name (rare, but possible). If the target name already exists in the directory **and it is
+not the file being renamed itself**, it tries suffixes `-2`, `-3`, ... before the extension
+(`..._maria-jose-2.mp4`) until it finds a free name.
 
-## Validação obrigatória em `ConfirmImport`
+## Mandatory validation in `ConfirmImport`
 
-`services/import.go` `ConfirmImport(id, lessonDate, tutor)` já valida `lessonDate != ""` e
-`tutor != ""`. Passa a validar também que `lessonDate` tem componente de horário — rejeita
-`"AAAA-MM-DD"` puro (sem `T...`), não só string vazia. Mensagem de erro clara em PT-BR (ex.:
-`"horário da aula é obrigatório"`).
+`services/import.go`'s `ConfirmImport(id, lessonDate, tutor)` already validates `lessonDate != ""`
+and `tutor != ""`. It now also validates that `lessonDate` has a time component — it rejects a
+plain `"YYYY-MM-DD"` (without `T...`), not just an empty string. Clear error message in PT-BR
+(e.g. `"horário da aula é obrigatório"`).
 
-Como `db.ConfirmPendingImport` só é chamado depois dessa validação passar, uma falha aqui
-significa que a transação (insert em `lessons` + jobs, delete de `pending_imports`) **nunca
-roda** — o candidato continua intacto em `pending_imports`, ou seja, continua pendente de
-revisão. Isso já é o comportamento natural da função hoje para os dois campos existentes; a
-mudança é só estender a checagem de "não vazio" para "não vazio e com horário", no mesmo lugar.
+Since `db.ConfirmPendingImport` is only called after this validation passes, a failure here means
+the transaction (insert into `lessons` + jobs, delete from `pending_imports`) **never runs** —
+the candidate remains intact in `pending_imports`, i.e. it stays pending review. This is already
+the function's natural behavior today for the two existing fields; the change is just extending
+the "not empty" check to "not empty and has a time", in the same place.
 
-O input `datetime-local` do modal (`ImportConfirmModal.svelte`) já é atômico — não dá pra
-submeter só a data sem hora por essa UI — então esta validação no backend é principalmente
-defesa em profundidade (outros chamadores futuros, dados malformados) e uma mensagem de erro
-explícita, não uma mudança de comportamento observável na UI atual.
+The modal's `datetime-local` input (`ImportConfirmModal.svelte`) is already atomic — there's no
+way to submit just the date without a time through that UI — so this backend validation is
+mainly defense in depth (other future callers, malformed data) and an explicit error message,
+not an observable behavior change in the current UI.
 
-## Arquitetura
+## Architecture
 
 ```
 internal/importer/
-  naming.go        # StandardFilename(lessonDate, tutor, ext string) string — pura, sem I/O
+  naming.go        # StandardFilename(lessonDate, tutor, ext string) string — pure, no I/O
   naming_test.go
 services/
-  import.go         # ConfirmImport: validação de horário + chamada ao novo passo best-effort
+  import.go         # ConfirmImport: time validation + call to the new best-effort step
   import_test.go
 ```
 
-`internal/importer.StandardFilename` não faz I/O (não sabe de diretórios nem de colisão em
-disco) — só computa o nome a partir dos três valores. Resolver colisão exige checar o
-filesystem, então fica em `services/import.go`, que já é a camada que conhece `storage_root`.
+`internal/importer.StandardFilename` does no I/O (it doesn't know about directories or disk
+collisions) — it only computes the name from the three values. Resolving collisions requires
+checking the filesystem, so that lives in `services/import.go`, which is already the layer that
+knows about `storage_root`.
 
 ### `StandardFilename`
 
@@ -95,82 +94,83 @@ filesystem, então fica em `services/import.go`, que já é a camada que conhece
 // internal/importer/naming.go
 package importer
 
-// StandardFilename deriva o nome de arquivo padronizado pós-confirmação, a
-// partir da data/horário e do tutor informados no modal de confirmação.
-// lessonDate é o valor bruto de <input type="datetime-local">
-// ("AAAA-MM-DDTHH:MM"); ConfirmImport garante esse formato antes de chamar
-// esta função — não há fallback aqui para data sem horário.
+// StandardFilename derives the standardized filename after confirmation, from
+// the date/time and tutor provided in the confirmation modal.
+// lessonDate is the raw value from <input type="datetime-local">
+// ("YYYY-MM-DDTHH:MM"); ConfirmImport guarantees this format before calling
+// this function — there is no fallback here for a date without a time.
 func StandardFilename(lessonDate, tutor, ext string) string
 ```
 
-### Passo best-effort em `services/import.go`
+### Best-effort step in `services/import.go`
 
-Mesmo padrão já estabelecido por `setDurationBestEffort` (chamado logo depois dela, dentro de
-`ConfirmImport`, após `db.ConfirmPendingImport` ter sucesso):
+Same pattern already established by `setDurationBestEffort` (called right after it, inside
+`ConfirmImport`, once `db.ConfirmPendingImport` has succeeded):
 
-1. Carrega a lesson (`db.FindLessonByID`) — já teria sido carregada por `setDurationBestEffort`;
-   pode reaproveitar a mesma leitura em vez de duas.
-2. Resolve `storage_root` (`config.Load()`, já usado nesse arquivo).
-3. Calcula o nome-alvo via `importer.StandardFilename(lesson.LessonDate, lesson.Tutor,
+1. Load the lesson (`db.FindLessonByID`) — it would already have been loaded by
+   `setDurationBestEffort`; can reuse the same read instead of two.
+2. Resolve `storage_root` (`config.Load()`, already used in this file).
+3. Compute the target name via `importer.StandardFilename(lesson.LessonDate, lesson.Tutor,
    filepath.Ext(lesson.VideoPath))`.
-4. Resolve o diretório atual do vídeo (`filepath.Dir` do path relativo) — o rename é sempre
-   dentro dessa mesma pasta, nunca move de diretório.
-5. Resolve colisão: se um arquivo já existe no path-alvo e não é o arquivo atual, tenta sufixos
-   até achar um nome livre.
-6. Se o nome-alvo (após resolver colisão) já é igual ao nome atual, não faz nada (idempotente —
-   evita rename desnecessário se a função rodar de novo sobre uma lesson já padronizada).
-7. `os.Rename(caminhoAbsolutoAtual, caminhoAbsolutoAlvo)`.
-8. Re-`os.Stat` no novo path pra pegar tamanho/mtime atuais (não assume que rename preserva
-   mtime em todo SO/filesystem).
-9. `db.UpdateLessonPath(conn, lessonID, novoPathRelativo, size, mtime)` — função já existente
-   (criada na História 3 original para o caso "arquivo só mudou de lugar"), reaproveitada sem
-   mudança de assinatura.
+4. Resolve the video's current directory (`filepath.Dir` of the relative path) — the rename is
+   always within that same folder, never moves across directories.
+5. Resolve collision: if a file already exists at the target path and it isn't the current file,
+   try suffixes until a free name is found.
+6. If the target name (after resolving collision) already equals the current name, do nothing
+   (idempotent — avoids an unnecessary rename if the function runs again over an already
+   standardized lesson).
+7. `os.Rename(currentAbsolutePath, targetAbsolutePath)`.
+8. Re-`os.Stat` on the new path to get the current size/mtime (doesn't assume rename preserves
+   mtime on every OS/filesystem).
+9. `db.UpdateLessonPath(conn, lessonID, newRelativePath, size, mtime)` — an already-existing
+   function (created in the original Story 3 for the "file just moved" case), reused without a
+   signature change.
 
-Qualquer erro em qualquer um desses passos (permissão negada, I/O, colisão irresolúvel após N
-tentativas) é só logado (`slog.Warn`, com `lesson_id` e o erro) — **nunca** propagado como erro
-de `ConfirmImport`. A lesson já foi confirmada com sucesso na transação; o nome do arquivo é
-cosmético, não crítico para o funcionamento do app (princípio de resiliência do `CLAUDE.md`).
-Se o rename falhar, o vídeo continua com o nome original, plenamente funcional.
+Any error in any of these steps (permission denied, I/O, unresolvable collision after N attempts)
+is only logged (`slog.Warn`, with `lesson_id` and the error) — **never** propagated as a
+`ConfirmImport` error. The lesson has already been successfully confirmed in the transaction; the
+filename is cosmetic, not critical to the app's operation (resilience principle from
+`CLAUDE.md`). If the rename fails, the video keeps its original name, fully functional.
 
-### Jobs downstream (`internal/jobs/worker.go`)
+### Downstream jobs (`internal/jobs/worker.go`)
 
-Nenhuma mudança necessária. `runExtractAudio`/`runTranscribe` resolvem `lesson.VideoPath` do
-banco em tempo de execução (releem a lesson a cada job, não guardam path em cache) — se o rename
-já rodou antes do worker pegar os jobs (caso comum, jobs `pending` recém-criados), eles já usam
-o nome novo automaticamente. Mesmo se o worker de alguma forma rodar antes do rename best-effort
-terminar (não deveria, é síncrono dentro de `ConfirmImport`, mas hipoteticamente), o pior caso é
-o worker ler o path antigo numa corrida — inofensivo, porque o path é lido fresco a cada
-transição de job, não uma vez só.
+No change needed. `runExtractAudio`/`runTranscribe` resolve `lesson.VideoPath` from the database
+at run time (they reread the lesson on every job, they don't cache the path) — if the rename has
+already run before the worker picks up the jobs (the common case, freshly-created `pending`
+jobs), they already use the new name automatically. Even if the worker somehow ran before the
+best-effort rename finished (it shouldn't, it's synchronous inside `ConfirmImport`, but
+hypothetically), the worst case is the worker reading the old path in a race — harmless, because
+the path is read fresh on every job transition, not just once.
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-- Mover o arquivo pra estrutura de subpastas (`aulas/AAAA/AAAA-MM-DD/`) — decisão de estrutura de
-  diretórios que só se aplica quando a História 3b (drag-and-drop) for desenhada; renomeação
-  aqui é sempre *in place*, mesma pasta.
-- Renomear retroativamente aulas já confirmadas antes desta mudança — nenhuma aula real foi
-  confirmada em uso real ainda.
-- Mudanças na História 3b em si — quando ela for desenhada, reaproveita
-  `internal/importer.StandardFilename` sem alteração.
+- Moving the file into a subfolder structure (`aulas/YYYY/YYYY-MM-DD/`) — a directory-structure
+  decision that only applies once Story 3b (drag-and-drop) is designed; renaming here is always
+  *in place*, same folder.
+- Retroactively renaming lessons already confirmed before this change — no real lesson has been
+  confirmed in real use yet.
+- Changes to Story 3b itself — once it's designed, it reuses
+  `internal/importer.StandardFilename` unchanged.
 
-## Testes
+## Tests
 
-- `internal/importer/naming_test.go` (tabela): tutor com acentos (PT/ES), tutor com espaços
-  múltiplos/pontuação, extensão em maiúsculas normalizada, exemplo do formato completo
+- `internal/importer/naming_test.go` (table-driven): tutor with accents (PT/ES), tutor with
+  multiple spaces/punctuation, uppercase extension normalized, full-format example
   (`2026-07-23T14:30` + `"Maria José"` + `.mp4` → `2026-07-23_14H30_maria-jose.mp4`).
 - `services/import_test.go`:
-  - `ConfirmImport` com `lessonDate` só-data (sem horário) retorna erro; candidato permanece em
-    `pending_imports` (não vira lesson, nenhum job criado).
-  - Rename bem-sucedido: arquivo no disco (`t.TempDir()`) renomeado, `lessons.video_path`
-    atualizado, `file_size`/`file_mtime` consistentes com o arquivo no novo path.
-  - Colisão: cria um arquivo pré-existente com o nome-alvo antes de confirmar; assert que o
-    resultado usa o sufixo `-2`.
-  - Falha simulada no rename (ex.: path-alvo é um diretório existente, causando erro de
-    `os.Rename`) não quebra `ConfirmImport` — lesson continua confirmada, com o `video_path`
-    original intacto.
+  - `ConfirmImport` with a date-only `lessonDate` (no time) returns an error; the candidate stays
+    in `pending_imports` (doesn't become a lesson, no job created).
+  - Successful rename: file on disk (`t.TempDir()`) renamed, `lessons.video_path` updated,
+    `file_size`/`file_mtime` consistent with the file at the new path.
+  - Collision: create a pre-existing file with the target name before confirming; assert that the
+    result uses the `-2` suffix.
+  - Simulated rename failure (e.g. the target path is an existing directory, causing an
+    `os.Rename` error) doesn't break `ConfirmImport` — the lesson stays confirmed, with the
+    original `video_path` intact.
 
-## Critério de aceite (novo, adicionado à História 3 em `docs/fase-1-mvp.md`)
+## Acceptance criterion (new, added to Story 3 in `docs/fase-1-mvp.md`)
 
-- [ ] Depois de confirmado (data/horário/tutor no modal), o arquivo de vídeo é renomeado *in
-      place* para `AAAA-MM-DD_HHHMM_tutor-slug.ext`; falha no rename não impede a confirmação
-      (best-effort, logada). Horário passa a ser obrigatório na confirmação — candidato sem
-      data, horário ou tutor continua pendente.
+- [ ] After confirmation (date/time/tutor in the modal), the video file is renamed *in
+      place* to `YYYY-MM-DD_HHHMM_tutor-slug.ext`; a rename failure doesn't prevent confirmation
+      (best-effort, logged). Time becomes mandatory at confirmation — a candidate missing
+      date, time, or tutor stays pending.

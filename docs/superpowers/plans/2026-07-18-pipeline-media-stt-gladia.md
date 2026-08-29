@@ -17,7 +17,7 @@
 - Every external service call uses diarization + word-level timestamps + the provider's multilingual/code-switching configuration, documented in code with the reason.
 - Real recordings, real transcripts, and real provider JSON never enter the repo — only `local/` (gitignored). `testdata/` fixtures are synthetic/anonymized only.
 - `go vet ./...` must pass before considering any task done.
-- Commit messages: one line, semantic format (`tipo: descrição`) — but **do not run `git commit`** during this implementation; the user commits manually. Each task ends with `git add` (staging only).
+- Commit messages: one line, semantic format (`type: description`) — but **do not run `git commit`** during this implementation; the user commits manually. Each task ends with `git add` (staging only).
 
 ---
 
@@ -62,7 +62,7 @@ func TestExtractAudio_FfmpegNotInPath(t *testing.T) {
 
 	err := ExtractAudio(context.Background(), "input.mp4", "output.wav")
 	if err == nil {
-		t.Fatal("esperava erro quando ffmpeg não está no PATH, obteve nil")
+		t.Fatal("expected error when ffmpeg is not in PATH, got nil")
 	}
 }
 ```
@@ -84,9 +84,9 @@ import (
 	"os/exec"
 )
 
-// ExtractAudio extrai a trilha de áudio de videoPath via ffmpeg, gravando
-// um WAV mono 16kHz em outputPath — formato universalmente aceito pelas
-// APIs de STT candidatas, evitando ambiguidade de codec.
+// ExtractAudio extracts the audio track from videoPath via ffmpeg, writing
+// a mono 16kHz WAV to outputPath — a format universally accepted by the
+// candidate STT APIs, avoiding codec ambiguity.
 func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return fmt.Errorf("media: ffmpeg não encontrado no PATH: %w", err)
@@ -216,62 +216,62 @@ import (
 func TestMapGladiaResponse(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "gladia_response.json"))
 	if err != nil {
-		t.Fatalf("erro lendo fixture: %v", err)
+		t.Fatalf("error reading fixture: %v", err)
 	}
 
 	result, err := mapGladiaResponse(raw)
 	if err != nil {
-		t.Fatalf("mapGladiaResponse retornou erro: %v", err)
+		t.Fatalf("mapGladiaResponse returned error: %v", err)
 	}
 
 	if len(result.Utterances) != 2 {
-		t.Fatalf("esperava 2 utterances, obteve %d", len(result.Utterances))
+		t.Fatalf("expected 2 utterances, got %d", len(result.Utterances))
 	}
 
 	first := result.Utterances[0]
 	if first.Speaker != "speaker_0" {
-		t.Errorf("Speaker = %q, esperava %q", first.Speaker, "speaker_0")
+		t.Errorf("Speaker = %q, expected %q", first.Speaker, "speaker_0")
 	}
 	if first.Text != "Hi, how was your week?" {
-		t.Errorf("Text = %q, inesperado", first.Text)
+		t.Errorf("Text = %q, unexpected", first.Text)
 	}
 	if first.Start != 420*time.Millisecond {
-		t.Errorf("Start = %v, esperava %v", first.Start, 420*time.Millisecond)
+		t.Errorf("Start = %v, expected %v", first.Start, 420*time.Millisecond)
 	}
 	if len(first.Words) != 5 {
-		t.Fatalf("esperava 5 words, obteve %d", len(first.Words))
+		t.Fatalf("expected 5 words, got %d", len(first.Words))
 	}
 	if first.Words[0].Text != "Hi," {
-		t.Errorf("Words[0].Text = %q, inesperado", first.Words[0].Text)
+		t.Errorf("Words[0].Text = %q, unexpected", first.Words[0].Text)
 	}
 
 	second := result.Utterances[1]
 	if second.Speaker != "speaker_1" {
-		t.Errorf("Speaker = %q, esperava %q", second.Speaker, "speaker_1")
+		t.Errorf("Speaker = %q, expected %q", second.Speaker, "speaker_1")
 	}
 	if len(second.Words) != 13 {
-		t.Fatalf("esperava 13 words, obteve %d", len(second.Words))
+		t.Fatalf("expected 13 words, got %d", len(second.Words))
 	}
 	if second.Words[8].Text != "saudade" {
-		t.Errorf("Words[8].Text = %q, esperava %q", second.Words[8].Text, "saudade")
+		t.Errorf("Words[8].Text = %q, expected %q", second.Words[8].Text, "saudade")
 	}
 
 	if string(result.RawResponse) != string(raw) {
-		t.Error("RawResponse deveria preservar o JSON bruto exatamente como recebido")
+		t.Error("RawResponse should preserve the raw JSON exactly as received")
 	}
 }
 
 func TestMapGladiaResponse_InvalidJSON(t *testing.T) {
 	_, err := mapGladiaResponse([]byte("not json"))
 	if err == nil {
-		t.Fatal("esperava erro para JSON inválido, obteve nil")
+		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
 
 func TestMapGladiaResponse_UnexpectedStatus(t *testing.T) {
 	_, err := mapGladiaResponse([]byte(`{"status":"processing","result":{}}`))
 	if err == nil {
-		t.Fatal("esperava erro para status diferente de done, obteve nil")
+		t.Fatal("expected error for status other than done, got nil")
 	}
 }
 ```
@@ -292,23 +292,23 @@ import (
 	"time"
 )
 
-// Provider é a interface única implementada por cada serviço de STT
-// candidato (Gladia, AssemblyAI, Deepgram, ElevenLabs Scribe).
+// Provider is the single interface implemented by each candidate STT
+// service (Gladia, AssemblyAI, Deepgram, ElevenLabs Scribe).
 type Provider interface {
 	Name() string
 	Transcribe(ctx context.Context, audioPath string) (*Result, error)
 }
 
-// Result carrega tanto o JSON bruto do provedor (para salvar em disco sem
-// perda) quanto a transcrição já mapeada para o domínio comum.
+// Result carries both the provider's raw JSON (to save to disk without
+// loss) and the transcription already mapped to the common domain.
 type Result struct {
 	RawResponse []byte
 	Utterances  []Utterance
 }
 
-// Utterance é um trecho de fala atribuído a um locutor. Speaker é o
-// rótulo bruto do provedor (ex.: "speaker_0") — o mapeamento para
-// aluno/tutor é um passo manual da História 2, fora desta fatia.
+// Utterance is a speech segment attributed to a speaker. Speaker is the
+// provider's raw label (e.g. "speaker_0") — mapping it to
+// student/tutor is a manual step in Story 2, outside this slice.
 type Utterance struct {
 	Speaker    string
 	Text       string
@@ -358,10 +358,10 @@ type gladiaWord struct {
 	End   float64 `json:"end"`
 }
 
-// mapGladiaResponse converte o JSON bruto do endpoint
-// GET /v2/pre-recorded/{id} da Gladia para o domínio comum stt.Result.
-// Mantida separada das chamadas HTTP (gladia.go) para ser testável com
-// fixture, sem precisar de rede.
+// mapGladiaResponse converts the raw JSON from Gladia's
+// GET /v2/pre-recorded/{id} endpoint to the common stt.Result domain.
+// Kept separate from the HTTP calls (gladia.go) so it is testable with a
+// fixture, without needing the network.
 func mapGladiaResponse(raw []byte) (*Result, error) {
 	var parsed gladiaResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -396,10 +396,10 @@ func mapGladiaResponse(raw []byte) (*Result, error) {
 	}, nil
 }
 
-// secondsToDuration arredonda para o milissegundo mais próximo, evitando
-// artefatos de ponto flutuante do float64 vindo do JSON (precisão de
-// milissegundo é mais que suficiente frente à tolerância de ~1s exigida
-// pela História 2).
+// secondsToDuration rounds to the nearest millisecond, avoiding
+// floating-point artifacts from the float64 coming from the JSON
+// (millisecond precision is more than enough given the ~1s tolerance
+// required by Story 2).
 func secondsToDuration(s float64) time.Duration {
 	return time.Duration(math.Round(s*1000)) * time.Millisecond
 }
@@ -456,12 +456,12 @@ import (
 
 const gladiaBaseURL = "https://api.gladia.io"
 
-// GladiaProvider implementa stt.Provider usando a API da Gladia.
+// GladiaProvider implements stt.Provider using the Gladia API.
 //
-// Modelo usado: "solaria-1" — é o único modelo Gladia com suporte
-// documentado a code-switching/configuração multilíngue (100+ idiomas);
-// "solaria-3" exige um único idioma em language_config.languages, o que
-// é incompatível com o requisito de PT/ES no meio do inglês do aluno.
+// Model used: "solaria-1" — it is the only Gladia model with documented
+// support for code-switching/multilingual configuration (100+ languages);
+// "solaria-3" requires a single language in language_config.languages, which
+// is incompatible with the requirement for PT/ES mixed into the student's English.
 type GladiaProvider struct {
 	apiKey string
 	client *http.Client
@@ -616,8 +616,8 @@ func (p *GladiaProvider) poll(ctx context.Context, jobID string) ([]byte, error)
 	}
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if the
+// status is not 2xx (message includes status and body, for debugging).
 func (p *GladiaProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -686,46 +686,46 @@ func main() {
 	)
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		logger.Error("criar diretório de saída", "erro", err)
+		logger.Error("create output directory", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("extraindo áudio", "video", videoPath)
+	logger.Info("extracting audio", "video", videoPath)
 	start := time.Now()
 	if err := media.ExtractAudio(ctx, videoPath, audioPath); err != nil {
-		logger.Error("extração de áudio falhou", "erro", err)
+		logger.Error("audio extraction failed", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("áudio extraído", "duração", time.Since(start))
+	logger.Info("audio extracted", "duration", time.Since(start))
 
 	provider, err := stt.NewGladiaProvider(os.Getenv("GLADIA_API_KEY"))
 	if err != nil {
-		logger.Error("criar provider gladia", "erro", err)
+		logger.Error("create gladia provider", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("transcrevendo via gladia", "audio", audioPath)
+	logger.Info("transcribing via gladia", "audio", audioPath)
 	start = time.Now()
 	result, err := provider.Transcribe(ctx, audioPath)
 	if err != nil {
-		logger.Error("transcrição gladia falhou", "erro", err)
+		logger.Error("gladia transcription failed", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("transcrição concluída", "duração", time.Since(start), "utterances", len(result.Utterances))
+	logger.Info("transcription completed", "duration", time.Since(start), "utterances", len(result.Utterances))
 
 	rawPath := filepath.Join(outDir, "gladia.json")
 	if err := os.WriteFile(rawPath, result.RawResponse, 0o644); err != nil {
-		logger.Error("salvar JSON bruto", "erro", err)
+		logger.Error("save raw JSON", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("JSON bruto salvo", "path", rawPath)
+	logger.Info("raw JSON saved", "path", rawPath)
 
 	txtPath := filepath.Join(outDir, "gladia.txt")
 	if err := writeReadableTranscript(txtPath, result); err != nil {
-		logger.Error("salvar transcrição legível", "erro", err)
+		logger.Error("save readable transcript", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("transcrição legível salva", "path", txtPath)
+	logger.Info("readable transcript saved", "path", txtPath)
 }
 
 func writeReadableTranscript(path string, result *stt.Result) error {
@@ -764,14 +764,14 @@ Create `local/input/` and place a real sample `.mp4` lesson there as `local/inpu
 
 Run (adjust for your shell):
 ```bash
-export GLADIA_API_KEY="<sua key>"
+export GLADIA_API_KEY="<your key>"
 go.exe run ./cmd/spike
 ```
-Expected: log lines for each stage (`extraindo áudio`, `áudio extraído`, `transcrevendo via gladia`, `transcrição concluída`, `JSON bruto salvo`, `transcrição legível salva`), exit code 0, and two new files: `local/output/aula-01/gladia.json` (raw) and `local/output/aula-01/gladia.txt` (readable, one line per utterance with speaker + timestamps).
+Expected: log lines for each stage (`extracting audio`, `audio extracted`, `transcribing via gladia`, `transcription completed`, `raw JSON saved`, `readable transcript saved`), exit code 0, and two new files: `local/output/aula-01/gladia.json` (raw) and `local/output/aula-01/gladia.txt` (readable, one line per utterance with speaker + timestamps).
 
 - [ ] **Step 5: Manually inspect the output**
 
-Open `local/output/aula-01/gladia.txt` and confirm: speaker turns look plausible, timestamps are monotonic, and any PT/ES code-switching in the lesson shows up as text rather than being dropped or garbled. Note anything odd — feeds directly into História 2's comparison criteria.
+Open `local/output/aula-01/gladia.txt` and confirm: speaker turns look plausible, timestamps are monotonic, and any PT/ES code-switching in the lesson shows up as text rather than being dropped or garbled. Note anything odd — feeds directly into Story 2's comparison criteria.
 
 - [ ] **Step 6: Stage changes (do not commit)**
 
@@ -781,8 +781,8 @@ git add cmd/spike/main.go
 
 ---
 
-## Após este plano
+## After this plan
 
-- Fatias seguintes: repetir Tasks 2–3 (mapping + client) para AssemblyAI, Deepgram e ElevenLabs Scribe atrás da mesma `stt.Provider`.
-- Rodar as 3–5 aulas da amostra (resto da História 1).
-- Comparação lado a lado e decisão de STT (História 2), incluindo transformar a fixture da Gladia validada aqui em `testdata/` definitivo do vencedor.
+- Next slices: repeat Tasks 2–3 (mapping + client) for AssemblyAI, Deepgram, and ElevenLabs Scribe behind the same `stt.Provider`.
+- Run the 3–5 sample lessons (the rest of Story 1).
+- Side-by-side comparison and STT decision (Story 2), including turning the Gladia fixture validated here into the winner's definitive `testdata/`.

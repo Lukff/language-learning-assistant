@@ -1,88 +1,91 @@
-# Fase 2, História 1 — Prompts por tarefa e persistência da análise: design
+# Phase 2, Story 1 — Per-task prompts and analysis persistence: design
 
-> Cobre a História 1 completa (`docs/fase-2-analise-llm.md`). Escopo: prompts + `Provider`
-> agnóstico + persistência (`analysis_results`/`lesson_topics`) + validação manual numa aula real.
-> **Não** inclui ligar as tarefas ao `Worker`/fila (História 2) nem qualquer UI de consumo
-> (Histórias 3-5) — isso é responsabilidade explícita das histórias seguintes.
+> Covers all of Story 1 (`docs/fase-2-analise-llm.md`). Scope: prompts + task-agnostic `Provider`
+> + persistence (`analysis_results`/`lesson_topics`) + manual validation on a real lesson.
+> **Does not** include wiring the tasks to the `Worker`/queue (Story 2) or any consuming UI
+> (Stories 3-5) — that's the explicit responsibility of the following stories.
 
-## Contexto e motivação
+## Context and motivation
 
-`internal/analysis` existe desde a Fase 0, mas com um desenho de "uma chamada, três categorias"
-(`Provider.Analyze` devolvendo `Result{Corrections, Vocabulary, TutorExpressions}`) validado uma
-única vez contra uma aula real (ver `docs/notas-analise-llm.md`). Nenhum código fora do próprio
-pacote chama isso hoje — o único chamador histórico (`cmd/spike`) foi removido ao fechar a Fase 0,
-e o `Worker` (`internal/jobs`) só conhece `extract_audio`/`transcribe`.
+`internal/analysis` has existed since Phase 0, but with a "one call, three categories" design
+(`Provider.Analyze` returning `Result{Corrections, Vocabulary, TutorExpressions}`) validated once
+against a real lesson (see `docs/notas-analise-llm.md`). No code outside the package itself calls
+this today — the one historical caller (`cmd/spike`) was removed when Phase 0 closed, and the
+`Worker` (`internal/jobs`) only knows `extract_audio`/`transcribe`.
 
-A Fase 2 quebra a análise em 7 tarefas independentes (uma por prompt, um job por tarefa na
-História 2), decisão já registrada em `docs/fase-2-analise-llm.md`: mais fácil de refinar prompt a
-prompt, e falha numa tarefa não derruba as outras. Esta história prepara prompts e armazenamento;
-não há worker nem UI ainda consumindo o resultado — o critério de "pronto" é validar as 7 tarefas
-manualmente contra uma aula real e persistir o resultado num teste isolado, não em uso de verdade.
+Phase 2 breaks the analysis into 7 independent tasks (one per prompt, one job per task in Story
+2), a decision already recorded in `docs/fase-2-analise-llm.md`: easier to refine prompt by
+prompt, and a failure in one task doesn't bring down the others. This story prepares prompts and
+storage; there's no worker or UI consuming the result yet — the "done" criterion is validating the
+7 tasks manually against a real lesson and persisting the result in an isolated test, not in real
+use.
 
-## Decisões de escopo
+## Scope decisions
 
-- **`Provider` vira agnóstico de tarefa.** Deixa de conhecer `Correction`/`VocabularyItem`/etc.;
-  cada tarefa define seu próprio tipo de saída e faz seu próprio parse a partir do JSON bruto.
-- **Índice de fala inválido é descartado silenciosamente** (com log): um item de tarefa ancorada
-  (`corrections`, `tutor_corrections`, `tutor_feedback`) cujo `utterance_index` esteja fora do
-  range, ou ausente, é removido do resultado antes de persistir — nunca chega ao `result_json`.
-  Garante que tudo que uma UI futura (Histórias 3/4) for ler já tem âncora válida, sem exceção a
-  tratar lá.
-- **Harness de validação manual é um CLI temporário** (`cmd/validate-analysis`), mesmo padrão do
-  `cmd/spike` da Fase 0: cumpre o papel de validar as 7 tarefas contra uma aula real, os achados
-  vão para `docs/notas-analise-llm.md`, e o CLI é removido — não fica como ferramenta permanente
-  no repositório (a suíte automatizada em `internal/analysis`/`internal/db` é o que permanece).
-- **`analyze-v1.md` é removido.** Prompt único da Fase 0, sem chamador desde a remoção do
-  `cmd/spike`; substituído pelos 7 prompts novos.
-- **Prompts são registrados na inicialização do app** (`main.go`, logo após `db.Open`), não sob
-  demanda — mesmo espírito das migrations, que já rodam nesse mesmo ponto.
-- **Reprocessar (História 2, fora desta fatia) sobrescreve a linha existente** — por isso
-  `analysis_results` já nasce com `UNIQUE(lesson_id, task)` e a inserção já é upsert.
+- **`Provider` becomes task-agnostic.** It no longer knows about `Correction`/`VocabularyItem`/
+  etc.; each task defines its own output type and does its own parsing from the raw JSON.
+- **An invalid utterance index is silently discarded** (with a log): an item from an anchored
+  task (`corrections`, `tutor_corrections`, `tutor_feedback`) whose `utterance_index` is out of
+  range, or missing, is removed from the result before persisting — it never reaches
+  `result_json`. This guarantees that anything a future UI (Stories 3/4) reads already has a valid
+  anchor, with no exception to handle there.
+- **The manual-validation harness is a temporary CLI** (`cmd/validate-analysis`), the same
+  pattern as Phase 0's `cmd/spike`: it fulfills the role of validating the 7 tasks against a real
+  lesson, the findings go into `docs/notas-analise-llm.md`, and the CLI is removed — it doesn't
+  stay as a permanent tool in the repository (the automated suite in
+  `internal/analysis`/`internal/db` is what remains).
+- **`analyze-v1.md` is removed.** Phase 0's single prompt, with no caller since `cmd/spike` was
+  removed; replaced by the 7 new prompts.
+- **Prompts are registered at app startup** (`main.go`, right after `db.Open`), not on demand —
+  the same spirit as the migrations, which already run at that same point.
+- **Reprocessing (Story 2, outside this slice) overwrites the existing row** — that's why
+  `analysis_results` is born with `UNIQUE(lesson_id, task)` and the insert is already an upsert.
 
-## Arquitetura
+## Architecture
 
 ```
 prompts/
-  embed.go                          # NOVO: package prompts; //go:embed *.md; var FS embed.FS
-  analyze-v1.md                     # REMOVIDO
-  analyze-corrections-v1.md         # NOVO
-  analyze-vocabulary-v1.md          # NOVO
-  analyze-tutor-expressions-v1.md   # NOVO
-  analyze-tutor-taught-terms-v1.md  # NOVO
-  analyze-tutor-feedback-v1.md      # NOVO
-  analyze-tutor-corrections-v1.md   # NOVO
-  analyze-topics-v1.md              # NOVO
+  embed.go                          # NEW: package prompts; //go:embed *.md; var FS embed.FS
+  analyze-v1.md                     # REMOVED
+  analyze-corrections-v1.md         # NEW
+  analyze-vocabulary-v1.md          # NEW
+  analyze-tutor-expressions-v1.md   # NEW
+  analyze-tutor-taught-terms-v1.md  # NEW
+  analyze-tutor-feedback-v1.md      # NEW
+  analyze-tutor-corrections-v1.md   # NEW
+  analyze-topics-v1.md              # NEW
 
 internal/analysis/
-  analysis.go            # Provider agnóstico; Result/analysisJSON antigos removidos
-  openai_compatible.go    # Complete(ctx, systemPrompt, transcript) — perde o campo systemPrompt fixo
-  parsing.go              # só o helper comum de strip de code fence + json.Unmarshal genérico
-  task.go                 # NOVO: TaskDef, task[T], filterAnchored[T anchored], mustLoadPrompt, var Tasks
-  tasks_corrections.go    # NOVO: Correction, parseCorrections (ancorada)
-  tasks_vocabulary.go     # NOVO: VocabularyItem, parseVocabulary (não ancorada)
-  tasks_tutor_expressions.go     # NOVO
-  tasks_tutor_taught_terms.go    # NOVO
-  tasks_tutor_feedback.go        # NOVO (ancorada)
-  tasks_tutor_corrections.go     # NOVO (ancorada)
-  tasks_topics.go                # NOVO
-  prompts.go              # NOVO: RegisterPrompts(conn *sql.DB) error
-  transcript.go            # FormatTranscript passa a numerar cada fala; SpeakerExamples inalterado
+  analysis.go            # task-agnostic Provider; old Result/analysisJSON removed
+  openai_compatible.go    # Complete(ctx, systemPrompt, transcript) — drops the fixed systemPrompt field
+  parsing.go              # just the shared code-fence-strip helper + generic json.Unmarshal
+  task.go                 # NEW: TaskDef, task[T], filterAnchored[T anchored], mustLoadPrompt, var Tasks
+  tasks_corrections.go    # NEW: Correction, parseCorrections (anchored)
+  tasks_vocabulary.go     # NEW: VocabularyItem, parseVocabulary (not anchored)
+  tasks_tutor_expressions.go     # NEW
+  tasks_tutor_taught_terms.go    # NEW
+  tasks_tutor_feedback.go        # NEW (anchored)
+  tasks_tutor_corrections.go     # NEW (anchored)
+  tasks_topics.go                # NEW
+  prompts.go              # NEW: RegisterPrompts(conn *sql.DB) error
+  transcript.go            # FormatTranscript now numbers each utterance; SpeakerExamples unchanged
 
 internal/db/
-  migrations/00004_analysis_results.sql   # NOVO
-  analysis_results.go                     # NOVO: UpsertPrompt, UpsertAnalysisResult, FindAnalysisResult, ReplaceLessonTopics
+  migrations/00004_analysis_results.sql   # NEW
+  analysis_results.go                     # NEW: UpsertPrompt, UpsertAnalysisResult, FindAnalysisResult, ReplaceLessonTopics
 
-cmd/validate-analysis/main.go   # NOVO, temporário (removido ao fechar a história)
+cmd/validate-analysis/main.go   # NEW, temporary (removed when the story closes)
 
-main.go   # + analysis.RegisterPrompts(conn) logo após db.Open
+main.go   # + analysis.RegisterPrompts(conn) right after db.Open
 ```
 
-### `prompts/embed.go` (novo)
+### `prompts/embed.go` (new)
 
-`prompts/` continua sendo o diretório de topo documentado no `CLAUDE.md` (onde os `.md` são lidos
-e revisados por humanos) — mas `//go:embed` não aceita `..` no padrão, então um pacote em
-`internal/analysis` não consegue embutir arquivos de fora da própria árvore. Solução: `prompts/`
-vira também um pacote Go mínimo, cujo único papel é embutir os próprios `.md` que já moram ali:
+`prompts/` remains the top-level directory documented in `CLAUDE.md` (where the `.md` files are
+read and reviewed by humans) — but `//go:embed` doesn't accept `..` in its pattern, so a package
+under `internal/analysis` can't embed files from outside its own tree. Solution: `prompts/` also
+becomes a minimal Go package, whose only role is to embed the very `.md` files that already live
+there:
 
 ```go
 // prompts/embed.go
@@ -94,10 +97,10 @@ import "embed"
 var FS embed.FS
 ```
 
-`internal/analysis` importa `assistente-idiomas/prompts` e lê cada arquivo via `prompts.FS`
-(helper `mustLoadPrompt`, ver `task.go` abaixo) — nenhum outro pacote precisa saber que `prompts/`
-agora também é código Go, e o conteúdo dos `.md` continua idêntico ao formato já usado por
-`analyze-v1.md`.
+`internal/analysis` imports `assistente-idiomas/prompts` and reads each file via `prompts.FS`
+(the `mustLoadPrompt` helper, see `task.go` below) — no other package needs to know that
+`prompts/` is now also Go code, and the `.md` content stays identical to the format already used
+by `analyze-v1.md`.
 
 ### `internal/analysis/analysis.go`
 
@@ -108,54 +111,55 @@ type Provider interface {
 }
 ```
 
-`Result`, `Correction`/`VocabularyItem`/`Expression` (as versões antigas, não ancoradas) e
-`analysisJSON` saem daqui — cada tipo de saída passa a viver no arquivo da sua própria tarefa.
+`Result`, `Correction`/`VocabularyItem`/`Expression` (the old, non-anchored versions), and
+`analysisJSON` are removed from here — each output type now lives in its own task's file.
 
 ### `internal/analysis/openai_compatible.go`
 
-- `newOpenAICompatibleProvider` perde o parâmetro/campo `systemPrompt` (não é mais fixado na
-  construção).
-- `NewDeepSeekProvider(apiKey string) (Provider, error)` — assinatura perde `systemPrompt`.
-- `Complete(ctx, systemPrompt, transcript)` monta a mensagem `system` com o `systemPrompt` recebido
-  por chamada; toda a lógica de prefill (```` ```json ```` + `stop`) continua igual — independe do
-  schema, só força o conteúdo a começar como JSON.
-- `do`/envelope/parse do choice continuam iguais; a única mudança é que o conteúdo do choice agora
-  é devolvido como `json.RawMessage` cru (depois do strip de code fence), sem tentar mapear pra um
-  domínio comum.
+- `newOpenAICompatibleProvider` drops the `systemPrompt` parameter/field (no longer fixed at
+  construction time).
+- `NewDeepSeekProvider(apiKey string) (Provider, error)` — signature drops `systemPrompt`.
+- `Complete(ctx, systemPrompt, transcript)` builds the `system` message with the `systemPrompt`
+  received per call; all the prefill logic (```` ```json ```` + `stop`) stays the same — it's
+  schema-independent, it just forces the content to start as JSON.
+- `do`/envelope/choice-parsing stay the same; the only change is that the choice's content is now
+  returned as raw `json.RawMessage` (after the code-fence strip), without trying to map it to a
+  common domain.
 
-### `internal/analysis/transcript.go` (`FormatTranscript` numera as falas)
+### `internal/analysis/transcript.go` (`FormatTranscript` numbers the utterances)
 
-Hoje `FormatTranscript` gera `"Aluno: ...\n"`/`"Tutor: ...\n"` sem numeração — nada ancora uma
-correção a uma fala específica. Passa a prefixar cada linha com o índice (0-based, mesma ordem de
-`utterances`, a mesma que `utteranceCount` usa em `filterAnchored`):
+Today `FormatTranscript` generates `"Aluno: ...\n"`/`"Tutor: ...\n"` with no numbering — nothing
+anchors a correction to a specific utterance. It now prefixes each line with the index (0-based,
+same order as `utterances`, the same one `utteranceCount` uses in `filterAnchored`):
 
 ```go
 fmt.Fprintf(&b, "[%d] %s: %s\n", i, label, u.Text)
 ```
 
-Os 7 prompts (seção seguinte) instruem o modelo a citar esse mesmo número em `utterance_index` nas
-tarefas ancoradas — ex.: "cada fala da transcrição vem numerada como `[N] Aluno:`/`[N] Tutor:`; ao
-referenciar uma fala específica, use esse N em `utterance_index`". `SpeakerExamples` não muda (não
-lida com o texto formatado, só com `utterances` cru).
+The 7 prompts (next section) instruct the model to cite that same number in `utterance_index` on
+the anchored tasks — e.g.: "each utterance in the transcript is numbered as `[N] Aluno:`/`[N]
+Tutor:`; when referencing a specific utterance, use that N in `utterance_index`". `SpeakerExamples`
+doesn't change (it doesn't deal with the formatted text, only with the raw `utterances`).
 
-### `internal/analysis/task.go` (novo)
+### `internal/analysis/task.go` (new)
 
 ```go
-// TaskDef é a interface comum das 7 tarefas de análise — permite iterar
-// todas numa lista única (var Tasks) apesar de cada uma ter um tipo de
-// resultado diferente (generics não permitem slice de task[T] com T
-// variável, daí essa interface não-genérica por cima).
+// TaskDef is the common interface for the 7 analysis tasks — it lets them
+// all be iterated over a single list (var Tasks) even though each one has
+// a different result type (generics don't allow a slice of task[T] with a
+// variable T, hence this non-generic interface on top).
 type TaskDef interface {
-    Name() string    // ex.: "analyze_corrections" — mesmo valor gravado em prompts.name e analysis_results.task
-    Version() int    // versão do prompt (bump manual no código quando o .md mudar de conteúdo)
-    Prompt() string  // conteúdo do prompt (embed.FS)
+    Name() string    // e.g.: "analyze_corrections" — same value stored in prompts.name and analysis_results.task
+    Version() int    // prompt version (manual bump in code when the .md content changes)
+    Prompt() string  // prompt content (embed.FS)
 
-    // Execute chama provider.Complete, faz o parse e (quando a tarefa for
-    // ancorada) descarta itens com utterance_index inválido. Devolve o JSON
-    // já validado (pronto pra gravar em analysis_results.result_json) e o
-    // envelope bruto do provedor (pronto pra gravar em disco/raw_response_path).
-    // err != nil não impede o chamador de gravar raw em disco (mesmo
-    // princípio de runTranscribe: a chamada já custou dinheiro).
+    // Execute calls provider.Complete, parses it, and (when the task is
+    // anchored) discards items with an invalid utterance_index. Returns the
+    // already-validated JSON (ready to store in
+    // analysis_results.result_json) and the provider's raw envelope (ready
+    // to write to disk/raw_response_path). err != nil doesn't stop the
+    // caller from writing raw to disk (same principle as runTranscribe:
+    // the call already cost money).
     Execute(ctx context.Context, provider Provider, transcript string, utteranceCount int) (resultJSON json.RawMessage, raw json.RawMessage, err error)
 }
 
@@ -186,16 +190,17 @@ func (t task[T]) Execute(ctx context.Context, provider Provider, transcript stri
     return resultJSON, raw, nil
 }
 
-// anchored é implementada pelos tipos de item cujo parse referencia uma
-// fala específica da transcrição (Correction, TutorCorrection,
-// TutorFeedbackItem) — o "-1" convencional de UtteranceIndex representa
-// "ausente no JSON do modelo", tratado igual a um índice fora do range.
+// anchored is implemented by item types whose parsing references a
+// specific utterance in the transcript (Correction, TutorCorrection,
+// TutorFeedbackItem) — the conventional "-1" for UtteranceIndex represents
+// "absent from the model's JSON", treated the same as an out-of-range
+// index.
 type anchored interface {
     UtteranceIndex() int
 }
 
-// filterAnchored descarta (retornando também a contagem descartada, pra
-// log) itens cujo UtteranceIndex não caia em [0, utteranceCount).
+// filterAnchored discards (also returning the discarded count, for
+// logging) items whose UtteranceIndex doesn't fall within [0, utteranceCount).
 func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discarded int) {
     kept = items[:0]
     for _, it := range items {
@@ -209,10 +214,10 @@ func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discar
     return kept, discarded
 }
 
-// mustLoadPrompt lê um prompt embutido em prompts.FS (ver prompts/embed.go)
-// — panic em caso de ausência é intencional: um prompt faltando é erro de
-// build/empacotamento, não uma condição de runtime a tratar graciosamente
-// (mesmo espírito de um template.Must).
+// mustLoadPrompt reads a prompt embedded in prompts.FS (see
+// prompts/embed.go) — panicking when it's missing is intentional: a
+// missing prompt is a build/packaging error, not a runtime condition to
+// handle gracefully (same spirit as a template.Must).
 func mustLoadPrompt(filename string) string {
     b, err := prompts.FS.ReadFile(filename)
     if err != nil {
@@ -221,9 +226,9 @@ func mustLoadPrompt(filename string) string {
     return string(b)
 }
 
-// Tasks lista as 7 tarefas de análise, na ordem em que os prompts foram
-// definidos — a ordem não importa pra execução (independentes entre si),
-// só pra leitura humana e pra RegisterPrompts.
+// Tasks lists the 7 analysis tasks, in the order the prompts were defined
+// — order doesn't matter for execution (they're independent of each
+// other), only for human readability and for RegisterPrompts.
 var Tasks = []TaskDef{
     newCorrectionsTask(),
     newVocabularyTask(),
@@ -235,7 +240,7 @@ var Tasks = []TaskDef{
 }
 ```
 
-Cada `tasks_*.go` segue o mesmo formato; exemplo (`tasks_corrections.go`):
+Each `tasks_*.go` follows the same format; example (`tasks_corrections.go`):
 
 ```go
 type Correction struct {
@@ -266,20 +271,20 @@ func newCorrectionsTask() TaskDef {
 }
 ```
 
-`unmarshalJSON` (movida pra `parsing.go`) é só o `stripTrailingCodeFence` + `json.Unmarshal`
-genérico que hoje vive em `parseAnalysisResponse` — vira o único código realmente compartilhado
-entre as 7 tarefas (o parsing do schema em si é específico de cada uma).
+`unmarshalJSON` (moved to `parsing.go`) is just the generic `stripTrailingCodeFence` +
+`json.Unmarshal` that today lives in `parseAnalysisResponse` — it becomes the only code truly
+shared across the 7 tasks (the schema parsing itself is specific to each one).
 
-As tarefas não-ancoradas (`vocabulary`, `tutor_expressions`, `tutor_taught_terms`, `topics`) têm o
-mesmo formato, só sem `UtteranceIndex()`/`filterAnchored`. `topics` é a única cujo tipo de saída é
-`[]string` simples (lista de tópicos), sem struct própria.
+The non-anchored tasks (`vocabulary`, `tutor_expressions`, `tutor_taught_terms`, `topics`) have
+the same format, just without `UtteranceIndex()`/`filterAnchored`. `topics` is the only one whose
+output type is a plain `[]string` (list of topics), with no dedicated struct.
 
-### `internal/analysis/prompts.go` (novo)
+### `internal/analysis/prompts.go` (new)
 
 ```go
-// RegisterPrompts grava (nome, versão, conteúdo) de cada TaskDef em Tasks
-// na tabela prompts, se ainda não existir — idempotente entre reinícios do
-// app. Chamado uma vez em main.go, logo após db.Open.
+// RegisterPrompts stores (name, version, content) for each TaskDef in
+// Tasks into the prompts table, if it doesn't already exist — idempotent
+// across app restarts. Called once in main.go, right after db.Open.
 func RegisterPrompts(conn *sql.DB) error {
     for _, t := range Tasks {
         if _, err := db.UpsertPrompt(conn, t.Name(), t.Version(), t.Prompt()); err != nil {
@@ -290,12 +295,12 @@ func RegisterPrompts(conn *sql.DB) error {
 }
 ```
 
-Cada tarefa carrega sua própria `version` (campo em `task[T]`, hoje `1` pras 7); bump é manual no
-código (junto com o nome do arquivo `.md`, que segue a mesma convenção `-vN`) quando o conteúdo do
-prompt mudar de forma que valha a pena distinguir do histórico já persistido em
-`analysis_results.prompt_id`.
+Each task carries its own `version` (a field in `task[T]`, currently `1` for all 7); bumping it
+is manual in the code (along with the `.md` file name, which follows the same `-vN` convention)
+whenever the prompt content changes enough to be worth distinguishing from the history already
+persisted in `analysis_results.prompt_id`.
 
-### `internal/db/migrations/00004_analysis_results.sql` (novo)
+### `internal/db/migrations/00004_analysis_results.sql` (new)
 
 ```sql
 -- +goose Up
@@ -326,23 +331,25 @@ DROP TABLE analysis_results;
 DROP INDEX idx_prompts_name_version;
 ```
 
-`lesson_topics` é tabela à parte (em vez de mais uma linha em `analysis_results`) porque tópicos
-são multivalorados por aula e a Biblioteca (História 5 da Fase 2) precisa filtrar por tópico
-individual — um `result_json` com array serializado não daria pra indexar/filtrar por SQL.
+`lesson_topics` is a separate table (instead of one more row in `analysis_results`) because
+topics are multi-valued per lesson and the Library (Phase 2's Story 5) needs to filter by
+individual topic — a `result_json` with a serialized array wouldn't allow indexing/filtering via
+SQL.
 
-### `internal/db/analysis_results.go` (novo)
+### `internal/db/analysis_results.go` (new)
 
 ```go
-// UpsertPrompt insere (name, version, content) se ainda não existir.
-// Content divergente pro mesmo (name, version) já registrado é sinal de
-// versão esquecida no código (convenção "-vN" no nome do arquivo/prompt);
-// loga um aviso e mantém o conteúdo já gravado — não sobrescreve, porque
-// analysis_results já pode referenciar esse prompt_id.
+// UpsertPrompt inserts (name, version, content) if it doesn't already
+// exist. Divergent content for the same already-registered (name, version)
+// signals a version bump forgotten in the code (the "-vN" naming
+// convention for the file/prompt); it logs a warning and keeps the content
+// already stored — it never overwrites, because analysis_results may
+// already reference that prompt_id.
 func UpsertPrompt(conn *sql.DB, name string, version int, content string) (id int64, err error)
 
-// UpsertAnalysisResult grava (ou substitui, se já existir) o resultado de
-// task para lessonID — reprocessar (História 2) sobrescreve a linha
-// existente via ON CONFLICT(lesson_id, task).
+// UpsertAnalysisResult stores (or replaces, if one already exists) the
+// result of task for lessonID — reprocessing (Story 2) overwrites the
+// existing row via ON CONFLICT(lesson_id, task).
 func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID int64, model, resultJSON, rawResponsePath string) error
 
 type AnalysisResult struct {
@@ -354,127 +361,132 @@ type AnalysisResult struct {
     RawResponsePath string
 }
 
-// FindAnalysisResult retorna (nil, nil) se a tarefa ainda não rodou pra
-// essa lesson — estado normal enquanto o job correspondente (História 2)
-// está pending/running/error, não um erro.
+// FindAnalysisResult returns (nil, nil) if the task hasn't run yet for
+// that lesson — a normal state while the corresponding job (Story 2) is
+// pending/running/error, not an error.
 func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisResult, error)
 
-// ReplaceLessonTopics apaga os tópicos existentes de lessonID e insere os
-// novos — a lista é sempre derivada por inteiro do resultado mais recente
-// de analyze_topics, nunca um merge incremental.
+// ReplaceLessonTopics deletes lessonID's existing topics and inserts the
+// new ones — the list is always derived wholesale from the most recent
+// analyze_topics result, never an incremental merge.
 func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error
 ```
 
-### `cmd/validate-analysis/main.go` (novo, temporário)
+### `cmd/validate-analysis/main.go` (new, temporary)
 
 ```
 go run ./cmd/validate-analysis -db=<path/data.db> -lesson-id=<id>
 ```
 
-- Abre o banco real via `internal/db.Open`, busca a `transcript` já persistida da lesson
-  (`db.FindTranscriptByLessonID`) — reaproveita uma aula real já transcrita pela Fase 1, sem
-  fixture sintética.
-- Pede no stdin o papel de cada `Speaker` (`analysis.SpeakerExamples` + prompt interativo, mesmo
-  texto usado pelo extinto `cmd/spike`), monta `speakerRoles` e chama `analysis.FormatTranscript`.
-- Constrói `analysis.NewDeepSeekProvider(apiKey)` com `DEEPSEEK_API_KEY` lido de `.env`
-  (`loadDotEnv`, copiado do `cmd/spike` antes de removê-lo).
-- Roda as 7 `analysis.Tasks` sequencialmente (sem paralelismo — objetivo é inspecionar, não medir
-  throughput), imprime tokens/custo por tarefa (o envelope da DeepSeek já traz `usage`) e grava:
+- Opens the real database via `internal/db.Open`, fetches the lesson's already-persisted
+  `transcript` (`db.FindTranscriptByLessonID`) — reuses a real lesson already transcribed by
+  Phase 1, no synthetic fixture.
+- Asks on stdin for each `Speaker`'s role (`analysis.SpeakerExamples` + an interactive prompt, the
+  same text used by the defunct `cmd/spike`), builds `speakerRoles`, and calls
+  `analysis.FormatTranscript`.
+- Builds `analysis.NewDeepSeekProvider(apiKey)` with `DEEPSEEK_API_KEY` read from `.env`
+  (`loadDotEnv`, copied from `cmd/spike` before removing it).
+- Runs the 7 `analysis.Tasks` sequentially (no parallelism — the goal is inspection, not
+  measuring throughput), prints tokens/cost per task (DeepSeek's envelope already carries
+  `usage`), and writes:
   - `local/output/analysis-validation/<task>/raw.json`
   - `local/output/analysis-validation/<task>/result.json`
-- Não grava nada no banco (`analysis_results`/`lesson_topics` só passam a ser escritas de verdade
-  pelo `Worker` na História 2) — este CLI é só pra olhar o resultado e alimentar
+- Writes nothing to the database (`analysis_results`/`lesson_topics` only start being written for
+  real by the `Worker` in Story 2) — this CLI is just for looking at the result and feeding
   `docs/notas-analise-llm.md`.
-- Removido do repositório depois que a validação for feita e as notas registradas — mesmo destino
-  do `cmd/spike`.
+- Removed from the repository once validation is done and the notes are recorded — the same fate
+  as `cmd/spike`.
 
 ### `main.go`
 
 ```go
-conn, err := db.Open(dbPath) // já roda as migrations, inclusive 00004
+conn, err := db.Open(dbPath) // already runs the migrations, including 00004
 ...
 if err := analysis.RegisterPrompts(conn); err != nil {
     log.Fatalf("registrar prompts de análise: %v", err)
 }
 ```
 
-Falha ao registrar prompts é fatal (mesmo tratamento que uma falha de migration já recebe hoje) —
-não há como a fila da Fase 2 funcionar sem os prompts na tabela, e falhar cedo, alto e claro é
-preferível a descobrir isso só quando o primeiro job de análise rodar (dias depois, História 2).
+A failure to register prompts is fatal (the same treatment a migration failure already gets
+today) — there's no way for the Phase 2 queue to work without the prompts in the table, and
+failing early, loud, and clear is preferable to only discovering this when the first analysis job
+runs (days later, Story 2).
 
-## Fluxo de dados (execução de uma tarefa, uso interno/CLI nesta história)
+## Data flow (running one task, internal/CLI use in this story)
 
 ```
-cmd/validate-analysis (ou, na História 2, o Worker):
+cmd/validate-analysis (or, in Story 2, the Worker):
   transcript := analysis.FormatTranscript(utterances, speakerRoles)
   for _, t := range analysis.Tasks {
       resultJSON, raw, err := t.Execute(ctx, provider, transcript, len(utterances))
-      // grava raw em disco sempre (mesmo com err != nil — chamada já custou);
-      // grava resultJSON em analysis_results só se err == nil (História 2)
+      // always write raw to disk (even with err != nil — the call already cost money);
+      // write resultJSON to analysis_results only if err == nil (Story 2)
   }
 ```
 
-Não há fluxo de dados de UI nesta história — a UI mais próxima que consome isso é a História 3.
+There's no UI data flow in this story — the nearest UI that consumes this is Story 3.
 
-## Tratamento de erros
+## Error handling
 
-- **Erro de rede/API na chamada do provedor** (`provider.Complete` falha): `Execute` devolve
-  `resultJSON == nil`, `raw` com o que tiver sido lido (pode ser vazio) e `err != nil` — mesmo
-  princípio de resiliência das Fases 1 (falha não impede nada além da própria tarefa).
-- **JSON malformado ou schema inesperado** (`parse` falha): mesma coisa — `raw` preservado pra
-  depuração, `err != nil` descreve a tarefa e a causa.
-- **`utterance_index` fora do range ou ausente**: não é erro — item descartado, `slog.Warn` com a
-  contagem, resultado segue com os itens válidos.
-- **`RegisterPrompts` falha ao gravar** (banco indisponível, etc.): fatal na inicialização do app —
-  ver seção `main.go` acima.
-- **Conteúdo de prompt divergente pro mesmo `(name, version)`** (dev esqueceu de bumpar a versão
-  depois de editar o `.md`): não é erro — `slog.Warn`, mantém o conteúdo já registrado no banco.
+- **Network/API error on the provider call** (`provider.Complete` fails): `Execute` returns
+  `resultJSON == nil`, `raw` with whatever was read (can be empty), and `err != nil` — the same
+  resilience principle from Phase 1 (a failure blocks nothing beyond the task itself).
+- **Malformed JSON or unexpected schema** (`parse` fails): same thing — `raw` preserved for
+  debugging, `err != nil` describes the task and the cause.
+- **`utterance_index` out of range or missing**: not an error — the item is discarded, `slog.Warn`
+  with the count, the result proceeds with the valid items.
+- **`RegisterPrompts` fails to write** (database unavailable, etc.): fatal at app startup — see
+  the `main.go` section above.
+- **Divergent prompt content for the same `(name, version)`** (a dev forgot to bump the version
+  after editing the `.md`): not an error — `slog.Warn`, keeps the content already registered in
+  the database.
 
-## Fora de escopo desta história
+## Out of scope for this story
 
-- Qualquer job novo no `Worker`/fila, credencial de análise via keyring, ou campo de Configurações
-  para ela — tudo isso é História 2.
-- Qualquer UI (correções inline, aba de Análise, chips de tópico) — Histórias 3-5.
-- Seleção de provedor/modelo de análise e estimativa de custo — Fase 5.
-- `cmd/validate-analysis` como ferramenta permanente — é removido ao fechar a história.
-- Reprocessamento automático ao mudar de prompt — quando existir (História 2), continua ação
-  explícita, mesmo padrão da Fila da Fase 1.
+- Any new job in the `Worker`/queue, an analysis credential via keyring, or a Settings field for
+  it — all of that is Story 2.
+- Any UI (inline corrections, an Analysis tab, topic chips) — Stories 3-5.
+- Selecting the analysis provider/model and estimating cost — Phase 5.
+- `cmd/validate-analysis` as a permanent tool — it's removed once the story closes.
+- Automatic reprocessing when a prompt changes — once it exists (Story 2), it stays an explicit
+  action, the same pattern as Phase 1's Queue.
 
-## Testes
+## Tests
 
-**`internal/analysis`** (fixtures sintéticas, sem chamada real de API):
-- `FormatTranscript` (`transcript_test.go`, estendido): confirma o prefixo `[N]` numerado em cada
-  linha, na mesma ordem de `utterances`.
-- Um teste de parser por tarefa: JSON válido → itens esperados; para as 3 tarefas ancoradas, JSON
-  com `utterance_index` fora do range (e um caso ausente/negativo) → item descartado, contagem de
-  descarte correta; JSON malformado → erro, sem panics.
-- `Complete` do `openAICompatibleProvider`: teste com servidor HTTP fake confirmando que o
-  `systemPrompt` passado por chamada (não mais fixo na construção) é o que vai no corpo da
-  requisição.
-- `RegisterPrompts` (via `internal/db` com banco `t.TempDir()`): chamar duas vezes não duplica
-  linhas em `prompts`; conteúdo divergente pro mesmo `(name, version)` loga aviso (capturado via
-  `slog` de teste) e não altera a linha existente.
+**`internal/analysis`** (synthetic fixtures, no real API call):
+- `FormatTranscript` (`transcript_test.go`, extended): confirms the numbered `[N]` prefix on each
+  line, in the same order as `utterances`.
+- One parser test per task: valid JSON → expected items; for the 3 anchored tasks, JSON with an
+  out-of-range `utterance_index` (and a missing/negative case) → item discarded, correct discard
+  count; malformed JSON → error, no panics.
+- `openAICompatibleProvider`'s `Complete`: a test with a fake HTTP server confirming that the
+  `systemPrompt` passed per call (no longer fixed at construction) is what goes into the request
+  body.
+- `RegisterPrompts` (via `internal/db` with a `t.TempDir()` database): calling it twice doesn't
+  duplicate rows in `prompts`; divergent content for the same `(name, version)` logs a warning
+  (captured via test `slog`) and doesn't change the existing row.
 
-**`internal/db`** (`analysis_results_test.go`, novo, mesmo padrão de `transcripts_test.go`):
-- `UpsertAnalysisResult` insere e, numa segunda chamada com o mesmo `(lesson_id, task)`, substitui
-  a linha (confirmado lendo `result_json`/`raw_response_path` depois).
-- `FindAnalysisResult` devolve `(nil, nil)` quando a tarefa ainda não rodou pra essa lesson.
-- `ReplaceLessonTopics`: segunda chamada com lista diferente substitui a anterior por completo (sem
-  sobra de tópicos antigos).
+**`internal/db`** (`analysis_results_test.go`, new, same pattern as `transcripts_test.go`):
+- `UpsertAnalysisResult` inserts and, on a second call with the same `(lesson_id, task)`, replaces
+  the row (confirmed by reading `result_json`/`raw_response_path` afterward).
+- `FindAnalysisResult` returns `(nil, nil)` when the task hasn't run yet for that lesson.
+- `ReplaceLessonTopics`: a second call with a different list fully replaces the previous one (no
+  leftover old topics).
 
-**Validação manual numa aula real** (critério explícito da História 1): rodar
-`cmd/validate-analysis` contra uma aula já transcrita, revisar as 7 saídas e registrar qualidade +
-custo real (tokens/USD) em `docs/notas-analise-llm.md`, comparando com a medição única da Fase 0.
-Só depois disso o CLI é removido.
+**Manual validation on a real lesson** (Story 1's explicit criterion): run
+`cmd/validate-analysis` against an already-transcribed lesson, review the 7 outputs, and record
+quality + real cost (tokens/USD) in `docs/notas-analise-llm.md`, comparing against Phase 0's
+single measurement. Only after that is the CLI removed.
 
-## Critérios de aceite (de `docs/fase-2-analise-llm.md`, História 1)
+## Acceptance criteria (from `docs/fase-2-analise-llm.md`, Story 1)
 
-- [ ] 7 prompts versionados e focados numa saída só cada, registrados na tabela `prompts`.
-- [ ] `FormatTranscript` numera as falas (`utterance_index`) na transcrição enviada ao modelo.
-- [ ] `analysis.Provider` vira agnóstico de tarefa (`Complete(ctx, systemPrompt, transcript)
-      (json.RawMessage, error)`); cada tarefa define seu próprio tipo de saída e parse.
-- [ ] Migration nova: `analysis_results` (`UNIQUE(lesson_id, task)`) e `lesson_topics`.
-- [ ] Comportamento definido e testado para `utterance_index` fora do range ou ausente (descarte
-      silencioso com log).
-- [ ] Validação numa aula real: as 7 tarefas rodadas manualmente, resultado observado e registrado
-      em `docs/notas-analise-llm.md` (qualidade por tarefa + custo real em tokens/USD).
+- [ ] 7 versioned prompts, each focused on a single output, registered in the `prompts` table.
+- [ ] `FormatTranscript` numbers the utterances (`utterance_index`) in the transcript sent to the
+      model.
+- [ ] `analysis.Provider` becomes task-agnostic (`Complete(ctx, systemPrompt, transcript)
+      (json.RawMessage, error)`); each task defines its own output type and parsing.
+- [ ] New migration: `analysis_results` (`UNIQUE(lesson_id, task)`) and `lesson_topics`.
+- [ ] Defined and tested behavior for an out-of-range or missing `utterance_index` (silent discard
+      with a log).
+- [ ] Validation on a real lesson: the 7 tasks run manually, result observed and recorded in
+      `docs/notas-analise-llm.md` (quality per task + real cost in tokens/USD).

@@ -19,7 +19,7 @@ dependencies.
 - `internal/stt` stays production-quality and permanent; `cmd/spike/main.go` stays disposable.
 - `DEEPGRAM_API_KEY` read only from environment (or `.env` via the existing `loadDotEnv`), never
   hardcoded/committed.
-- Deepgram auth header is `Authorization: Token <chave>`.
+- Deepgram auth header is `Authorization: Token <key>`.
 - Deepgram's batch endpoint is a **single synchronous call**: `POST https://api.deepgram.com/v1/listen`
   with the raw WAV bytes as the request body (`Content-Type: audio/wav`) — no separate upload
   step, no job ID, no polling. This differs from Gladia and AssemblyAI's upload→job→poll pattern.
@@ -48,7 +48,7 @@ dependencies.
   consistency with Gladia/AssemblyAI — no separate short per-call timeout is needed here since
   there is no polling loop.
 - No elaborate flags, no parallelism, no sophisticated retry.
-- Commit messages: one line, semantic format (`tipo: descrição`) — do not run `git commit`
+- Commit messages: one line, semantic format (`type: description`) — do not run `git commit`
   automatically; stage only (`git add`), per this project's established workflow preference.
 
 ---
@@ -138,55 +138,55 @@ import (
 func TestMapDeepgramResponse(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "deepgram_response.json"))
 	if err != nil {
-		t.Fatalf("erro lendo fixture: %v", err)
+		t.Fatalf("error reading fixture: %v", err)
 	}
 
 	result, err := mapDeepgramResponse(raw)
 	if err != nil {
-		t.Fatalf("mapDeepgramResponse retornou erro: %v", err)
+		t.Fatalf("mapDeepgramResponse returned error: %v", err)
 	}
 
 	if len(result.Utterances) != 2 {
-		t.Fatalf("esperava 2 utterances, obteve %d", len(result.Utterances))
+		t.Fatalf("expected 2 utterances, got %d", len(result.Utterances))
 	}
 
 	first := result.Utterances[0]
 	if first.Speaker != "speaker_0" {
-		t.Errorf("Speaker = %q, esperava %q", first.Speaker, "speaker_0")
+		t.Errorf("Speaker = %q, expected %q", first.Speaker, "speaker_0")
 	}
 	if first.Text != "Hi, how was your week?" {
-		t.Errorf("Text = %q, inesperado", first.Text)
+		t.Errorf("Text = %q, unexpected", first.Text)
 	}
 	if first.Start != 420*time.Millisecond {
-		t.Errorf("Start = %v, esperava %v", first.Start, 420*time.Millisecond)
+		t.Errorf("Start = %v, expected %v", first.Start, 420*time.Millisecond)
 	}
 	if len(first.Words) != 5 {
-		t.Fatalf("esperava 5 words, obteve %d", len(first.Words))
+		t.Fatalf("expected 5 words, got %d", len(first.Words))
 	}
 	if first.Words[0].Text != "Hi," {
-		t.Errorf("Words[0].Text = %q, inesperado", first.Words[0].Text)
+		t.Errorf("Words[0].Text = %q, unexpected", first.Words[0].Text)
 	}
 
 	second := result.Utterances[1]
 	if second.Speaker != "speaker_1" {
-		t.Errorf("Speaker = %q, esperava %q", second.Speaker, "speaker_1")
+		t.Errorf("Speaker = %q, expected %q", second.Speaker, "speaker_1")
 	}
 	if len(second.Words) != 13 {
-		t.Fatalf("esperava 13 words, obteve %d", len(second.Words))
+		t.Fatalf("expected 13 words, got %d", len(second.Words))
 	}
 	if second.Words[8].Text != "saudade" {
-		t.Errorf("Words[8].Text = %q, esperava %q", second.Words[8].Text, "saudade")
+		t.Errorf("Words[8].Text = %q, expected %q", second.Words[8].Text, "saudade")
 	}
 
 	if string(result.RawResponse) != string(raw) {
-		t.Error("RawResponse deveria preservar o JSON bruto exatamente como recebido")
+		t.Error("RawResponse should preserve the raw JSON exactly as received")
 	}
 }
 
 func TestMapDeepgramResponse_InvalidJSON(t *testing.T) {
 	_, err := mapDeepgramResponse([]byte("not json"))
 	if err == nil {
-		t.Fatal("esperava erro para JSON inválido, obteve nil")
+		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
 ```
@@ -227,19 +227,20 @@ type deepgramWord struct {
 	End            float64 `json:"end"`
 }
 
-// mapDeepgramResponse converte o JSON bruto da resposta síncrona de
-// POST /v1/listen do Deepgram para o domínio comum stt.Result. Mantida
-// separada da chamada HTTP (deepgram.go) para ser testável com fixture,
-// sem precisar de rede.
+// mapDeepgramResponse converts the raw JSON from Deepgram's synchronous
+// POST /v1/listen response into the common stt.Result domain. Kept
+// separate from the HTTP call (deepgram.go) so it can be tested with a
+// fixture, without needing the network.
 //
-// Ao contrário da Gladia/AssemblyAI, não há campo de status a validar
-// aqui: a resposta síncrona do Deepgram só existe quando a transcrição já
-// terminou com sucesso — um erro de transcrição chega como HTTP não-2xx,
-// tratado em deepgram.go antes desta função ser chamada.
+// Unlike Gladia/AssemblyAI, there's no status field to validate here:
+// Deepgram's synchronous response only exists once transcription has
+// already finished successfully — a transcription error arrives as a
+// non-2xx HTTP status, handled in deepgram.go before this function is
+// called.
 func mapDeepgramResponse(raw []byte) (*Result, error) {
 	var parsed deepgramResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("json inválido: %w", err)
+		return nil, fmt.Errorf("invalid json: %w", err)
 	}
 
 	utterances := make([]Utterance, 0, len(parsed.Results.Utterances))
@@ -324,15 +325,16 @@ import (
 
 const deepgramBaseURL = "https://api.deepgram.com/v1/listen"
 
-// DeepgramProvider implementa stt.Provider usando a API do Deepgram.
+// DeepgramProvider implements stt.Provider using the Deepgram API.
 //
-// Modelo usado: "nova-3" com language=multi — suporta code-switching
-// nativo entre EN/ES/FR/DE/HI/RU/PT/JA/IT/NL, cobrindo exatamente o caso
-// do projeto (aluno fala inglês com trechos em português/espanhol).
+// Model used: "nova-3" with language=multi — supports native
+// code-switching between EN/ES/FR/DE/HI/RU/PT/JA/IT/NL, covering exactly
+// the project's case (the student speaks English with bits of
+// Portuguese/Spanish).
 //
-// Diferente da Gladia e do AssemblyAI, a API batch do Deepgram é
-// síncrona: uma única chamada POST com o áudio no corpo já retorna a
-// transcrição completa — sem upload prévio nem polling de job.
+// Unlike Gladia and AssemblyAI, Deepgram's batch API is synchronous: a
+// single POST call with the audio in the body already returns the
+// complete transcription — no prior upload, no job polling.
 type DeepgramProvider struct {
 	apiKey string
 	client *http.Client
@@ -340,12 +342,12 @@ type DeepgramProvider struct {
 
 func NewDeepgramProvider(apiKey string) (*DeepgramProvider, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("stt: DEEPGRAM_API_KEY vazia")
+		return nil, fmt.Errorf("stt: empty DEEPGRAM_API_KEY")
 	}
-	// Timeout generoso: cobre o envio do WAV inteiro da aula (dezenas de
-	// MB) mais o processamento síncrono no servidor. Mesmo valor usado
-	// por Gladia/AssemblyAI, por consistência, ainda que aqui não haja
-	// polling separado com seu próprio timeout curto por chamada.
+	// Generous timeout: covers uploading the entire lesson WAV (tens of
+	// MB) plus synchronous server-side processing. Same value used by
+	// Gladia/AssemblyAI, for consistency, even though there's no separate
+	// polling here with its own short per-call timeout.
 	return &DeepgramProvider{apiKey: apiKey, client: &http.Client{Timeout: 10 * time.Minute}}, nil
 }
 
@@ -354,7 +356,7 @@ func (p *DeepgramProvider) Name() string { return "deepgram" }
 func (p *DeepgramProvider) Transcribe(ctx context.Context, audioPath string) (*Result, error) {
 	data, err := os.ReadFile(audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("stt: ler áudio para deepgram: %w", err)
+		return nil, fmt.Errorf("stt: read audio for deepgram: %w", err)
 	}
 
 	query := url.Values{
@@ -368,28 +370,29 @@ func (p *DeepgramProvider) Transcribe(ctx context.Context, audioPath string) (*R
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("stt: montar requisição deepgram: %w", err)
+		return nil, fmt.Errorf("stt: build deepgram request: %w", err)
 	}
 	req.Header.Set("Authorization", "Token "+p.apiKey)
 	req.Header.Set("Content-Type", "audio/wav")
 
 	raw, err := p.do(req)
 	if err != nil {
-		return nil, fmt.Errorf("stt: transcrever deepgram: %w", err)
+		return nil, fmt.Errorf("stt: transcribe deepgram: %w", err)
 	}
 
 	result, err := mapDeepgramResponse(raw)
 	if err != nil {
-		// Preserva o JSON bruto mesmo em falha de parse: a chamada à API já foi
-		// feita (custa dinheiro), então o chamador deve conseguir salvar
-		// result.RawResponse em disco mesmo com err != nil.
-		return &Result{RawResponse: raw}, fmt.Errorf("stt: parsear resposta deepgram: %w", err)
+		// Preserve the raw JSON even on a parse failure: the API call has
+		// already been made (it costs money), so the caller should still be
+		// able to save result.RawResponse to disk even with err != nil.
+		return &Result{RawResponse: raw}, fmt.Errorf("stt: parse deepgram response: %w", err)
 	}
 	return result, nil
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if
+// the status isn't 2xx (the message includes the status and body, for
+// debugging).
 func (p *DeepgramProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -474,8 +477,8 @@ per-provider failure loop already handle any name present in this map.
 Current `.env.example`:
 
 ```
-# Copie este arquivo para .env e preencha com sua chave real.
-# O .env nunca deve ser commitado (já está no .gitignore).
+# Copy this file to .env and fill in your real key.
+# .env must never be committed (already in .gitignore).
 GLADIA_API_KEY=
 ASSEMBLYAI_API_KEY=
 ```
@@ -483,8 +486,8 @@ ASSEMBLYAI_API_KEY=
 Change the last line block to:
 
 ```
-# Copie este arquivo para .env e preencha com sua chave real.
-# O .env nunca deve ser commitado (já está no .gitignore).
+# Copy this file to .env and fill in your real key.
+# .env must never be committed (already in .gitignore).
 GLADIA_API_KEY=
 ASSEMBLYAI_API_KEY=
 DEEPGRAM_API_KEY=
@@ -518,9 +521,9 @@ human, same as the other two providers.
 
 ---
 
-## Após este plano
+## After this plan
 
-- Comparação lado a lado Deepgram × AssemblyAI e decisão de STT (História 2), usando
-  `docs/notas-stt.md` como insumo — fecha a decisão em aberto no `decisoes-tecnologia.md`.
-- ElevenLabs Scribe fica em aberto: só vale a pena implementar se a decisão Deepgram × AssemblyAI
-  não for conclusiva o suficiente.
+- Side-by-side comparison of Deepgram × AssemblyAI and the STT decision (Story 2), using
+  `docs/notas-stt.md` as input — closes the open decision in `decisoes-tecnologia.md`.
+- ElevenLabs Scribe stays open: only worth implementing if the Deepgram × AssemblyAI decision
+  isn't conclusive enough.

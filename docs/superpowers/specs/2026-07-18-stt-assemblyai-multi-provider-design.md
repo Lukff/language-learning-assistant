@@ -1,51 +1,51 @@
-# Fase 0 — Segundo provedor STT (AssemblyAI) + seleção multi-provedor — Design
+# Phase 0 — Second STT provider (AssemblyAI) + multi-provider selection — Design
 
-> Segunda fatia da História 1 (`docs/fase-0-validacao.md`), atrás da mesma interface `stt.Provider`
-> já validada na fatia da Gladia (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`).
-> Decisão registrada em conversa com o usuário: AssemblyAI é o segundo candidato; o `cmd/spike`
-> também é retrabalhado nesta fatia para permitir escolher quais provedores rodam por execução,
-> sem perder as saídas de execuções anteriores de outros provedores.
+> Story 1's second slice (`docs/fase-0-validacao.md`), behind the same `stt.Provider` interface
+> already validated in the Gladia slice (`docs/superpowers/specs/2026-07-18-pipeline-media-stt-gladia-design.md`).
+> Decision recorded in conversation with the user: AssemblyAI is the second candidate; `cmd/spike`
+> is also reworked in this slice to allow choosing which providers run per execution, without
+> losing the outputs from other providers' previous runs.
 
-## Objetivo
+## Objective
 
-Implementar `stt.Provider` para o AssemblyAI (upload, submissão, polling, mapeamento para o
-domínio comum), e permitir que `cmd/spike` rode qualquer subconjunto dos provedores já
-implementados (hoje: Gladia, AssemblyAI) numa mesma execução, contra a mesma aula.
+Implement `stt.Provider` for AssemblyAI (upload, submission, polling, mapping to the common
+domain), and let `cmd/spike` run any subset of the already-implemented providers (today: Gladia,
+AssemblyAI) in a single run, against the same lesson.
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-- Deepgram e ElevenLabs Scribe (ficam para fatias seguintes, atrás da mesma interface).
-- Comparação entre provedores e decisão de STT (História 2).
-- Qualquer flag além de `-providers` — sem paralelismo, sem retry sofisticado.
+- Deepgram and ElevenLabs Scribe (left for future slices, behind the same interface).
+- Comparison between providers and the STT decision (Story 2).
+- Any flag beyond `-providers` — no parallelism, no sophisticated retry.
 
-## Contrato da API AssemblyAI (referência: `assemblyai.com/docs`, verificado em 18/07/2026)
+## AssemblyAI API contract (reference: `assemblyai.com/docs`, checked on 2026-07-18)
 
-Diferenças relevantes em relação à Gladia (já implementada):
+Relevant differences from Gladia (already implemented):
 
-| Aspecto | Gladia | AssemblyAI |
+| Aspect | Gladia | AssemblyAI |
 |---|---|---|
-| Header de auth | `x-gladia-key` | `Authorization` (chave crua, sem prefixo `Bearer`) |
-| Upload | `POST /v2/upload`, multipart | `POST /v2/upload`, corpo binário puro (`application/octet-stream`) |
-| Campo da URL retornada | `audio_url` | `upload_url` |
-| Endpoint de submissão | `POST /v2/pre-recorded` | `POST /v2/transcript` |
-| Endpoint de poll | `GET /v2/pre-recorded/{id}` | `GET /v2/transcript/{id}` |
-| Status "concluído" | `"done"` | `"completed"` |
-| Status "erro" | `"error"` | `"error"` |
-| Timestamps | float64, segundos | inteiro, **milissegundos** |
-| Locutor | inteiro (`0`, `1`, ...) | string (ex.: `"A"`, `"B"`) |
-| Modelo multilíngue/code-switching | `solaria-1` | `speech_models: ["universal-3-pro"]` — suporta code-switching nativo em EN/PT/ES/FR/DE/IT (cobre exatamente o caso do projeto) |
+| Auth header | `x-gladia-key` | `Authorization` (raw key, no `Bearer` prefix) |
+| Upload | `POST /v2/upload`, multipart | `POST /v2/upload`, raw binary body (`application/octet-stream`) |
+| Returned URL field | `audio_url` | `upload_url` |
+| Submission endpoint | `POST /v2/pre-recorded` | `POST /v2/transcript` |
+| Poll endpoint | `GET /v2/pre-recorded/{id}` | `GET /v2/transcript/{id}` |
+| "Completed" status | `"done"` | `"completed"` |
+| "Error" status | `"error"` | `"error"` |
+| Timestamps | float64, seconds | integer, **milliseconds** |
+| Speaker | integer (`0`, `1`, ...) | string (e.g. `"A"`, `"B"`) |
+| Multilingual/code-switching model | `solaria-1` | `speech_models: ["universal-3-pro"]` — supports native code-switching in EN/PT/ES/FR/DE/IT (covers exactly the project's case) |
 
-Request de submissão:
+Submission request:
 ```json
 {
-  "audio_url": "<upload_url do passo 1>",
+  "audio_url": "<upload_url from step 1>",
   "speech_models": ["universal-3-pro"],
   "speaker_labels": true,
   "language_detection": true
 }
 ```
 
-Resposta do poll (`GET /v2/transcript/{id}`, quando `status == "completed"`):
+Poll response (`GET /v2/transcript/{id}`, when `status == "completed"`):
 ```json
 {
   "id": "...",
@@ -64,44 +64,43 @@ Resposta do poll (`GET /v2/transcript/{id}`, quando `status == "completed"`):
   ]
 }
 ```
-Note-se a estrutura mais achatada que a da Gladia (`utterances` direto na raiz, não sob
+Note the flatter structure compared to Gladia's (`utterances` directly at the root, not under
 `result.transcription`).
 
-## Componentes
+## Components
 
 ### `internal/stt/assemblyai_mapping.go`
 
-Função pura, mesmo padrão da Gladia: `mapAssemblyAIResponse(raw []byte) (*Result, error)`.
+A pure function, same pattern as Gladia: `mapAssemblyAIResponse(raw []byte) (*Result, error)`.
 
-- Timestamps já vêm em milissegundos inteiros — conversão direta
-  (`time.Duration(ms) * time.Millisecond`), sem o arredondamento por `math.Round` que a Gladia
-  precisou (não há artefato de float64 aqui).
-- `Speaker` do AssemblyAI já é string (ex. `"A"`); mapeado para `"speaker_A"` (prefixo
-  `speaker_` + valor bruto), mantendo o mesmo padrão de rótulo usado na Gladia
-  (`"speaker_0"`, `"speaker_1"`) para que as saídas dos dois provedores fiquem visualmente
-  comparáveis na História 2.
-- Erro se `status != "completed"` (mesmo padrão da Gladia, adaptado ao valor do AssemblyAI).
+- Timestamps already come in integer milliseconds — direct conversion
+  (`time.Duration(ms) * time.Millisecond`), without the `math.Round` rounding Gladia needed (no
+  float64 artifact here).
+- AssemblyAI's `Speaker` is already a string (e.g. `"A"`); mapped to `"speaker_A"` (`speaker_`
+  prefix + raw value), keeping the same label pattern used for Gladia (`"speaker_0"`,
+  `"speaker_1"`) so both providers' outputs stay visually comparable in Story 2.
+- Error if `status != "completed"` (same pattern as Gladia, adapted to AssemblyAI's value).
 
 ### `internal/stt/assemblyai.go`
 
-Mesmo padrão de três chamadas HTTP da Gladia, adaptado ao contrato acima:
-1. `upload`: `POST /v2/upload`, corpo = bytes do arquivo (`application/octet-stream`, sem
-   multipart), retorna `upload_url`.
-2. `createJob`: `POST /v2/transcript`, JSON acima, retorna `id`.
-3. `poll`: `GET /v2/transcript/{id}` a cada 5s, timeout total de 10 minutos — mesmo padrão de
-   timeout curto por chamada (30s) + timeout generoso no `http.Client` (10 min, cobre upload de
-   arquivo grande) que a Gladia usa hoje, pelos mesmos motivos (ver
-   `internal/stt/gladia.go` — correção aplicada após teste real com aula de ~30min/53MB).
-4. Preserva `RawResponse` mesmo em falha de mapeamento, mesmo padrão da Gladia.
+Same three-HTTP-call pattern as Gladia, adapted to the contract above:
+1. `upload`: `POST /v2/upload`, body = the file's bytes (`application/octet-stream`, no
+   multipart), returns `upload_url`.
+2. `createJob`: `POST /v2/transcript`, the JSON above, returns `id`.
+3. `poll`: `GET /v2/transcript/{id}` every 5s, 10-minute total timeout — same short
+   per-call timeout (30s) + generous `http.Client` timeout (10 min, covers large file uploads)
+   pattern Gladia uses today, for the same reasons (see
+   `internal/stt/gladia.go` — a fix applied after a real test with a ~30min/53MB lesson).
+4. Preserves `RawResponse` even on a mapping failure, same pattern as Gladia.
 
-Chave lida de `ASSEMBLYAI_API_KEY` (variável de ambiente), falha rápido se vazia.
+Key read from `ASSEMBLYAI_API_KEY` (environment variable), fails fast if empty.
 
-### `cmd/spike/main.go` (retrabalho)
+### `cmd/spike/main.go` (rework)
 
-**Seleção de provedores:** flag obrigatória `-providers` (lista separada por vírgula, ex.:
-`gladia,assemblyai`). Sem default — omitir a flag é erro claro, evitando rodar (e pagar) tudo de
-novo por engano. Nome desconhecido na lista também é erro claro, antes de qualquer chamada de
-rede.
+**Provider selection:** required `-providers` flag (comma-separated list, e.g.
+`gladia,assemblyai`). No default — omitting the flag is a clear error, avoiding accidentally
+running (and paying for) everything again. An unknown name in the list is also a clear error,
+before any network call.
 
 ```go
 var providerFactories = map[string]func() (stt.Provider, error){
@@ -110,32 +109,32 @@ var providerFactories = map[string]func() (stt.Provider, error){
 }
 ```
 
-**Saída por provedor:** reorganizada para `local/output/aula-01/<provider.Name()>/raw.json` e
-`.../transcript.txt` (era `local/output/aula-01/gladia.json` solto). Isso garante que rodar um
-provedor nunca sobrescreve a saída de outro — cada um tem seu próprio diretório — e usa
-`Provider.Name()`, que hoje não tinha nenhum consumidor.
+**Output per provider:** reorganized into `local/output/aula-01/<provider.Name()>/raw.json` and
+`.../transcript.txt` (it used to be a loose `local/output/aula-01/gladia.json`). This guarantees
+that running one provider never overwrites another's output — each has its own directory — and
+uses `Provider.Name()`, which until now had no consumer at all.
 
-**Erro por provedor não aborta o run inteiro:** como o mesmo run agora pode incluir vários
-provedores independentes, uma falha num provedor é logada e o CLI segue para o próximo. Ao final,
-o processo sai com código ≠ 0 se **algum** provedor falhou, mas as saídas dos que deram certo
-ficam salvas normalmente. (Dentro de um único provedor, a extração de áudio → transcrição →
-salvamento continua sem retry, mesmo padrão de antes.)
+**A per-provider error doesn't abort the whole run:** since the same run can now include several
+independent providers, a failure in one provider is logged and the CLI moves on to the next. At
+the end, the process exits with a non-zero code if **any** provider failed, but the outputs from
+the ones that succeeded are still saved normally. (Within a single provider, audio extraction →
+transcription → saving still has no retry, same pattern as before.)
 
-**Extração de áudio:** continua acontecendo uma vez só, antes do loop de provedores (não depende
-de qual provedor foi selecionado).
+**Audio extraction:** still happens only once, before the provider loop (doesn't depend on which
+provider was selected).
 
-Pseudocódigo do fluxo:
+Flow pseudocode:
 ```
-extrair áudio (uma vez)
-para cada nome em -providers:
-    provider, err := providerFactories[nome]()  // erro claro se nome desconhecido ou key vazia
+extract audio (once)
+for each name in -providers:
+    provider, err := providerFactories[name]()  // clear error if the name is unknown or the key is empty
     result, err := provider.Transcribe(ctx, audioPath)
-    salvar result.RawResponse em local/output/<aula>/<nome>/raw.json (mesmo se err != nil e RawResponse não vazio)
-    se err == nil: salvar transcript.txt e seguir; senão: logar erro e marcar falha, seguir para o próximo nome
-sair com código 1 se alguma falha ocorreu
+    save result.RawResponse to local/output/<lesson>/<name>/raw.json (even if err != nil and RawResponse isn't empty)
+    if err == nil: save transcript.txt and move on; otherwise: log the error, mark it as failed, move on to the next name
+exit with code 1 if any failure occurred
 ```
 
-## Fluxo de dados
+## Data flow
 
 ```
 aula.mp4 --ffmpeg--> audio.wav
@@ -149,26 +148,26 @@ local/output/aula-01/gladia/     local/output/aula-01/assemblyai/
   raw.json, transcript.txt         raw.json, transcript.txt
 ```
 
-## Tratamento de erro
+## Error handling
 
-Mesma tabela da fatia da Gladia (`ffmpeg` ausente, chave vazia, status HTTP não-2xx com corpo,
-timeout de polling, JSON que não parseia — raw preservado), aplicada também ao AssemblyAI. Adição
-desta fatia: nome de provedor desconhecido na flag `-providers` é erro claro antes de qualquer
-chamada de rede; falha de um provedor não impede os demais (ver seção do `main.go` acima).
+Same table as the Gladia slice (missing `ffmpeg`, empty key, non-2xx HTTP status with body,
+polling timeout, JSON that fails to parse — raw preserved), applied to AssemblyAI as well. Added
+in this slice: an unknown provider name in the `-providers` flag is a clear error before any
+network call; one provider's failure doesn't block the others (see the `main.go` section above).
 
-## Testes
+## Tests
 
-- `internal/stt/assemblyai_mapping_test.go`: mesmo padrão da Gladia — fixture sintética
-  `testdata/assemblyai_response.json` (conversa inventada, sem nomes reais, incluindo um caso de
-  code-switching PT/EN), testando mapeamento de utterances/words, conversão de timestamps
-  (milissegundos → `time.Duration`), formatação do rótulo de locutor (`"A"` → `"speaker_A"`),
-  preservação do `RawResponse`, e os casos de erro (JSON inválido, status inesperado).
-- `internal/stt/assemblyai.go`: sem testes unitários, mesma justificativa da Gladia (chamadas de
-  rede reais, verificadas manualmente via CLI).
-- `cmd/spike/main.go`: continua sem testes (descartável), verificação manual via
+- `internal/stt/assemblyai_mapping_test.go`: same pattern as Gladia — a synthetic fixture
+  `testdata/assemblyai_response.json` (invented conversation, no real names, including a PT/EN
+  code-switching case), testing utterance/word mapping, timestamp conversion
+  (milliseconds → `time.Duration`), speaker label formatting (`"A"` → `"speaker_A"`),
+  `RawResponse` preservation, and the error cases (invalid JSON, unexpected status).
+- `internal/stt/assemblyai.go`: no unit tests, same justification as Gladia (real network calls,
+  verified manually via the CLI).
+- `cmd/spike/main.go`: still no tests (disposable), manual verification via
   `go run ./cmd/spike -providers=...`.
 
-## Privacidade
+## Privacy
 
-Mesmas regras já em vigor (`local/` fora do git, fixtures sintéticas em `testdata/`,
-`ASSEMBLYAI_API_KEY` só em variável de ambiente / `.env` gitignored).
+Same rules already in effect (`local/` kept out of git, synthetic fixtures in `testdata/`,
+`ASSEMBLYAI_API_KEY` only in an environment variable / gitignored `.env`).

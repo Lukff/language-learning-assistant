@@ -1,72 +1,71 @@
-# Notas de qualidade — comparação de STT
+# Quality notes — STT comparison
 
-> Registro de observações por provedor/aula, seguindo os critérios de comparação definidos em
-> `docs/fase-0-validacao.md` (História 2). Anotações **parafraseadas** — sem transcrever trechos
-> literais da fala, nomes de tutores ou qualquer dado que identifique aula/pessoa específica.
-> Alimenta a tabela comparativa final da História 2.
+> A record of observations by provider/lesson, following the comparison criteria defined in
+> `docs/fase-0-validacao.md` (Story 2). Notes are **paraphrased** — no literal transcription of
+> speech passages, tutor names, or any data identifying a specific lesson/person.
+> Feeds Story 2's final comparison table.
 
 ## Gladia
 
-### Aula 01
+### Lesson 01
 
-- **Qualidade geral:** boa.
-- **Diarização:** confunde os locutores em trechos de sobreposição de fala (quando um interlocutor
-  começa a falar antes do outro terminar a frase).
-- **Code-switching PT/ES:** detecção funciona bem no geral, mas a transcrição se perde em alguns
-  momentos específicos da troca de idioma.
-- **Timestamps por palavra:** bons.
-- **Pontuação/formatação:** pontuação nem sempre condizente com a fala; algumas pausas são
-  registradas como pontuação de um jeito que não corresponde ao que foi dito.
-- **Custo real:** free tier de 10h/mês de transcrição.
-- **Outras observações:** perda de algumas palavras de transição entre frases (fora dos trechos
-  de sobreposição de fala) e de bastante "filler words" (palavras de preenchimento, tipo
-  hesitações) de forma geral.
+- **Overall quality:** good.
+- **Diarization:** confuses speakers in overlapping-speech segments (when one speaker
+  starts talking before the other finishes their sentence).
+- **PT/ES code-switching:** detection works well overall, but the transcription loses track at some
+  specific moments of the language switch.
+- **Word-level timestamps:** good.
+- **Punctuation/formatting:** punctuation doesn't always match the speech; some pauses are
+  recorded as punctuation in a way that doesn't correspond to what was actually said.
+- **Real cost:** free tier of 10h/month of transcription.
+- **Other observations:** some transition words between sentences were lost (outside the
+  overlapping-speech segments), along with quite a few "filler words" (hesitation fillers)
+  in general.
 
 ## AssemblyAI
 
-### Aula 01
+### Lesson 01
 
-- **Qualidade geral:**
-- **Diarização:** separa muito bem os locutores, inclusive em trechos de sobreposição de fala.
-- **Code-switching PT/ES:** consegue fazer a troca de idioma em alguns pontos, mas se confunde
-  bastante quando são usadas palavras isoladas (fora de uma frase inteira no outro idioma).
-- **Timestamps por palavra:** precisos.
-- **Pontuação/formatação:** pontuação das frases fica bem precisa.
-- **Custo real:** preço oficial é US$ 0,21/h pelo uso do modelo + US$ 0,02/h pela diarização
-  (cobrados separadamente, mas ambos pela duração real do áudio) — em um vídeo de 29:16min, o
-  custo real observado foi US$ 0,1025 (modelo) + US$ 0,0098 (diarização) = US$ 0,11225 total. Há
-  também a opção de incluir termos previamente conhecidos para melhorar a detecção, com custo
-  adicional de US$ 0,05/h. Tem US$ 50 de créditos free, únicos (não é um free tier mensal
-  recorrente).
-- **Outras observações:**
+- **Overall quality:**
+- **Diarization:** separates speakers very well, including in overlapping-speech segments.
+- **PT/ES code-switching:** manages the language switch at some points, but gets fairly confused
+  when isolated words are used (outside a full sentence in the other language).
+- **Word-level timestamps:** accurate.
+- **Punctuation/formatting:** sentence punctuation is quite accurate.
+- **Real cost:** the official price is US$0.21/h for the model + US$0.02/h for diarization
+  (billed separately, but both based on actual audio duration) — for a 29:16min video, the
+  observed real cost was US$0.1025 (model) + US$0.0098 (diarization) = US$0.11225 total. There's
+  also the option to include previously known terms to improve detection, at an additional
+  cost of US$0.05/h. There's a one-time (not a recurring monthly) US$50 in free credits.
+- **Other observations:**
 
 ## Deepgram
 
-### Aula 01
+### Lesson 01
 
-- **Qualidade geral:** média/ruim.
-- **Diarização:** principal problema do provedor — errou a identificação do locutor na maior
-  parte da transcrição, além de misturar falas de interlocutores diferentes.
-- **Code-switching PT/ES:** ponto mais positivo do provedor — boa detecção de palavras faladas em
-  um idioma diferente do inglês.
-- **Timestamps por palavra:**
-- **Pontuação/formatação:** "ok", mas não capta bem entonações diferentes, como frases
-  interrogativas.
-- **Custo real:**
-- **Outras observações:**
+- **Overall quality:** medium/poor.
+- **Diarization:** the provider's main problem — got the speaker identification wrong for
+  most of the transcript, and also mixed up speech from different speakers.
+- **PT/ES code-switching:** the provider's strongest point — good detection of words spoken in
+  a language other than English.
+- **Word-level timestamps:**
+- **Punctuation/formatting:** "ok", but doesn't capture different intonations well, such as
+  interrogative sentences.
+- **Real cost:**
+- **Other observations:**
 
 ## ElevenLabs Scribe
 
-### Aula 01
+### Lesson 01
 
-- **Qualidade geral:** muito boa.
-- **Diarização:** separação dos interlocutores praticamente perfeita.
-- **Code-switching PT/ES:** às vezes confunde português e espanhol na troca de idioma durante a
-  conversa.
-- **Timestamps por palavra:**
-- **Pontuação/formatação:** em alguns momentos não capta bem a entonação de perguntas (problema
-  pequeno).
-- **Custo real:** custo em créditos, não em US$/hora direto — a transcrição desse vídeo consumiu
-  1,95k créditos, equivalente a US$ 0,195. Tem 10k créditos gratuitos por mês.
-- **Outras observações:** captura muitos detalhes adicionais da fala, como pausas e risos. De
-  forma geral, os problemas encontrados foram pequenos frente à qualidade da transcrição entregue.
+- **Overall quality:** very good.
+- **Diarization:** speaker separation is nearly perfect.
+- **PT/ES code-switching:** sometimes confuses Portuguese and Spanish when switching languages
+  during the conversation.
+- **Word-level timestamps:**
+- **Punctuation/formatting:** at some points doesn't capture the intonation of questions well
+  (a minor issue).
+- **Real cost:** cost in credits, not directly in US$/hour — transcribing this video consumed
+  1.95k credits, equivalent to US$0.195. There are 10k free credits per month.
+- **Other observations:** captures many extra speech details, like pauses and laughter. Overall,
+  the issues found were minor compared to the quality of the transcription delivered.

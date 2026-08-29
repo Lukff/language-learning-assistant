@@ -1,48 +1,48 @@
-# História 6 — Detalhe da aula: vídeo + transcrição sincronizada — Implementation Plan
+# Story 6 — Lesson Detail: Synchronized Video + Transcript — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** O Detalhe da aula mostra o vídeo (já servido com range requests desde a História 5) ao
-lado da transcrição rolável, com clique-na-fala pulando o vídeo, highlight da fala corrente
-acompanhando o playback, e um toggle simples pra marcar qual speaker é o aluno — persistido por
-aula.
+**Goal:** The Lesson Detail screen shows the video (already served with range requests since
+Story 5) alongside the scrollable transcript, with click-on-utterance seeking the video, highlight
+of the current utterance following playback, and a simple toggle to mark which speaker is the
+student — persisted per lesson.
 
-**Architecture:** Backend Go adiciona uma coluna (`lessons.student_speaker_label`) e três novas
-operações (`FindTranscriptByLessonID`, `FindLessonWithStatusByID`, `SetStudentSpeaker`) expostas
-via `LibraryService`. O frontend Svelte 5 reescreve `LessonDetail.svelte`: sincronização por
-evento `timeupdate` do `<video>` + estado derivado (sem RAF, sem WebVTT), grade 2 colunas
-(protótipo `docs/prototipo-app-aulas.jsx`), painel sem abas (Análise é Fase 2).
+**Architecture:** The Go backend adds a column (`lessons.student_speaker_label`) and three new
+operations (`FindTranscriptByLessonID`, `FindLessonWithStatusByID`, `SetStudentSpeaker`) exposed
+via `LibraryService`. The Svelte 5 frontend rewrites `LessonDetail.svelte`: sync via the
+`<video>`'s `timeupdate` event + derived state (no RAF, no WebVTT), a 2-column grid
+(prototype `docs/prototipo-app-aulas.jsx`), a panel with no tabs (Analysis is Phase 2).
 
 **Tech Stack:** Go (`database/sql`, `encoding/json`), SQLite via `modernc.org/sqlite` + `goose`,
-Svelte 5 (runes), Wails v3 bindings geradas via `wails3 generate bindings -ts -i ./...`.
+Svelte 5 (runes), Wails v3 bindings generated via `wails3 generate bindings -ts -i ./...`.
 
 ## Global Constraints
 
-- Camada fina: nenhum import de Wails em `internal/` (só em `services/`, `main.go`).
-- SQL portável na camada de repositório (`internal/db`) — nada específico de driver.
-- Código/identificadores em inglês; mensagens de erro e textos de UI em PT-BR.
-- Nenhuma sintaxe legada do Svelte (sempre `$state`/`$derived`/`$effect`/`$props`).
-- Sem análise LLM na UI, sem highlight/clique por palavra, sem tela de Fila — fora de escopo
-  desta história (ver spec).
-- Sem atualização "ao vivo" do painel enquanto aberto: depois de clicar "Reprocessar" no
-  Detalhe, o painel mostra "processando" uma vez (refetch imediato de `GetLesson`) — acompanhar
-  o job até concluir e ver a transcrição aparecer sozinha é fora de escopo (isso é o evento
-  `job:updated` da História 7, ainda sem consumidor).
-- Spec de referência: `docs/superpowers/specs/2026-07-22-historia-6-detalhe-sincronizado-design.md`.
+- Thin layer: no Wails import in `internal/` (only in `services/`, `main.go`).
+- Portable SQL in the repository layer (`internal/db`) — nothing driver-specific.
+- Code/identifiers in English; error messages and UI text in PT-BR.
+- No legacy Svelte syntax (always `$state`/`$derived`/`$effect`/`$props`).
+- No LLM analysis in the UI, no word-level highlight/click, no Queue screen — out of scope
+  for this story (see spec).
+- No "live" panel update while open: after clicking "Retry" in the Detail screen, the panel
+  shows "processing" once (immediate refetch of `GetLesson`) — following the job until it
+  completes and watching the transcript appear on its own is out of scope (that's the
+  `job:updated` event from Story 7, still with no consumer).
+- Reference spec: `docs/superpowers/specs/2026-07-22-historia-6-detalhe-sincronizado-design.md`.
 
 ---
 
-### Task 1: Migration + coluna `student_speaker_label` + `SetStudentSpeaker` (internal/db)
+### Task 1: Migration + `student_speaker_label` column + `SetStudentSpeaker` (internal/db)
 
 **Files:**
 - Create: `internal/db/migrations/00003_student_speaker.sql`
-- Modify: `internal/db/lessons.go` (struct `Lesson`, const `lessonColumns`, `scanLessonRow`; novo `SetStudentSpeaker`)
+- Modify: `internal/db/lessons.go` (struct `Lesson`, const `lessonColumns`, `scanLessonRow`; new `SetStudentSpeaker`)
 - Test: `internal/db/lessons_test.go`
 
 **Interfaces:**
-- Produces: `db.Lesson.StudentSpeakerLabel *string` (novo campo); `db.SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error`.
+- Produces: `db.Lesson.StudentSpeakerLabel *string` (new field); `db.SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error`.
 
-- [ ] **Step 1: Criar a migration**
+- [ ] **Step 1: Create the migration**
 
 `internal/db/migrations/00003_student_speaker.sql`:
 ```sql
@@ -53,14 +53,14 @@ ALTER TABLE lessons ADD COLUMN student_speaker_label TEXT;
 ALTER TABLE lessons DROP COLUMN student_speaker_label;
 ```
 
-- [ ] **Step 2: Escrever o teste que falha (round-trip de `SetStudentSpeaker` + leitura via `FindLessonByID`)**
+- [ ] **Step 2: Write the failing test (`SetStudentSpeaker` round-trip + read via `FindLessonByID`)**
 
-Adicionar ao final de `internal/db/lessons_test.go`:
+Add to the end of `internal/db/lessons_test.go`:
 ```go
 func TestSetStudentSpeaker_RoundTripsThroughFindLessonByID(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -69,40 +69,40 @@ func TestSetStudentSpeaker_RoundTripsThroughFindLessonByID(t *testing.T) {
 		"2026-07-15", "Sarah", "aula-01.mp4", "2026-07-15T10:00:00Z", "2026-07-15T10:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("insert de fixture falhou: %v", err)
+		t.Fatalf("fixture insert failed: %v", err)
 	}
 	id, _ := res.LastInsertId()
 
 	before, err := FindLessonByID(conn, id)
 	if err != nil {
-		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByID() unexpected error: %v", err)
 	}
 	if before.StudentSpeakerLabel != nil {
-		t.Errorf("StudentSpeakerLabel = %v, esperado nil antes de SetStudentSpeaker", *before.StudentSpeakerLabel)
+		t.Errorf("StudentSpeakerLabel = %v, expected nil before SetStudentSpeaker", *before.StudentSpeakerLabel)
 	}
 
 	if err := SetStudentSpeaker(conn, id, "speaker_1"); err != nil {
-		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+		t.Fatalf("SetStudentSpeaker() unexpected error: %v", err)
 	}
 
 	after, err := FindLessonByID(conn, id)
 	if err != nil {
-		t.Fatalf("FindLessonByID() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByID() unexpected error: %v", err)
 	}
 	if after.StudentSpeakerLabel == nil || *after.StudentSpeakerLabel != "speaker_1" {
-		t.Errorf("StudentSpeakerLabel = %v, esperado speaker_1", after.StudentSpeakerLabel)
+		t.Errorf("StudentSpeakerLabel = %v, expected speaker_1", after.StudentSpeakerLabel)
 	}
 }
 ```
 
-- [ ] **Step 3: Rodar o teste e confirmar que falha**
+- [ ] **Step 3: Run the test and confirm it fails**
 
 Run: `go test ./internal/db/... -run TestSetStudentSpeaker_RoundTripsThroughFindLessonByID -v`
-Expected: FAIL — `undefined: SetStudentSpeaker` (compile error) e/ou `StudentSpeakerLabel` não existe em `Lesson`.
+Expected: FAIL — `undefined: SetStudentSpeaker` (compile error) and/or `StudentSpeakerLabel` doesn't exist on `Lesson`.
 
-- [ ] **Step 4: Implementar — coluna no struct, `lessonColumns`, `scanLessonRow`, `SetStudentSpeaker`**
+- [ ] **Step 4: Implement — column on the struct, `lessonColumns`, `scanLessonRow`, `SetStudentSpeaker`**
 
-Em `internal/db/lessons.go`, substituir o struct `Lesson` (linhas 15-24):
+In `internal/db/lessons.go`, replace the `Lesson` struct (lines 15-24):
 ```go
 type Lesson struct {
 	ID                  int64
@@ -117,12 +117,12 @@ type Lesson struct {
 }
 ```
 
-Substituir `lessonColumns` (linha 29):
+Replace `lessonColumns` (line 29):
 ```go
 const lessonColumns = `id, lesson_date, tutor, video_path, COALESCE(video_hash, ''), COALESCE(file_size, 0), COALESCE(file_mtime, ''), duration_seconds, student_speaker_label`
 ```
 
-Substituir `scanLessonRow` (linhas 34-49):
+Replace `scanLessonRow` (lines 34-49):
 ```go
 func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	var l Lesson
@@ -147,33 +147,33 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 }
 ```
 
-Adicionar logo depois de `SetLessonDuration` (após a linha 112):
+Add right after `SetLessonDuration` (after line 112):
 ```go
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — escolha feita pelo toggle do Detalhe (História 6).
-// Sobrescreve qualquer valor anterior, permitindo o usuário corrigir.
+// SetStudentSpeaker records which raw speaker (e.g. "speaker_0") is the
+// student in this lesson — the choice made via the Detail screen's toggle
+// (Story 6). Overwrites any previous value, letting the user correct it.
 func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET student_speaker_label = ?, updated_at = ? WHERE id = ?`,
 		speakerLabel, time.Now().UTC().Format(time.RFC3339), lessonID,
 	)
 	if err != nil {
-		return fmt.Errorf("gravar student_speaker_label da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("write student_speaker_label for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
 ```
 
-- [ ] **Step 5: Rodar o teste e confirmar que passa**
+- [ ] **Step 5: Run the test and confirm it passes**
 
 Run: `go test ./internal/db/... -run TestSetStudentSpeaker_RoundTripsThroughFindLessonByID -v`
 Expected: PASS
 
-- [ ] **Step 6: Rodar toda a suíte de `internal/db` (garantir que `lessonColumns`/`scanLessonRow` não quebrou nada existente)**
+- [ ] **Step 6: Run the entire `internal/db` suite (make sure `lessonColumns`/`scanLessonRow` didn't break anything existing)**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos os testes (incluindo `TestFindLessonByID_FindsExistingAndNilWhenMissing`, `TestSetLessonDuration_UpdatesDurationSeconds`, etc.)
+Expected: PASS on every test (including `TestFindLessonByID_FindsExistingAndNilWhenMissing`, `TestSetLessonDuration_UpdatesDurationSeconds`, etc.)
 
 - [ ] **Step 7: Commit**
 
@@ -192,16 +192,16 @@ git commit -m "feat: adiciona student_speaker_label em lessons"
 
 **Interfaces:**
 - Consumes: `stt.Utterance{ Speaker, Text string; Start, End time.Duration; Words []stt.Word }` (`internal/stt/stt.go:25-30`).
-- Produces: `db.Transcript{ LessonID int64; RawJSONPath string; Utterances []stt.Utterance }`; `db.FindTranscriptByLessonID(conn *sql.DB, lessonID int64) (*db.Transcript, error)` — retorna `(nil, nil)` se não houver transcrição.
+- Produces: `db.Transcript{ LessonID int64; RawJSONPath string; Utterances []stt.Utterance }`; `db.FindTranscriptByLessonID(conn *sql.DB, lessonID int64) (*db.Transcript, error)` — returns `(nil, nil)` if there's no transcript.
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [ ] **Step 1: Write the failing test**
 
-Adicionar ao final de `internal/db/transcripts_test.go` (adicionar `"encoding/json"` e `"assistente-idiomas/internal/stt"` aos imports):
+Add to the end of `internal/db/transcripts_test.go` (add `"encoding/json"` and `"assistente-idiomas/internal/stt"` to the imports):
 ```go
 func TestFindTranscriptByLessonID_NilWhenMissing(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -210,23 +210,23 @@ func TestFindTranscriptByLessonID_NilWhenMissing(t *testing.T) {
 		"2026-07-22", "Fulano", "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("inserir lesson de fixture falhou: %v", err)
+		t.Fatalf("fixture lesson insert failed: %v", err)
 	}
 	lessonID, _ := res.LastInsertId()
 
 	tr, err := FindTranscriptByLessonID(conn, lessonID)
 	if err != nil {
-		t.Fatalf("FindTranscriptByLessonID() erro inesperado: %v", err)
+		t.Fatalf("FindTranscriptByLessonID() unexpected error: %v", err)
 	}
 	if tr != nil {
-		t.Errorf("FindTranscriptByLessonID() = %+v, esperado nil sem transcrição", tr)
+		t.Errorf("FindTranscriptByLessonID() = %+v, expected nil with no transcript", tr)
 	}
 }
 
 func TestFindTranscriptByLessonID_UnmarshalsUtterances(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -235,7 +235,7 @@ func TestFindTranscriptByLessonID_UnmarshalsUtterances(t *testing.T) {
 		"2026-07-22", "Fulano", "aula.mp4", "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("inserir lesson de fixture falhou: %v", err)
+		t.Fatalf("fixture lesson insert failed: %v", err)
 	}
 	lessonID, _ := res.LastInsertId()
 
@@ -245,42 +245,42 @@ func TestFindTranscriptByLessonID_UnmarshalsUtterances(t *testing.T) {
 	}
 	raw, err := json.Marshal(want)
 	if err != nil {
-		t.Fatalf("json.Marshal() de fixture falhou: %v", err)
+		t.Fatalf("fixture json.Marshal() failed: %v", err)
 	}
 	if err := InsertTranscript(conn, lessonID, "aula.transcript.json", string(raw)); err != nil {
-		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
+		t.Fatalf("InsertTranscript() unexpected error: %v", err)
 	}
 
 	tr, err := FindTranscriptByLessonID(conn, lessonID)
 	if err != nil {
-		t.Fatalf("FindTranscriptByLessonID() erro inesperado: %v", err)
+		t.Fatalf("FindTranscriptByLessonID() unexpected error: %v", err)
 	}
 	if tr == nil {
-		t.Fatal("FindTranscriptByLessonID() = nil, esperado transcript encontrado")
+		t.Fatal("FindTranscriptByLessonID() = nil, expected a found transcript")
 	}
 	if tr.RawJSONPath != "aula.transcript.json" {
-		t.Errorf("RawJSONPath = %q, esperado aula.transcript.json", tr.RawJSONPath)
+		t.Errorf("RawJSONPath = %q, expected aula.transcript.json", tr.RawJSONPath)
 	}
 	if len(tr.Utterances) != 2 {
-		t.Fatalf("Utterances = %+v, esperado 2 falas", tr.Utterances)
+		t.Fatalf("Utterances = %+v, expected 2 utterances", tr.Utterances)
 	}
 	if tr.Utterances[0].Speaker != "speaker_0" || tr.Utterances[0].End != 2*time.Second {
-		t.Errorf("Utterances[0] = %+v, não bate com a fixture", tr.Utterances[0])
+		t.Errorf("Utterances[0] = %+v, doesn't match the fixture", tr.Utterances[0])
 	}
 	if tr.Utterances[1].Text != "Hi there" || tr.Utterances[1].Start != 2*time.Second {
-		t.Errorf("Utterances[1] = %+v, não bate com a fixture", tr.Utterances[1])
+		t.Errorf("Utterances[1] = %+v, doesn't match the fixture", tr.Utterances[1])
 	}
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./internal/db/... -run TestFindTranscriptByLessonID -v`
 Expected: FAIL — `undefined: FindTranscriptByLessonID`
 
-- [ ] **Step 3: Implementar `FindTranscriptByLessonID`**
+- [ ] **Step 3: Implement `FindTranscriptByLessonID`**
 
-Substituir todo o conteúdo de `internal/db/transcripts.go`:
+Replace the entire content of `internal/db/transcripts.go`:
 ```go
 package db
 
@@ -293,9 +293,9 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// HasTranscript indica se já existe uma transcrição gravada para
-// lessonID — usado por internal/jobs.Worker pra idempotência do job
-// transcribe.
+// HasTranscript reports whether a transcript is already recorded for
+// lessonID — used by internal/jobs.Worker for the transcribe job's
+// idempotency.
 func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 	var id int64
 	err := conn.QueryRow(`SELECT id FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&id)
@@ -303,36 +303,36 @@ func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("buscar transcript da lesson %d: %w", lessonID, err)
+		return false, fmt.Errorf("find transcript for lesson %d: %w", lessonID, err)
 	}
 	return true, nil
 }
 
-// InsertTranscript grava a transcrição de uma lesson. rawJSONPath é
-// relativo à storage_root (mesma convenção de lessons.video_path);
-// utterancesJSON já vem serializado ([]stt.Utterance em JSON).
+// InsertTranscript records the transcript of a lesson. rawJSONPath is
+// relative to storage_root (same convention as lessons.video_path);
+// utterancesJSON is already serialized ([]stt.Utterance in JSON).
 func InsertTranscript(conn *sql.DB, lessonID int64, rawJSONPath string, utterancesJSON string) error {
 	_, err := conn.Exec(
 		`INSERT INTO transcripts (lesson_id, raw_json_path, utterances, created_at) VALUES (?, ?, ?, ?)`,
 		lessonID, rawJSONPath, utterancesJSON, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		return fmt.Errorf("inserir transcript da lesson %d: %w", lessonID, err)
+		return fmt.Errorf("insert transcript for lesson %d: %w", lessonID, err)
 	}
 	return nil
 }
 
-// Transcript é a transcrição completa de uma lesson, já desserializada.
+// Transcript is the complete transcript of a lesson, already deserialized.
 type Transcript struct {
 	LessonID    int64
 	RawJSONPath string
 	Utterances  []stt.Utterance
 }
 
-// FindTranscriptByLessonID busca a transcrição de uma lesson. Retorna
-// (nil, nil) se ainda não houver transcrição gravada — estado normal
-// enquanto o job transcribe está pendente/rodando ou falhou (ver
-// LibraryService.GetLesson/GetTranscript, História 6), não um erro.
+// FindTranscriptByLessonID looks up a lesson's transcript. Returns
+// (nil, nil) if no transcript has been recorded yet — the normal state
+// while the transcribe job is pending/running or has failed (see
+// LibraryService.GetLesson/GetTranscript, Story 6), not an error.
 func FindTranscriptByLessonID(conn *sql.DB, lessonID int64) (*Transcript, error) {
 	var rawJSONPath, utterancesJSON string
 	err := conn.QueryRow(
@@ -342,25 +342,25 @@ func FindTranscriptByLessonID(conn *sql.DB, lessonID int64) (*Transcript, error)
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar transcript da lesson %d: %w", lessonID, err)
+		return nil, fmt.Errorf("find transcript for lesson %d: %w", lessonID, err)
 	}
 	var utterances []stt.Utterance
 	if err := json.Unmarshal([]byte(utterancesJSON), &utterances); err != nil {
-		return nil, fmt.Errorf("desserializar utterances da lesson %d: %w", lessonID, err)
+		return nil, fmt.Errorf("unmarshal utterances for lesson %d: %w", lessonID, err)
 	}
 	return &Transcript{LessonID: lessonID, RawJSONPath: rawJSONPath, Utterances: utterances}, nil
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/db/... -run TestFindTranscriptByLessonID -v`
-Expected: PASS (os dois testes)
+Expected: PASS (both tests)
 
-- [ ] **Step 5: Rodar toda a suíte de `internal/db`**
+- [ ] **Step 5: Run the entire `internal/db` suite**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos os testes
+Expected: PASS on every test
 
 - [ ] **Step 6: Commit**
 
@@ -371,28 +371,29 @@ git commit -m "feat: adiciona leitura de transcript por lesson id"
 
 ---
 
-### Task 3: `FindLessonWithStatusByID` + coluna nova em `ListLessonsWithStatus` (internal/db)
+### Task 3: `FindLessonWithStatusByID` + new column in `ListLessonsWithStatus` (internal/db)
 
-Refatora `lesson_status.go` pra compartilhar a lista de colunas/JOIN entre `ListLessonsWithStatus`
-(várias linhas) e a nova `FindLessonWithStatusByID` (uma linha), evitando duas queries que podem
-divergir. Também é aqui que `student_speaker_label` passa a ser lido junto com o status.
+Refactors `lesson_status.go` to share the column list/JOIN between `ListLessonsWithStatus`
+(multiple rows) and the new `FindLessonWithStatusByID` (single row), avoiding two queries that
+could drift apart. This is also where `student_speaker_label` starts being read alongside the
+status.
 
 **Files:**
-- Modify: `internal/db/lesson_status.go` (reescreve por completo)
+- Modify: `internal/db/lesson_status.go` (rewritten in full)
 - Test: `internal/db/lesson_status_test.go`
 
 **Interfaces:**
-- Consumes: `db.Lesson.StudentSpeakerLabel *string` (Task 1); `deriveStatus` (já existente, sem mudanças de assinatura).
-- Produces: `db.FindLessonWithStatusByID(conn *sql.DB, id int64) (*db.LessonWithStatus, error)` — retorna `(nil, nil)` se a lesson não existir. `db.LessonWithStatus.StudentSpeakerLabel *string` (promovido de `Lesson`, já populado).
+- Consumes: `db.Lesson.StudentSpeakerLabel *string` (Task 1); `deriveStatus` (already existing, no signature change).
+- Produces: `db.FindLessonWithStatusByID(conn *sql.DB, id int64) (*db.LessonWithStatus, error)` — returns `(nil, nil)` if the lesson doesn't exist. `db.LessonWithStatus.StudentSpeakerLabel *string` (promoted from `Lesson`, already populated).
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [ ] **Step 1: Write the failing test**
 
-Adicionar ao final de `internal/db/lesson_status_test.go`:
+Add to the end of `internal/db/lesson_status_test.go`:
 ```go
 func TestFindLessonWithStatusByID_FindsExistingWithStatusAndNilWhenMissing(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -400,36 +401,36 @@ func TestFindLessonWithStatusByID_FindsExistingWithStatusAndNilWhenMissing(t *te
 	mustInsertJob(t, conn, lessonID, "extract_audio", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
 	mustInsertJob(t, conn, lessonID, "transcribe", "done", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z")
 	if err := SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
-		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+		t.Fatalf("SetStudentSpeaker() unexpected error: %v", err)
 	}
 
 	found, err := FindLessonWithStatusByID(conn, lessonID)
 	if err != nil {
-		t.Fatalf("FindLessonWithStatusByID() erro inesperado: %v", err)
+		t.Fatalf("FindLessonWithStatusByID() unexpected error: %v", err)
 	}
 	if found == nil || found.Status != "pronta" {
-		t.Fatalf("FindLessonWithStatusByID() = %+v, esperado status=pronta", found)
+		t.Fatalf("FindLessonWithStatusByID() = %+v, expected status=pronta", found)
 	}
 	if found.StudentSpeakerLabel == nil || *found.StudentSpeakerLabel != "speaker_0" {
-		t.Errorf("StudentSpeakerLabel = %v, esperado speaker_0", found.StudentSpeakerLabel)
+		t.Errorf("StudentSpeakerLabel = %v, expected speaker_0", found.StudentSpeakerLabel)
 	}
 
 	missing, err := FindLessonWithStatusByID(conn, lessonID+999)
 	if err != nil {
-		t.Fatalf("FindLessonWithStatusByID() erro inesperado: %v", err)
+		t.Fatalf("FindLessonWithStatusByID() unexpected error: %v", err)
 	}
 	if missing != nil {
-		t.Errorf("FindLessonWithStatusByID() para id inexistente = %+v, esperado nil", missing)
+		t.Errorf("FindLessonWithStatusByID() for a nonexistent id = %+v, expected nil", missing)
 	}
 }
 ```
 
-- [ ] **Step 2: Rodar o teste e confirmar que falha**
+- [ ] **Step 2: Run the test and confirm it fails**
 
 Run: `go test ./internal/db/... -run TestFindLessonWithStatusByID -v`
 Expected: FAIL — `undefined: FindLessonWithStatusByID`
 
-- [ ] **Step 3: Implementar — reescrever `internal/db/lesson_status.go` por completo**
+- [ ] **Step 3: Implement — rewrite `internal/db/lesson_status.go` in full**
 
 ```go
 // internal/db/lesson_status.go
@@ -440,28 +441,29 @@ import (
 	"fmt"
 )
 
-// LessonFilter filtra ListLessonsWithStatus — todos os campos são opcionais
-// (string vazia = sem filtro), usado pelo filtro por tutor/período da
-// Biblioteca (História 5).
+// LessonFilter filters ListLessonsWithStatus — all fields are optional
+// (empty string = no filter), used by the Library's tutor/date-range
+// filter (Story 5).
 type LessonFilter struct {
 	Tutor    string
-	DateFrom string // AAAA-MM-DD, inclusive
-	DateTo   string // AAAA-MM-DD, inclusive
+	DateFrom string // YYYY-MM-DD, inclusive
+	DateTo   string // YYYY-MM-DD, inclusive
 }
 
-// LessonWithStatus é uma lesson com o status derivado dos jobs
-// extract_audio/transcribe. Status é sempre um de "processando", "pronta",
-// "erro"; ErrorMessage só é preenchido quando Status == "erro" — ver as
-// regras de derivação em deriveStatus.
+// LessonWithStatus is a lesson with the status derived from the
+// extract_audio/transcribe jobs. Status is always one of "processando",
+// "pronta", "erro"; ErrorMessage is only filled in when Status == "erro" —
+// see the derivation rules in deriveStatus.
 type LessonWithStatus struct {
 	Lesson
 	Status       string
 	ErrorMessage string
 }
 
-// lessonWithStatusColumns e lessonWithStatusFromJoin são compartilhados por
-// ListLessonsWithStatus (várias linhas) e FindLessonWithStatusByID (uma
-// linha, História 6) — mesma lista de colunas/JOIN, pra não divergirem.
+// lessonWithStatusColumns and lessonWithStatusFromJoin are shared by
+// ListLessonsWithStatus (multiple rows) and FindLessonWithStatusByID
+// (single row, Story 6) — the same column list/JOIN, so they can't drift
+// apart.
 const lessonWithStatusColumns = `
 		l.id, l.lesson_date, l.tutor, l.video_path,
 		COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''),
@@ -474,9 +476,9 @@ const lessonWithStatusFromJoin = `
 	LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
 	LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'`
 
-// rowScanner é satisfeito tanto por *sql.Row (uma linha) quanto por *sql.Rows
-// (várias linhas) — permite compartilhar o scan entre
-// ListLessonsWithStatus e FindLessonWithStatusByID.
+// rowScanner is satisfied by both *sql.Row (single row) and *sql.Rows
+// (multiple rows) — lets the scan be shared between
+// ListLessonsWithStatus and FindLessonWithStatusByID.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -508,11 +510,12 @@ func scanLessonWithStatusRow(s rowScanner) (LessonWithStatus, error) {
 	return lws, nil
 }
 
-// ListLessonsWithStatus lista as lessons confirmadas com o status derivado
-// dos jobs, mais recentes primeiro, aplicando filter (campos vazios são
-// ignorados). O filtro de data compara só a parte AAAA-MM-DD de
-// lesson_date (que pode ter horário, formato de <input type="datetime-local">),
-// pra incluir aulas com horário registrado no dia inteiro do intervalo.
+// ListLessonsWithStatus lists confirmed lessons with the status derived
+// from the jobs, most recent first, applying filter (empty fields are
+// ignored). The date filter only compares the YYYY-MM-DD part of
+// lesson_date (which can carry a time, from an <input type="datetime-local">
+// format), so lessons with a recorded time are included across the whole
+// day of the range.
 func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error) {
 	query := `SELECT` + lessonWithStatusColumns + lessonWithStatusFromJoin + ` WHERE 1=1`
 	var args []any
@@ -532,7 +535,7 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 
 	rows, err := conn.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("listar lessons com status: %w", err)
+		return nil, fmt.Errorf("list lessons with status: %w", err)
 	}
 	defer rows.Close()
 
@@ -540,21 +543,21 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 	for rows.Next() {
 		lws, err := scanLessonWithStatusRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("ler lesson com status: %w", err)
+			return nil, fmt.Errorf("read lesson with status: %w", err)
 		}
 		out = append(out, lws)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterar lessons com status: %w", err)
+		return nil, fmt.Errorf("iterate lessons with status: %w", err)
 	}
 	return out, nil
 }
 
-// FindLessonWithStatusByID busca uma lesson por id já com o status
-// derivado dos jobs (mesmas regras de ListLessonsWithStatus) — usada pelo
-// Detalhe (História 6), que agora abre em qualquer status, não só
-// "pronta" (ver services.LibraryService.GetLesson). Retorna (nil, nil) se
-// a lesson não existir.
+// FindLessonWithStatusByID looks up a lesson by id with the status already
+// derived from its jobs (same rules as ListLessonsWithStatus) — used by
+// the Detail screen (Story 6), which now opens regardless of status, not
+// just "pronta" (see services.LibraryService.GetLesson). Returns
+// (nil, nil) if the lesson doesn't exist.
 func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error) {
 	row := conn.QueryRow(`SELECT`+lessonWithStatusColumns+lessonWithStatusFromJoin+` WHERE l.id = ?`, id)
 	lws, err := scanLessonWithStatusRow(row)
@@ -562,16 +565,16 @@ func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error)
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar lesson com status por id %d: %w", id, err)
+		return nil, fmt.Errorf("find lesson with status by id %d: %w", id, err)
 	}
 	return &lws, nil
 }
 
-// deriveStatus aplica as regras de status da Biblioteca (História 5): erro
-// do extract_audio é a causa raiz e tem prioridade sobre o erro do
-// transcribe (que fica bloqueado quando o extract_audio dele falha — ver
-// claimNextEligibleJob em internal/jobs/worker.go); "pronta" exige o
-// transcribe concluído, não só o extract_audio.
+// deriveStatus applies the Library's status rules (Story 5): an
+// extract_audio error is the root cause and takes priority over a
+// transcribe error (which stays blocked when its extract_audio failed —
+// see claimNextEligibleJob in internal/jobs/worker.go); "pronta" requires
+// transcribe to be done, not just extract_audio.
 func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError string) (status string, message string) {
 	if extractStatus == "error" {
 		return "erro", extractError
@@ -586,15 +589,15 @@ func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError
 }
 ```
 
-- [ ] **Step 4: Rodar o teste novo e confirmar que passa**
+- [ ] **Step 4: Run the new test and confirm it passes**
 
 Run: `go test ./internal/db/... -run TestFindLessonWithStatusByID -v`
 Expected: PASS
 
-- [ ] **Step 5: Rodar toda a suíte de `internal/db` (garantir que a refatoração não quebrou `ListLessonsWithStatus`)**
+- [ ] **Step 5: Run the entire `internal/db` suite (make sure the refactor didn't break `ListLessonsWithStatus`)**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos os testes, incluindo os 5 testes existentes de `lesson_status_test.go`
+Expected: PASS on every test, including the 5 existing tests in `lesson_status_test.go`
 (`TestListLessonsWithStatus_ProcessandoWhenNoJobsDone`,
 `TestListLessonsWithStatus_ProntaWhenTranscribeDone`,
 `TestListLessonsWithStatus_ErroComMensagemDaCausaRaiz`,
@@ -610,7 +613,7 @@ git commit -m "feat: adiciona busca de lesson por id com status derivado"
 
 ---
 
-### Task 4: `services/library.go` — `GetLesson` com status, `GetTranscript`, `SetStudentSpeaker`
+### Task 4: `services/library.go` — `GetLesson` with status, `GetTranscript`, `SetStudentSpeaker`
 
 **Files:**
 - Modify: `services/library.go`
@@ -618,22 +621,22 @@ git commit -m "feat: adiciona busca de lesson por id com status derivado"
 
 **Interfaces:**
 - Consumes: `db.FindLessonWithStatusByID` (Task 3), `db.FindTranscriptByLessonID` (Task 2), `db.SetStudentSpeaker` (Task 1).
-- Produces (usados pelo frontend via bindings, Task 5):
-  - `services.Lesson` ganha `StudentSpeakerLabel *string \`json:"studentSpeakerLabel"\``.
+- Produces (used by the frontend via bindings, Task 5):
+  - `services.Lesson` gains `StudentSpeakerLabel *string \`json:"studentSpeakerLabel"\``.
   - `services.Transcript{ Utterances []Utterance \`json:"utterances"\` }`.
   - `services.Utterance{ Speaker string \`json:"speaker"\`; Text string \`json:"text"\`; StartSeconds float64 \`json:"startSeconds"\`; EndSeconds float64 \`json:"endSeconds"\` }`.
-  - `(s *LibraryService) GetLesson(id int64) (Lesson, error)` — agora com `Status`/`ErrorMessage`/`StudentSpeakerLabel` preenchidos.
-  - `(s *LibraryService) GetTranscript(lessonID int64) (Transcript, error)` — erro se não houver transcrição.
+  - `(s *LibraryService) GetLesson(id int64) (Lesson, error)` — now with `Status`/`ErrorMessage`/`StudentSpeakerLabel` filled in.
+  - `(s *LibraryService) GetTranscript(lessonID int64) (Transcript, error)` — errors if there's no transcript.
   - `(s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error`.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [ ] **Step 1: Write the failing tests**
 
-Adicionar ao final de `services/library_test.go`:
+Add to the end of `services/library_test.go`:
 ```go
 func TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -644,31 +647,31 @@ func TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker(t *testing.T) 
 	svc := NewLibraryService(conn)
 	lesson, err := svc.GetLesson(lessonID)
 	if err != nil {
-		t.Fatalf("GetLesson() erro inesperado: %v", err)
+		t.Fatalf("GetLesson() unexpected error: %v", err)
 	}
 	if lesson.Status != "processando" {
-		t.Errorf("GetLesson().Status = %q, esperado processando (transcribe ainda rodando)", lesson.Status)
+		t.Errorf("GetLesson().Status = %q, expected processando (transcribe still running)", lesson.Status)
 	}
 	if lesson.StudentSpeakerLabel != nil {
-		t.Errorf("GetLesson().StudentSpeakerLabel = %v, esperado nil antes do toggle", lesson.StudentSpeakerLabel)
+		t.Errorf("GetLesson().StudentSpeakerLabel = %v, expected nil before the toggle", lesson.StudentSpeakerLabel)
 	}
 
 	if err := svc.SetStudentSpeaker(lessonID, "speaker_0"); err != nil {
-		t.Fatalf("SetStudentSpeaker() erro inesperado: %v", err)
+		t.Fatalf("SetStudentSpeaker() unexpected error: %v", err)
 	}
 	lesson, err = svc.GetLesson(lessonID)
 	if err != nil {
-		t.Fatalf("GetLesson() erro inesperado: %v", err)
+		t.Fatalf("GetLesson() unexpected error: %v", err)
 	}
 	if lesson.StudentSpeakerLabel == nil || *lesson.StudentSpeakerLabel != "speaker_0" {
-		t.Errorf("GetLesson().StudentSpeakerLabel = %v, esperado speaker_0", lesson.StudentSpeakerLabel)
+		t.Errorf("GetLesson().StudentSpeakerLabel = %v, expected speaker_0", lesson.StudentSpeakerLabel)
 	}
 }
 
 func TestLibraryService_GetTranscript_ReturnsUtterancesInSeconds(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -677,29 +680,29 @@ func TestLibraryService_GetTranscript_ReturnsUtterancesInSeconds(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
 	utterancesJSON := `[{"Speaker":"speaker_0","Text":"Hello","Start":0,"End":2000000000},{"Speaker":"speaker_1","Text":"Hi","Start":2000000000,"End":3500000000}]`
 	if err := db.InsertTranscript(conn, lessonID, "aula.transcript.json", utterancesJSON); err != nil {
-		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
+		t.Fatalf("InsertTranscript() unexpected error: %v", err)
 	}
 
 	svc := NewLibraryService(conn)
 	tr, err := svc.GetTranscript(lessonID)
 	if err != nil {
-		t.Fatalf("GetTranscript() erro inesperado: %v", err)
+		t.Fatalf("GetTranscript() unexpected error: %v", err)
 	}
 	if len(tr.Utterances) != 2 {
-		t.Fatalf("GetTranscript().Utterances = %+v, esperado 2 falas", tr.Utterances)
+		t.Fatalf("GetTranscript().Utterances = %+v, expected 2 utterances", tr.Utterances)
 	}
 	if tr.Utterances[0].Speaker != "speaker_0" || tr.Utterances[0].StartSeconds != 0 || tr.Utterances[0].EndSeconds != 2 {
-		t.Errorf("Utterances[0] = %+v, esperado speaker_0 0s-2s", tr.Utterances[0])
+		t.Errorf("Utterances[0] = %+v, expected speaker_0 0s-2s", tr.Utterances[0])
 	}
 	if tr.Utterances[1].StartSeconds != 2 || tr.Utterances[1].EndSeconds != 3.5 {
-		t.Errorf("Utterances[1] = %+v, esperado 2s-3.5s", tr.Utterances[1])
+		t.Errorf("Utterances[1] = %+v, expected 2s-3.5s", tr.Utterances[1])
 	}
 }
 
 func TestLibraryService_GetTranscript_ErrorsWhenNoTranscriptYet(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -709,17 +712,17 @@ func TestLibraryService_GetTranscript_ErrorsWhenNoTranscriptYet(t *testing.T) {
 
 	svc := NewLibraryService(conn)
 	if _, err := svc.GetTranscript(lessonID); err == nil {
-		t.Error("GetTranscript() sem transcrição esperava erro, veio nil")
+		t.Error("GetTranscript() with no transcript expected an error, got nil")
 	}
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+- [ ] **Step 2: Run the tests and confirm they fail**
 
 Run: `go test ./services/... -run "TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker|TestLibraryService_GetTranscript" -v`
 Expected: FAIL — `undefined: svc.SetStudentSpeaker` / `undefined: svc.GetTranscript` (compile error)
 
-- [ ] **Step 3: Implementar — reescrever `services/library.go` por completo**
+- [ ] **Step 3: Implement — rewrite `services/library.go` in full**
 
 ```go
 package services
@@ -731,10 +734,11 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// LibraryService expõe as aulas já confirmadas para a Biblioteca —
-// listagem com status derivado dos jobs e duração (História 5), filtro por
-// tutor/período, reprocessamento de aulas com erro, busca de uma aula pro
-// Detalhe e sua transcrição sincronizada (História 6).
+// LibraryService exposes already-confirmed lessons to the Library —
+// listing with status derived from the jobs and duration (Story 5),
+// filtering by tutor/date range, reprocessing lessons with an error,
+// looking up a lesson for the Detail screen and its synchronized
+// transcript (Story 6).
 type LibraryService struct {
 	conn *sql.DB
 }
@@ -743,12 +747,13 @@ func NewLibraryService(conn *sql.DB) *LibraryService {
 	return &LibraryService{conn: conn}
 }
 
-// Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
-// sempre um de "processando", "pronta", "erro" (ver db.LessonWithStatus);
-// ErrorMessage só é preenchido quando Status == "erro". DurationSeconds é
-// nil até o probe de duração (melhor esforço, na confirmação da
-// importação) ter sucesso. StudentSpeakerLabel é nil até o usuário marcar
-// quem é o aluno no toggle do Detalhe (História 6).
+// Lesson is a confirmed lesson, in the format exposed to the frontend.
+// Status is always one of "processando", "pronta", "erro" (see
+// db.LessonWithStatus); ErrorMessage is only filled in when
+// Status == "erro". DurationSeconds is nil until the duration probe
+// (best-effort, at import confirmation time) succeeds.
+// StudentSpeakerLabel is nil until the user picks who the student is via
+// the Detail screen's toggle (Story 6).
 type Lesson struct {
 	ID                  int64   `json:"id"`
 	LessonDate          string  `json:"lessonDate"`
@@ -760,23 +765,23 @@ type Lesson struct {
 	StudentSpeakerLabel *string `json:"studentSpeakerLabel"`
 }
 
-// LessonFilter filtra ListLessons — campos vazios são ignorados (sem
-// filtro naquele critério).
+// LessonFilter filters ListLessons — empty fields are ignored (no filter
+// on that criterion).
 type LessonFilter struct {
 	Tutor    string `json:"tutor"`
 	DateFrom string `json:"dateFrom"`
 	DateTo   string `json:"dateTo"`
 }
 
-// Transcript é a transcrição de uma lesson, no formato exposto ao Detalhe
-// (História 6).
+// Transcript is a lesson's transcript, in the format exposed to the Detail
+// screen (Story 6).
 type Transcript struct {
 	Utterances []Utterance `json:"utterances"`
 }
 
-// Utterance é uma fala da transcrição. Timestamps em segundos — mesma
-// unidade de HTMLVideoElement.currentTime no frontend, convertida aqui na
-// borda do serviço (o banco guarda time.Duration).
+// Utterance is one line of the transcript. Timestamps in seconds — the
+// same unit as HTMLVideoElement.currentTime on the frontend, converted
+// here at the service boundary (the database stores time.Duration).
 type Utterance struct {
 	Speaker      string  `json:"speaker"`
 	Text         string  `json:"text"`
@@ -784,8 +789,8 @@ type Utterance struct {
 	EndSeconds   float64 `json:"endSeconds"`
 }
 
-// ListLessons lista as aulas confirmadas com status/duração, mais recentes
-// primeiro, aplicando filter.
+// ListLessons lists confirmed lessons with status/duration, most recent
+// first, applying filter.
 func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	rows, err := db.ListLessonsWithStatus(s.conn, db.LessonFilter{
 		Tutor:    filter.Tutor,
@@ -811,25 +816,26 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	return out, nil
 }
 
-// ListTutors lista os tutores distintos já registrados, pro dropdown de
-// filtro da Biblioteca.
+// ListTutors lists the distinct tutors already registered, for the
+// Library's filter dropdown.
 func (s *LibraryService) ListTutors() ([]string, error) {
 	return db.ListTutors(s.conn)
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — o worker de
-// jobs (internal/jobs) retoma o pipeline sozinho no próximo poll (~5s), sem
-// precisar acordá-lo explicitamente (mesma decisão da História 4). Não é
-// erro se a lesson não tiver nenhum job em erro no momento.
+// RetryLesson resets the lesson's errored jobs back to "pending" — the
+// jobs worker (internal/jobs) picks the pipeline back up on its own at
+// the next poll (~5s), with no need to wake it explicitly (same decision
+// as Story 4). It's not an error if the lesson has no job currently in
+// error.
 func (s *LibraryService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err
 }
 
-// GetLesson busca uma aula por id, com status/erro derivados dos jobs, pro
-// Detalhe (História 6) — que agora abre em qualquer status: "processando"
-// e "erro" mostram o vídeo sem transcrição (ver LessonDetail.svelte),
-// "pronta" habilita GetTranscript.
+// GetLesson looks up a lesson by id, with status/error derived from its
+// jobs, for the Detail screen (Story 6) — which now opens regardless of
+// status: "processando" and "erro" show the video with no transcript (see
+// LessonDetail.svelte), "pronta" enables GetTranscript.
 func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	lws, err := db.FindLessonWithStatusByID(s.conn, id)
 	if err != nil {
@@ -850,10 +856,11 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	}, nil
 }
 
-// GetTranscript busca a transcrição de uma lesson pro Detalhe (História 6).
-// Só deve ser chamado quando GetLesson já retornou Status == "pronta" — o
-// Detalhe não chama isso pra aulas processando/erro, que mostram o status
-// no lugar do painel de transcrição.
+// GetTranscript looks up a lesson's transcript for the Detail screen
+// (Story 6). Should only be called once GetLesson has already returned
+// Status == "pronta" — the Detail screen doesn't call this for
+// processing/error lessons, which show the status in place of the
+// transcript panel.
 func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	t, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
@@ -874,28 +881,28 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	return out, nil
 }
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — toggle do Detalhe (História 6).
+// SetStudentSpeaker records which raw speaker (e.g. "speaker_0") is the
+// student in this lesson — the Detail screen's toggle (Story 6).
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
 }
 ```
 
-- [ ] **Step 4: Rodar os testes novos e confirmar que passam**
+- [ ] **Step 4: Run the new tests and confirm they pass**
 
 Run: `go test ./services/... -run "TestLibraryService_GetLesson_IncludesStatusAndStudentSpeaker|TestLibraryService_GetTranscript" -v`
 Expected: PASS
 
-- [ ] **Step 5: Rodar toda a suíte de `services` (garantir que `GetLesson`/`ListLessons` existentes não quebraram)**
+- [ ] **Step 5: Run the entire `services` suite (make sure the existing `GetLesson`/`ListLessons` didn't break)**
 
 Run: `go test ./services/... -v`
-Expected: PASS em todos os testes, incluindo `TestLibraryService_GetLesson_FindsExistingAndErrorsWhenMissing`,
+Expected: PASS on every test, including `TestLibraryService_GetLesson_FindsExistingAndErrorsWhenMissing`,
 `TestLibraryService_ListLessons_ReturnsConfirmedLessons`, etc.
 
-- [ ] **Step 6: `go vet` no módulo inteiro**
+- [ ] **Step 6: `go vet` on the whole module**
 
 Run: `go vet ./...`
-Expected: sem saída (limpo)
+Expected: no output (clean)
 
 - [ ] **Step 7: Commit**
 
@@ -906,48 +913,48 @@ git commit -m "feat: expoe status/transcricao/toggle de speaker no LibraryServic
 
 ---
 
-### Task 5: Regenerar bindings TS do Wails
+### Task 5: Regenerate the Wails TS bindings
 
 **Files:**
-- Modify (gerado, não editar manualmente): `frontend/bindings/assistente-idiomas/services/models.ts`, `frontend/bindings/assistente-idiomas/services/libraryservice.ts`
+- Modify (generated, do not hand-edit): `frontend/bindings/assistente-idiomas/services/models.ts`, `frontend/bindings/assistente-idiomas/services/libraryservice.ts`
 
 **Interfaces:**
 - Consumes: `LibraryService.GetLesson/GetTranscript/SetStudentSpeaker` (Task 4).
-- Produces: `models.ts` exporta `Lesson.studentSpeakerLabel: string | null`, `Transcript`, `Utterance`; `libraryservice.ts` exporta `GetTranscript(lessonID: number): $CancellablePromise<$models.Transcript>` e `SetStudentSpeaker(lessonID: number, speakerLabel: string): $CancellablePromise<void>`.
+- Produces: `models.ts` exports `Lesson.studentSpeakerLabel: string | null`, `Transcript`, `Utterance`; `libraryservice.ts` exports `GetTranscript(lessonID: number): $CancellablePromise<$models.Transcript>` and `SetStudentSpeaker(lessonID: number, speakerLabel: string): $CancellablePromise<void>`.
 
-- [ ] **Step 1: Rodar o gerador de bindings**
+- [ ] **Step 1: Run the bindings generator**
 
 Run: `wails3 generate bindings -ts -i ./...`
-Expected: comando termina sem erro (exit code 0); arquivos em `frontend/bindings/assistente-idiomas/services/` são reescritos.
+Expected: command finishes with no error (exit code 0); files under `frontend/bindings/assistente-idiomas/services/` are rewritten.
 
-- [ ] **Step 2: Conferir que `models.ts` ganhou os tipos esperados**
+- [ ] **Step 2: Check that `models.ts` gained the expected types**
 
 Run: `grep -n "studentSpeakerLabel\|interface Transcript\|interface Utterance" frontend/bindings/assistente-idiomas/services/models.ts`
-Expected: 3 linhas de saída — `"studentSpeakerLabel"` dentro de `Lesson`, `export interface Transcript`, `export interface Utterance`.
+Expected: 3 lines of output — `"studentSpeakerLabel"` inside `Lesson`, `export interface Transcript`, `export interface Utterance`.
 
-- [ ] **Step 3: Conferir que `libraryservice.ts` ganhou as duas funções novas**
+- [ ] **Step 3: Check that `libraryservice.ts` gained the two new functions**
 
 Run: `grep -n "export function GetTranscript\|export function SetStudentSpeaker" frontend/bindings/assistente-idiomas/services/libraryservice.ts`
-Expected: 2 linhas de saída.
+Expected: 2 lines of output.
 
-`frontend/bindings/` está no `.gitignore` (nunca foi commitado — é artefato de build
-regenerado localmente por `wails3 generate bindings`, não uma fonte versionada). Nada a
-commitar nesta task; os arquivos gerados já ficam no working tree pras Tasks 6 e 7 usarem.
+`frontend/bindings/` is in `.gitignore` (never committed — it's a build artifact regenerated
+locally by `wails3 generate bindings`, not a versioned source). Nothing to commit in this task;
+the generated files just stay in the working tree for Tasks 6 and 7 to use.
 
 ---
 
-### Task 6: `Library.svelte` — Detalhe abre em qualquer status
+### Task 6: `Library.svelte` — the Detail screen opens regardless of status
 
 **Files:**
 - Modify: `frontend/src/lib/screens/Library.svelte:122-126,189-200`
 
 **Interfaces:**
 - Consumes: `Lesson.status` (bindings, Task 5).
-- Produces: `openLesson` sempre chama `onOpenLesson(lesson.id)`, independente do status.
+- Produces: `openLesson` always calls `onOpenLesson(lesson.id)`, regardless of status.
 
-- [ ] **Step 1: Editar `openLesson` (linhas 122-126)**
+- [ ] **Step 1: Edit `openLesson` (lines 122-126)**
 
-Trocar:
+Replace:
 ```js
   function openLesson(lesson: Lesson) {
     if (lesson.status === "pronta") {
@@ -955,16 +962,16 @@ Trocar:
     }
   }
 ```
-Por:
+With:
 ```js
   function openLesson(lesson: Lesson) {
     onOpenLesson(lesson.id);
   }
 ```
 
-- [ ] **Step 2: Editar o botão da linha da aula (linhas 189-200) — sempre clicável**
+- [ ] **Step 2: Edit the lesson row's button (lines 189-200) — always clickable**
 
-Trocar:
+Replace:
 ```svelte
               <button
                 class="lesson-main"
@@ -972,15 +979,15 @@ Trocar:
                 style="cursor: {lesson.status === 'pronta' ? 'pointer' : 'default'}; opacity: {lesson.status === 'pronta' ? 1 : 0.7};"
               >
 ```
-Por:
+With:
 ```svelte
               <button class="lesson-main" onclick={() => openLesson(lesson)}>
 ```
 
-- [ ] **Step 3: Verificar tipos/compilação do frontend**
+- [ ] **Step 3: Check the frontend's types/compilation**
 
 Run: `cd frontend && npm run check`
-Expected: sem erros novos (mesmo baseline de antes da mudança)
+Expected: no new errors (same baseline as before the change)
 
 - [ ] **Step 4: Commit**
 
@@ -991,20 +998,19 @@ git commit -m "feat: Biblioteca abre o Detalhe em qualquer status da aula"
 
 ---
 
-### Task 7: `LessonDetail.svelte` — grade com vídeo + transcrição sincronizada
+### Task 7: `LessonDetail.svelte` — grid with synchronized video + transcript
 
-Reescreve o stub da História 5 (cabeçalho + vídeo) para o layout completo: grade 2 colunas,
-sincronização por `timeupdate`, toggle de speaker, auto-scroll, estados de painel
-(processando/erro/pronta).
+Rewrites Story 5's stub (header + video) into the full layout: 2-column grid, `timeupdate`
+sync, speaker toggle, auto-scroll, panel states (processing/error/ready).
 
 **Files:**
-- Modify: `frontend/src/lib/screens/LessonDetail.svelte` (reescreve por completo)
+- Modify: `frontend/src/lib/screens/LessonDetail.svelte` (rewritten in full)
 
 **Interfaces:**
-- Consumes: `LibraryService.GetLesson`, `LibraryService.GetTranscript`, `LibraryService.SetStudentSpeaker`, `LibraryService.RetryLesson` (bindings, Task 5); `colors`/`fonts` de `../theme`.
-- Produces: componente `LessonDetail` com props `{ lessonId: number; onBack: () => void }` (inalteradas).
+- Consumes: `LibraryService.GetLesson`, `LibraryService.GetTranscript`, `LibraryService.SetStudentSpeaker`, `LibraryService.RetryLesson` (bindings, Task 5); `colors`/`fonts` from `../theme`.
+- Produces: `LessonDetail` component with props `{ lessonId: number; onBack: () => void }` (unchanged).
 
-- [ ] **Step 1: Reescrever `frontend/src/lib/screens/LessonDetail.svelte` por completo**
+- [ ] **Step 1: Rewrite `frontend/src/lib/screens/LessonDetail.svelte` in full**
 
 ```svelte
 <script lang="ts">
@@ -1043,9 +1049,10 @@ sincronização por `timeupdate`, toggle de speaker, auto-scroll, estados de pai
     return hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
   }
 
-  // Ordem de primeira fala — determinística, não depende de ordem de mapa.
-  // "Speaker A"/"Speaker B" (ou C, D... em diarização com ruído) são os
-  // rótulos neutros exibidos antes do usuário escolher quem é o aluno.
+  // Order of first utterance — deterministic, doesn't depend on map
+  // iteration order. "Speaker A"/"Speaker B" (or C, D... with noisy
+  // diarization) are the neutral labels shown before the user picks who
+  // the student is.
   const speakerOrder = $derived.by(() => {
     const seen: string[] = [];
     for (const u of transcript?.utterances ?? []) {
@@ -1072,8 +1079,9 @@ sincronização por `timeupdate`, toggle de speaker, auto-scroll, estados de pai
     return neutralLabel(speaker);
   }
 
-  // Última utterance cujo start já passou — busca linear, poucas centenas
-  // de falas por aula, custo irrelevante a cada tick de timeupdate.
+  // Last utterance whose start has already passed — linear search, a few
+  // hundred utterances per lesson at most, negligible cost on every
+  // timeupdate tick.
   const currentIndex = $derived.by(() => {
     const utterances = transcript?.utterances ?? [];
     let idx = -1;
@@ -1093,8 +1101,8 @@ sincronização por `timeupdate`, toggle de speaker, auto-scroll, estados de pai
     if (videoEl) currentTime = videoEl.currentTime;
   }
 
-  // Só ajusta a posição (seek) — não força play nem pause, pra não
-  // surpreender quem só quer conferir o timestamp.
+  // Only adjusts the position (seek) — doesn't force play nor pause, so
+  // it doesn't surprise someone who just wants to check the timestamp.
   function seekTo(startSeconds: number) {
     if (videoEl) videoEl.currentTime = startSeconds;
   }
@@ -1343,15 +1351,15 @@ sincronização por `timeupdate`, toggle de speaker, auto-scroll, estados de pai
 </style>
 ```
 
-- [ ] **Step 2: Verificar tipos/compilação do frontend**
+- [ ] **Step 2: Check the frontend's types/compilation**
 
 Run: `cd frontend && npm run check`
-Expected: sem erros de tipo (a interface `Transcript`/`Utterance` já existe nos bindings desde a Task 5)
+Expected: no type errors (the `Transcript`/`Utterance` interface already exists in the bindings since Task 5)
 
-- [ ] **Step 3: Build de produção do frontend**
+- [ ] **Step 3: Frontend production build**
 
 Run: `cd frontend && npm run build`
-Expected: build termina sem erro
+Expected: build finishes with no error
 
 - [ ] **Step 4: Commit**
 
@@ -1362,68 +1370,71 @@ git commit -m "feat: transcricao sincronizada no Detalhe da aula"
 
 ---
 
-### Task 8: Verificação final, atualização do progresso e commit de fechamento
+### Task 8: Final verification, progress update, and closing commit
 
 **Files:**
-- Modify: `docs/fase-1-mvp.md` (marca critérios da História 6, adiciona linha na tabela de progresso)
+- Modify: `docs/fase-1-mvp.md` (marks Story 6's criteria, adds a row to the progress table)
 
-- [ ] **Step 1: Rodar toda a suíte Go**
+- [ ] **Step 1: Run the entire Go suite**
 
 Run: `go test ./... -v`
-Expected: PASS em todos os pacotes
+Expected: PASS on every package
 
-- [ ] **Step 2: `go vet` no módulo inteiro**
+- [ ] **Step 2: `go vet` on the whole module**
 
 Run: `go vet ./...`
-Expected: sem saída
+Expected: no output
 
-- [ ] **Step 3: Build do binário Go (garante que main.go/services compilam juntos)**
+- [ ] **Step 3: Build the Go binary (makes sure main.go/services compile together)**
 
 Run: `wails3 build`
-Expected: termina sem erro, binário gerado
+Expected: finishes with no error, binary produced
 
-- [ ] **Step 4: Atualizar `docs/fase-1-mvp.md` — marcar os critérios da História 6 (linhas 154-159) como feitos, com a mesma ressalva de verificação visual pendente usada nas histórias anteriores**
+- [ ] **Step 4: Update `docs/fase-1-mvp.md` — mark Story 6's criteria (lines 154-159) as done, with the same pending-visual-verification caveat used in the previous stories**
 
-Editar os 5 checkboxes de "### Critérios de aceite" da História 6 (linhas 155-159) de `- [ ]` para
-`- [x]`, e adicionar ao final de cada um (seguindo o padrão das Histórias 3/4/5) uma nota entre
-parênteses quando fizer sentido, por exemplo no critério do seek:
+Edit the 5 checkboxes under Story 6's "### Acceptance criteria" (lines 155-159) from `- [ ]` to
+`- [x]`, and add to the end of each (following the pattern from Stories 3/4/5) a note in
+parentheses where it makes sense, for example on the seek criterion:
 ```
-- [x] Vídeo local servido ao `<video>` via asset handler com range requests; seek funciona (risco 1 resolvido) — endpoint reaproveitado da História 5 sem mudanças.
+- [x] Local video served to the `<video>` element via the asset handler with range requests; seeking works (risk 1 resolved) — endpoint reused from Story 5 unchanged.
 ```
-Aplicar o mesmo padrão (marcar `[x]`, comentário curto) aos outros 4 critérios (transcrição
-rolável, clique pula vídeo, highlight acompanha playback, aula sem transcrição reproduz vídeo).
+Apply the same pattern (mark `[x]`, short comment) to the other 4 criteria (scrollable
+transcript, click seeks the video, highlight follows playback, a lesson with no transcript still
+plays the video).
 
-- [ ] **Step 5: Adicionar linha na "Registro de progresso" (final do arquivo, depois da linha da História 5)**
+- [ ] **Step 5: Add a row to "Progress log" (end of the file, after Story 5's row)**
 
-Adicionar uma nova linha à tabela markdown, seguindo o formato das anteriores, resumindo: o que
-foi implementado (grade vídeo+transcrição, sync por `timeupdate`, toggle de speaker persistido
-em `student_speaker_label`, Biblioteca liberada pra abrir Detalhe em qualquer status, painel
-sem abas) e a mesma ressalva recorrente de verificação visual (clique-pula-vídeo,
-highlight-acompanha-playback, toggle) ainda pendente em janela real Windows/Linux.
+Add a new row to the markdown table, following the format of the previous ones, summarizing:
+what was implemented (video+transcript grid, `timeupdate` sync, speaker toggle persisted in
+`student_speaker_label`, the Library now allowed to open the Detail screen regardless of status,
+tab-less panel) and the same recurring caveat that visual verification
+(click-seeks-video, highlight-follows-playback, toggle) is still pending on a real Windows/Linux
+window.
 
-- [ ] **Step 6: Commit de fechamento**
+- [ ] **Step 6: Closing commit**
 
 ```bash
 git add docs/fase-1-mvp.md
-git commit -m "docs: marca Historia 6 concluida e registra progresso"
+git commit -m "docs: mark Story 6 complete and record progress"
 ```
 
 ---
 
 ## Self-Review
 
-**Cobertura do spec:** migração+coluna (Task 1), leitura de transcript (Task 2),
-status/toggle no Detalhe (Task 3-4), bindings (Task 5), gating da Biblioteca (Task 6), layout
-2 colunas/sync/toggle/estados de painel sem abas (Task 7), atualização de progresso (Task 8).
-Todos os critérios de aceite da História 6 (`fase-1-mvp.md:154-159`) e todas as decisões da spec
-(`docs/superpowers/specs/2026-07-22-historia-6-detalhe-sincronizado-design.md`) têm uma task
-correspondente.
+**Spec coverage:** migration+column (Task 1), transcript reading (Task 2), status/toggle in the
+Detail screen (Task 3-4), bindings (Task 5), Library gating (Task 6), 2-column layout/sync/toggle/
+tab-less panel states (Task 7), progress update (Task 8). Every acceptance criterion of Story 6
+(`fase-1-mvp.md:154-159`) and every decision in the spec
+(`docs/superpowers/specs/2026-07-22-historia-6-detalhe-sincronizado-design.md`) has a
+corresponding task.
 
-**Placeholders:** nenhum "TBD"/"implementar depois" — todo passo tem código completo ou comando
-exato com saída esperada.
+**Placeholders:** no "TBD"/"implement later" — every step has complete code or an exact command
+with expected output.
 
-**Consistência de tipos:** `Transcript`/`Utterance` (Go, Task 4) → `Transcript`/`Utterance` (TS
-gerado, Task 5) → `Transcript` importado em `LessonDetail.svelte` (Task 7), mesmos nomes de campo
-(`utterances`, `speaker`, `text`, `startSeconds`, `endSeconds`) em todas as camadas.
-`StudentSpeakerLabel`/`studentSpeakerLabel` consistente entre `db.Lesson` (Task 1),
-`services.Lesson` (Task 4) e `Lesson.studentSpeakerLabel` no Svelte (Task 7).
+**Type consistency:** `Transcript`/`Utterance` (Go, Task 4) → `Transcript`/`Utterance` (generated
+TS, Task 5) → `Transcript` imported in `LessonDetail.svelte` (Task 7), the same field names
+(`utterances`, `speaker`, `text`, `startSeconds`, `endSeconds`) across every layer.
+`StudentSpeakerLabel`/`studentSpeakerLabel` consistent between `db.Lesson` (Task 1),
+`services.Lesson` (Task 4), and `Lesson.studentSpeakerLabel` in Svelte (Task 7).
+</content>

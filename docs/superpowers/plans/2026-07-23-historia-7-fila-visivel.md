@@ -1,58 +1,58 @@
-# História 7 — Fila visível — Plano de implementação
+# Story 7 — Visible Queue — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Tela de Fila mostrando aulas com pipeline ativo/em erro (uma linha por aula, etapa +
-estado, `last_error` legível, botão Reprocessar) e badge de contagem de jobs ativos na sidebar,
-ambos atualizados ao vivo pelo evento Wails `job:updated` (já emitido desde a História 4, sem
-consumidor até agora).
+**Goal:** Queue screen showing lessons with an active/failed pipeline (one row per lesson, stage +
+state, readable `last_error`, Retry button) and an active-job count badge in the sidebar,
+both updated live by the Wails `job:updated` event (already emitted since Story 4, with no
+consumer until now).
 
-**Architecture:** Query nova em `internal/db` deriva, por aula, qual job (extract_audio ou
-transcribe) está "ativo" agora ou em erro, com prioridade que respeita o bloqueio de dependência
-entre os dois jobs. `services.QueueService` expõe isso traduzido pro frontend. No frontend, um
-store reativo único (`jobsStore.svelte.ts`, runes do Svelte 5) busca a lista uma vez e refaz a
-busca a cada `job:updated`; `Queue.svelte` e o badge da `Sidebar.svelte` só leem esse store,
-sem inscrição duplicada no evento.
+**Architecture:** A new query in `internal/db` derives, per lesson, which job (extract_audio or
+transcribe) is "active" right now or in error, with a priority that respects the dependency block
+between the two jobs. `services.QueueService` exposes this translated for the frontend. On the
+frontend, a single reactive store (`jobsStore.svelte.ts`, Svelte 5 runes) fetches the list once
+and refetches on every `job:updated`; `Queue.svelte` and the badge in `Sidebar.svelte` only read
+from this store, with no duplicate event subscription.
 
-**Tech Stack:** Go (stdlib `database/sql`, `sort`), SQLite via `modernc.org/sqlite` (já
-configurado), Wails v3 (`application.Service`, evento `job:updated` já existente), Svelte 5
+**Tech Stack:** Go (stdlib `database/sql`, `sort`), SQLite via `modernc.org/sqlite` (already
+configured), Wails v3 (`application.Service`, `job:updated` event already existing), Svelte 5
 (runes), `@wailsio/runtime` (`Events.On`).
 
 ## Global Constraints
 
-- Frontend sempre Svelte 5 com runes (`$state`, `$derived`, `$props`) — nunca sintaxe legada
-  Svelte 3/4 (`CLAUDE.md`).
-- Código e identificadores em inglês; texto voltado ao usuário e mensagens de erro em PT-BR
+- Frontend always Svelte 5 with runes (`$state`, `$derived`, `$props`) — never legacy Svelte
+  3/4 syntax (`CLAUDE.md`).
+- Code and identifiers in English; user-facing text and error messages in PT-BR
   (`CLAUDE.md`).
-- `internal/` nunca importa Wails — só `services/` pode (princípio da camada fina,
+- `internal/` never imports Wails — only `services/` may (thin-layer principle,
   `CLAUDE.md`).
-- SQL na camada de repositório (`internal/db`) portável entre drivers — nada específico de
+- SQL in the repository layer (`internal/db`) is portable across drivers — nothing specific to
   `modernc.org/sqlite` (`CLAUDE.md`).
-- Mensagens de commit: uma linha só, formato semântico (`tipo: descrição`) (`CLAUDE.md`).
-- Sem coluna de progresso percentual — jobs só têm status `pending/running/done/error`, sem
-  dado de progresso incremental (ver spec).
+- Commit messages: a single line, semantic format (`type: description`) (`CLAUDE.md`).
+- No percentage-progress column — jobs only have status `pending/running/done/error`, no
+  incremental progress data (see spec).
 
-Spec completa: `docs/superpowers/specs/2026-07-23-historia-7-fila-visivel-design.md`.
+Full spec: `docs/superpowers/specs/2026-07-23-historia-7-fila-visivel-design.md`.
 
 ---
 
-### Task 1: `internal/db/queue.go` — query da fila
+### Task 1: `internal/db/queue.go` — queue query
 
 **Files:**
 - Create: `internal/db/queue.go`
 - Test: `internal/db/queue_test.go`
 
 **Interfaces:**
-- Consumes: nada de tasks anteriores. Reaproveita `mustInsertLessonForJobs` e `mustInsertJob`
-  já definidos em `internal/db/jobs_test.go` (mesmo pacote `db`, mesmo padrão usado por
+- Consumes: nothing from previous tasks. Reuses `mustInsertLessonForJobs` and `mustInsertJob`,
+  already defined in `internal/db/jobs_test.go` (same `db` package, same pattern used by
   `internal/db/lesson_status_test.go`).
 - Produces: `type QueueEntry struct { LessonID int64; LessonDate string; Tutor string; Kind
-  string; Status string; Attempts int; LastError string; UpdatedAt string }` e `func
-  ListQueueEntries(conn *sql.DB) ([]QueueEntry, error)` — usados pela Task 2.
+  string; Status string; Attempts int; LastError string; UpdatedAt string }` and `func
+  ListQueueEntries(conn *sql.DB) ([]QueueEntry, error)` — used by Task 2.
 
-- [ ] **Step 1: Escrever os testes (vão falhar — `ListQueueEntries` ainda não existe)**
+- [ ] **Step 1: Write the tests (they will fail — `ListQueueEntries` doesn't exist yet)**
 
-Criar `internal/db/queue_test.go`:
+Create `internal/db/queue_test.go`:
 
 ```go
 // internal/db/queue_test.go
@@ -66,7 +66,7 @@ import (
 func TestListQueueEntries_ExtractAudioRunningTakesPriorityOverTranscribePending(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -76,43 +76,43 @@ func TestListQueueEntries_ExtractAudioRunningTakesPriorityOverTranscribePending(
 
 	entries, err := ListQueueEntries(conn)
 	if err != nil {
-		t.Fatalf("ListQueueEntries() erro inesperado: %v", err)
+		t.Fatalf("ListQueueEntries() unexpected error: %v", err)
 	}
 	if len(entries) != 1 || entries[0].Kind != "extract_audio" || entries[0].Status != "running" {
-		t.Errorf("ListQueueEntries() = %+v, esperado 1 entrada extract_audio/running (transcribe ainda bloqueado, mesmo pending no banco)", entries)
+		t.Errorf("ListQueueEntries() = %+v, expected 1 extract_audio/running entry (transcribe still blocked, even though pending in the DB)", entries)
 	}
 }
 
 func TestListQueueEntries_ExtractAudioErrorIsRootCause(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	lessonID := mustInsertLessonForJobs(t, conn, "aula.mp4")
 	mustInsertJob(t, conn, lessonID, "extract_audio", "error", 3, "2026-07-23T10:00:00Z", "2026-07-23T10:00:00Z")
 	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "ffmpeg não encontrado", lessonID, "extract_audio"); err != nil {
-		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+		t.Fatalf("failed to prepare fixture last_error: %v", err)
 	}
 	mustInsertJob(t, conn, lessonID, "transcribe", "error", 0, "2026-07-23T10:00:00Z", "2026-07-23T10:00:00Z")
 	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "depende de extract_audio que falhou: ffmpeg não encontrado", lessonID, "transcribe"); err != nil {
-		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+		t.Fatalf("failed to prepare fixture last_error: %v", err)
 	}
 
 	entries, err := ListQueueEntries(conn)
 	if err != nil {
-		t.Fatalf("ListQueueEntries() erro inesperado: %v", err)
+		t.Fatalf("ListQueueEntries() unexpected error: %v", err)
 	}
 	if len(entries) != 1 || entries[0].Kind != "extract_audio" || entries[0].Status != "error" || entries[0].LastError != "ffmpeg não encontrado" {
-		t.Errorf("ListQueueEntries() = %+v, esperado extract_audio/error com a mensagem de causa raiz", entries)
+		t.Errorf("ListQueueEntries() = %+v, expected extract_audio/error with the root-cause message", entries)
 	}
 }
 
 func TestListQueueEntries_TranscribeErrorWhenExtractDone(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -120,22 +120,22 @@ func TestListQueueEntries_TranscribeErrorWhenExtractDone(t *testing.T) {
 	mustInsertJob(t, conn, lessonID, "extract_audio", "done", 0, "2026-07-23T10:00:00Z", "2026-07-23T10:00:00Z")
 	mustInsertJob(t, conn, lessonID, "transcribe", "error", 2, "2026-07-23T10:05:00Z", "2026-07-23T10:05:00Z")
 	if _, err := conn.Exec(`UPDATE jobs SET last_error = ? WHERE lesson_id = ? AND kind = ?`, "falha real de STT", lessonID, "transcribe"); err != nil {
-		t.Fatalf("preparar last_error de fixture falhou: %v", err)
+		t.Fatalf("failed to prepare fixture last_error: %v", err)
 	}
 
 	entries, err := ListQueueEntries(conn)
 	if err != nil {
-		t.Fatalf("ListQueueEntries() erro inesperado: %v", err)
+		t.Fatalf("ListQueueEntries() unexpected error: %v", err)
 	}
 	if len(entries) != 1 || entries[0].Kind != "transcribe" || entries[0].Status != "error" || entries[0].LastError != "falha real de STT" {
-		t.Errorf("ListQueueEntries() = %+v, esperado transcribe/error", entries)
+		t.Errorf("ListQueueEntries() = %+v, expected transcribe/error", entries)
 	}
 }
 
 func TestListQueueEntries_TranscribePendingWhenExtractDone(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -145,17 +145,17 @@ func TestListQueueEntries_TranscribePendingWhenExtractDone(t *testing.T) {
 
 	entries, err := ListQueueEntries(conn)
 	if err != nil {
-		t.Fatalf("ListQueueEntries() erro inesperado: %v", err)
+		t.Fatalf("ListQueueEntries() unexpected error: %v", err)
 	}
 	if len(entries) != 1 || entries[0].Kind != "transcribe" || entries[0].Status != "pending" {
-		t.Errorf("ListQueueEntries() = %+v, esperado transcribe/pending (extract_audio já done, transcribe genuinamente elegível)", entries)
+		t.Errorf("ListQueueEntries() = %+v, expected transcribe/pending (extract_audio already done, transcribe genuinely eligible)", entries)
 	}
 }
 
 func TestListQueueEntries_ExcludesReadyLessons(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -165,17 +165,17 @@ func TestListQueueEntries_ExcludesReadyLessons(t *testing.T) {
 
 	entries, err := ListQueueEntries(conn)
 	if err != nil {
-		t.Fatalf("ListQueueEntries() erro inesperado: %v", err)
+		t.Fatalf("ListQueueEntries() unexpected error: %v", err)
 	}
 	if len(entries) != 0 {
-		t.Errorf("ListQueueEntries() = %+v, esperado vazio (aula pronta não entra na fila)", entries)
+		t.Errorf("ListQueueEntries() = %+v, expected empty (a ready lesson doesn't enter the queue)", entries)
 	}
 }
 
 func TestListQueueEntries_OrdersErrorFirstThenByUpdatedAt(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
@@ -193,26 +193,26 @@ func TestListQueueEntries_OrdersErrorFirstThenByUpdatedAt(t *testing.T) {
 
 	entries, err := ListQueueEntries(conn)
 	if err != nil {
-		t.Fatalf("ListQueueEntries() erro inesperado: %v", err)
+		t.Fatalf("ListQueueEntries() unexpected error: %v", err)
 	}
 	if len(entries) != 3 {
-		t.Fatalf("ListQueueEntries() = %+v, esperado 3 entradas", entries)
+		t.Fatalf("ListQueueEntries() = %+v, expected 3 entries", entries)
 	}
 	if entries[0].LessonID != withError {
-		t.Errorf("ListQueueEntries()[0].LessonID = %d, esperado a aula com erro primeiro", entries[0].LessonID)
+		t.Errorf("ListQueueEntries()[0].LessonID = %d, expected the lesson with an error first", entries[0].LessonID)
 	}
 	if entries[1].LessonID != older || entries[2].LessonID != newer {
-		t.Errorf("ListQueueEntries()[1:] = %+v, esperado older antes de newer (FIFO por updated_at)", entries[1:])
+		t.Errorf("ListQueueEntries()[1:] = %+v, expected older before newer (FIFO by updated_at)", entries[1:])
 	}
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham por `ListQueueEntries`/`QueueEntry` não existirem**
+- [ ] **Step 2: Run the tests and confirm they fail because `ListQueueEntries`/`QueueEntry` don't exist**
 
 Run: `go test ./internal/db/... -run TestListQueueEntries -v`
-Expected: FAIL — `undefined: ListQueueEntries` (erro de compilação do pacote)
+Expected: FAIL — `undefined: ListQueueEntries` (package compilation error)
 
-- [ ] **Step 3: Implementar `internal/db/queue.go`**
+- [ ] **Step 3: Implement `internal/db/queue.go`**
 
 ```go
 // internal/db/queue.go
@@ -224,35 +224,36 @@ import (
 	"sort"
 )
 
-// QueueEntry é uma aula com pipeline ativo (pending/running) ou em erro,
-// no formato que a Fila (História 7) precisa: qual job está "atual" agora,
-// não só o status colapsado que LessonWithStatus usa pra Biblioteca.
+// QueueEntry is a lesson with an active (pending/running) or failed pipeline,
+// in the format the Queue (Story 7) needs: which job is "current" right now,
+// not just the collapsed status that LessonWithStatus uses for the Library.
 type QueueEntry struct {
 	LessonID   int64
 	LessonDate string
 	Tutor      string
-	Kind       string // "extract_audio" ou "transcribe"
-	Status     string // "pending", "running" ou "error"
+	Kind       string // "extract_audio" or "transcribe"
+	Status     string // "pending", "running" or "error"
 	Attempts   int
 	LastError  string
 	UpdatedAt  string
 }
 
-// ListQueueEntries lista as aulas com pipeline ativo ou em erro, uma linha
-// por aula (nunca duas), com o job "atual" de cada uma. Aulas prontas
-// (transcribe done) não entram na lista — isso já é visível na Biblioteca.
+// ListQueueEntries lists lessons with an active or failed pipeline, one row
+// per lesson (never two), with each one's "current" job. Ready lessons
+// (transcribe done) don't enter the list — that's already visible in the
+// Library.
 //
-// Prioridade pra decidir o job atual (extract_audio checado antes de
-// transcribe): o job transcribe fica com status "pending" no banco durante
-// todo o tempo em que está bloqueado esperando extract_audio terminar — o
-// Worker só pula ele em memória (claimNextEligibleJob em
-// internal/jobs/worker.go), sem mudar esse status. Checar transcribe antes
-// de extract_audio mostraria "Transcrição — aguardando" pra uma aula que na
-// verdade ainda está extraindo áudio.
+// Priority for deciding the current job (extract_audio checked before
+// transcribe): the transcribe job stays with status "pending" in the DB the
+// entire time it's blocked waiting for extract_audio to finish — the
+// Worker only skips it in memory (claimNextEligibleJob in
+// internal/jobs/worker.go), without changing that status. Checking
+// transcribe before extract_audio would show "Transcrição — aguardando" for
+// a lesson that is actually still extracting audio.
 //
-// Ordenação: erro primeiro (precisa de ação do usuário), depois por
-// UpdatedAt do job atual, mais antigo primeiro (mesma ordem FIFO que o
-// Worker usa em ListPendingJobs).
+// Ordering: error first (needs user action), then by UpdatedAt of the
+// current job, oldest first (same FIFO order the Worker uses in
+// ListPendingJobs).
 func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	rows, err := conn.Query(`
 		SELECT
@@ -299,9 +300,9 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 			entry.Kind, entry.Status = "transcribe", transcribeStatus
 			entry.Attempts, entry.LastError, entry.UpdatedAt = transcribeAttempts, transcribeError, transcribeUpdatedAt
 		default:
-			// transcribe done (ou nenhum job — não deve acontecer, os dois
-			// jobs são sempre criados juntos na confirmação de import):
-			// aula pronta, não entra na fila.
+			// transcribe done (or no job at all — shouldn't happen, both
+			// jobs are always created together at import confirmation):
+			// lesson ready, doesn't enter the queue.
 			continue
 		}
 		out = append(out, entry)
@@ -314,9 +315,9 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	return out, nil
 }
 
-// sortQueueEntries ordena in-place: status "error" primeiro, depois por
-// UpdatedAt ascendente (FIFO) — ver regra de ordenação no comentário de
-// ListQueueEntries.
+// sortQueueEntries sorts in-place: status "error" first, then by
+// UpdatedAt ascending (FIFO) — see the ordering rule in ListQueueEntries's
+// comment.
 func sortQueueEntries(entries []QueueEntry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		iErr, jErr := entries[i].Status == "error", entries[j].Status == "error"
@@ -328,17 +329,17 @@ func sortQueueEntries(entries []QueueEntry) {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./internal/db/... -run TestListQueueEntries -v`
-Expected: PASS em todos os 6 testes
+Expected: PASS on all 6 tests
 
-- [ ] **Step 5: `go vet` e commit**
+- [ ] **Step 5: `go vet` and commit**
 
 ```bash
 go vet ./internal/db/...
 git add internal/db/queue.go internal/db/queue_test.go
-git commit -m "feat: adiciona ListQueueEntries pra fila de jobs ativos/em erro"
+git commit -m "feat: add ListQueueEntries for the active/failed jobs queue"
 ```
 
 ---
@@ -351,21 +352,21 @@ git commit -m "feat: adiciona ListQueueEntries pra fila de jobs ativos/em erro"
 
 **Interfaces:**
 - Consumes: `db.QueueEntry`, `db.ListQueueEntries(conn *sql.DB) ([]db.QueueEntry, error)`
-  (Task 1); `db.ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error)` (já existe,
-  usado por `LibraryService.RetryLesson`); helpers de teste `mustInsertLesson` e
-  `mustInsertJobWithStatus` já definidos em `services/library_test.go` (mesmo pacote
+  (Task 1); `db.ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error)` (already
+  exists, used by `LibraryService.RetryLesson`); test helpers `mustInsertLesson` and
+  `mustInsertJobWithStatus`, already defined in `services/library_test.go` (same package
   `services`).
 - Produces: `type QueueItem struct { LessonID int64 \`json:"lessonId"\`; LessonDate string
   \`json:"lessonDate"\`; Tutor string \`json:"tutor"\`; Stage string \`json:"stage"\`; Status
   string \`json:"status"\`; Attempts int \`json:"attempts"\`; LastError string
   \`json:"lastError"\` }`, `func NewQueueService(conn *sql.DB) *QueueService`, `func
   (s *QueueService) ListQueue() ([]QueueItem, error)`, `func (s *QueueService)
-  RetryLesson(lessonID int64) error` — usados pela Task 3 (registro em `main.go`) e pelo
-  frontend via bindings geradas.
+  RetryLesson(lessonID int64) error` — used by Task 3 (registration in `main.go`) and by the
+  frontend via generated bindings.
 
-- [ ] **Step 1: Escrever os testes (vão falhar — `QueueService` ainda não existe)**
+- [ ] **Step 1: Write the tests (they will fail — `QueueService` doesn't exist yet)**
 
-Criar `services/queue_test.go`:
+Create `services/queue_test.go`:
 
 ```go
 // services/queue_test.go
@@ -381,7 +382,7 @@ import (
 func TestQueueService_ListQueue_TranslatesStageAndStatus(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -392,23 +393,23 @@ func TestQueueService_ListQueue_TranslatesStageAndStatus(t *testing.T) {
 	svc := NewQueueService(conn)
 	items, err := svc.ListQueue()
 	if err != nil {
-		t.Fatalf("ListQueue() erro inesperado: %v", err)
+		t.Fatalf("ListQueue() unexpected error: %v", err)
 	}
 	if len(items) != 1 {
-		t.Fatalf("ListQueue() = %+v, esperado 1 item", items)
+		t.Fatalf("ListQueue() = %+v, expected 1 item", items)
 	}
 	if items[0].Stage != "Transcrição" || items[0].Status != "processando" {
-		t.Errorf("ListQueue()[0] = %+v, esperado Stage=Transcrição Status=processando", items[0])
+		t.Errorf("ListQueue()[0] = %+v, expected Stage=Transcrição Status=processando", items[0])
 	}
 	if items[0].LessonDate != "2026-07-23" || items[0].Tutor != "Sarah M." {
-		t.Errorf("ListQueue()[0] = %+v, esperado data/tutor da fixture", items[0])
+		t.Errorf("ListQueue()[0] = %+v, expected fixture date/tutor", items[0])
 	}
 }
 
 func TestQueueService_ListQueue_ErrorStatusAndMessage(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -419,17 +420,17 @@ func TestQueueService_ListQueue_ErrorStatusAndMessage(t *testing.T) {
 	svc := NewQueueService(conn)
 	items, err := svc.ListQueue()
 	if err != nil {
-		t.Fatalf("ListQueue() erro inesperado: %v", err)
+		t.Fatalf("ListQueue() unexpected error: %v", err)
 	}
 	if len(items) != 1 || items[0].Stage != "Extração de áudio" || items[0].Status != "erro" || items[0].LastError != "ffmpeg não encontrado" {
-		t.Errorf("ListQueue()[0] = %+v, esperado Stage=Extração de áudio Status=erro com a causa raiz", items[0])
+		t.Errorf("ListQueue()[0] = %+v, expected Stage=Extração de áudio Status=erro with the root cause", items[0])
 	}
 }
 
 func TestQueueService_ListQueue_ExcludesReadyLessons(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -440,17 +441,17 @@ func TestQueueService_ListQueue_ExcludesReadyLessons(t *testing.T) {
 	svc := NewQueueService(conn)
 	items, err := svc.ListQueue()
 	if err != nil {
-		t.Fatalf("ListQueue() erro inesperado: %v", err)
+		t.Fatalf("ListQueue() unexpected error: %v", err)
 	}
 	if len(items) != 0 {
-		t.Errorf("ListQueue() = %+v, esperado vazio (aula pronta)", items)
+		t.Errorf("ListQueue() = %+v, expected empty (ready lesson)", items)
 	}
 }
 
 func TestQueueService_RetryLesson_ResetsErrorJobsToPending(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -460,25 +461,25 @@ func TestQueueService_RetryLesson_ResetsErrorJobsToPending(t *testing.T) {
 
 	svc := NewQueueService(conn)
 	if err := svc.RetryLesson(lessonID); err != nil {
-		t.Fatalf("RetryLesson() erro inesperado: %v", err)
+		t.Fatalf("RetryLesson() unexpected error: %v", err)
 	}
 
 	items, err := svc.ListQueue()
 	if err != nil {
-		t.Fatalf("ListQueue() erro inesperado: %v", err)
+		t.Fatalf("ListQueue() unexpected error: %v", err)
 	}
 	if len(items) != 1 || items[0].Status != "aguardando" {
-		t.Errorf("ListQueue() após RetryLesson = %+v, esperado status=aguardando (jobs voltaram a pending)", items)
+		t.Errorf("ListQueue() after RetryLesson = %+v, expected status=aguardando (jobs went back to pending)", items)
 	}
 }
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham por `QueueService` não existir**
+- [ ] **Step 2: Run the tests and confirm they fail because `QueueService` doesn't exist**
 
 Run: `go test ./services/... -run TestQueueService -v`
-Expected: FAIL — `undefined: NewQueueService` (erro de compilação do pacote)
+Expected: FAIL — `undefined: NewQueueService` (package compilation error)
 
-- [ ] **Step 3: Implementar `services/queue.go`**
+- [ ] **Step 3: Implement `services/queue.go`**
 
 ```go
 // services/queue.go
@@ -490,8 +491,8 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// QueueService expõe a fila de processamento (aulas com pipeline ativo ou
-// em erro) pra tela de Fila (História 7).
+// QueueService exposes the processing queue (lessons with an active or
+// failed pipeline) for the Queue screen (Story 7).
 type QueueService struct {
 	conn *sql.DB
 }
@@ -500,23 +501,23 @@ func NewQueueService(conn *sql.DB) *QueueService {
 	return &QueueService{conn: conn}
 }
 
-// stageLabel traduz o kind do job pra um rótulo de etapa em PT-BR, exibido
-// na Fila.
+// stageLabel translates the job kind into a PT-BR stage label, shown
+// on the Queue screen.
 var stageLabel = map[string]string{
 	"extract_audio": "Extração de áudio",
 	"transcribe":    "Transcrição",
 }
 
-// statusLabel traduz o status bruto do job pro vocabulário já usado na
-// Biblioteca (Library.svelte: STATUS_LABEL) — "pending"/"running" viram
-// "aguardando"/"processando", "error" vira "erro".
+// statusLabel translates the job's raw status into the vocabulary already
+// used in the Library (Library.svelte: STATUS_LABEL) — "pending"/"running"
+// become "aguardando"/"processando", "error" becomes "erro".
 var statusLabel = map[string]string{
 	"pending": "aguardando",
 	"running": "processando",
 	"error":   "erro",
 }
 
-// QueueItem é uma entrada da fila, no formato exposto ao frontend.
+// QueueItem is a queue entry, in the format exposed to the frontend.
 type QueueItem struct {
 	LessonID   int64  `json:"lessonId"`
 	LessonDate string `json:"lessonDate"`
@@ -527,8 +528,8 @@ type QueueItem struct {
 	LastError  string `json:"lastError"`
 }
 
-// ListQueue lista as aulas com pipeline ativo ou em erro, uma por linha,
-// erro primeiro depois FIFO — ver db.ListQueueEntries.
+// ListQueue lists lessons with an active or failed pipeline, one per row,
+// error first then FIFO — see db.ListQueueEntries.
 func (s *QueueService) ListQueue() ([]QueueItem, error) {
 	entries, err := db.ListQueueEntries(s.conn)
 	if err != nil {
@@ -549,48 +550,48 @@ func (s *QueueService) ListQueue() ([]QueueItem, error) {
 	return out, nil
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — mesma
-// primitiva de dados que LibraryService.RetryLesson usa (db package,
-// nenhum serviço depende do outro). Não é erro se a lesson não tiver
-// nenhum job em erro no momento.
+// RetryLesson resets the lesson's failed jobs back to "pending" — the same
+// data primitive that LibraryService.RetryLesson uses (db package, neither
+// service depends on the other). It's not an error if the lesson currently
+// has no failed job.
 func (s *QueueService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err
 }
 ```
 
-- [ ] **Step 4: Rodar os testes e confirmar que passam**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `go test ./services/... -run TestQueueService -v`
-Expected: PASS em todos os 4 testes
+Expected: PASS on all 4 tests
 
-- [ ] **Step 5: `go vet` e commit**
+- [ ] **Step 5: `go vet` and commit**
 
 ```bash
 go vet ./services/...
 git add services/queue.go services/queue_test.go
-git commit -m "feat: adiciona QueueService pra listar e reprocessar a fila"
+git commit -m "feat: add QueueService to list and retry the queue"
 ```
 
 ---
 
-### Task 3: Registrar `QueueService` em `main.go` e regenerar bindings
+### Task 3: Register `QueueService` in `main.go` and regenerate bindings
 
 **Files:**
 - Modify: `main.go:46-50`
 
 **Interfaces:**
 - Consumes: `services.NewQueueService(conn *sql.DB) *services.QueueService` (Task 2).
-- Produces: `application.Service` registrado, bindings TS geradas em
-  `frontend/bindings/assistente-idiomas/services/queueservice.ts` (função `ListQueue`,
-  `RetryLesson`) e `QueueItem` adicionado a
-  `frontend/bindings/assistente-idiomas/services/models.ts` — consumidos pela Task 4.
+- Produces: `application.Service` registered, generated TS bindings in
+  `frontend/bindings/assistente-idiomas/services/queueservice.ts` (`ListQueue`,
+  `RetryLesson` functions) and `QueueItem` added to
+  `frontend/bindings/assistente-idiomas/services/models.ts` — consumed by Task 4.
 
-- [ ] **Step 1: Registrar o serviço em `main.go`**
+- [ ] **Step 1: Register the service in `main.go`**
 
-Editar o bloco `Services` em `main.go` (linhas 46-50):
+Edit the `Services` block in `main.go` (lines 46-50):
 
-De:
+From:
 ```go
 		Services: []application.Service{
 			application.NewService(services.NewSetupService()),
@@ -599,7 +600,7 @@ De:
 		},
 ```
 
-Para:
+To:
 ```go
 		Services: []application.Service{
 			application.NewService(services.NewSetupService()),
@@ -609,63 +610,63 @@ Para:
 		},
 ```
 
-- [ ] **Step 2: Confirmar que o app compila**
+- [ ] **Step 2: Confirm the app compiles**
 
-`go build ./...` inclui `build/ios`, um stub de scaffold do Wails que **já falha na `main`, sem
-nenhuma mudança desta história** (`function main is undeclared in the main package` —
-pré-existente, fora de escopo). Por isso o build de verificação é escopado nos pacotes que
-importam: raiz (`main.go`), `internal/...`, `services/...`.
+`go build ./...` includes `build/ios`, a Wails scaffold stub that **already fails on `main`,
+with no changes from this story** (`function main is undeclared in the main package` —
+pre-existing, out of scope). That's why the verification build is scoped to the packages that
+matter: root (`main.go`), `internal/...`, `services/...`.
 
 Run: `go build ./internal/... ./services/... .`
-Expected: sem output (build limpo)
+Expected: no output (clean build)
 
-- [ ] **Step 3: Regenerar as bindings TypeScript**
+- [ ] **Step 3: Regenerate the TypeScript bindings**
 
-Run (na raiz do projeto): `wails3 generate bindings -ts -i ./...`
-Expected: comando termina sem erro; `frontend/bindings/assistente-idiomas/services/queueservice.ts`
-é criado ou atualizado.
+Run (from the project root): `wails3 generate bindings -ts -i ./...`
+Expected: command finishes without error; `frontend/bindings/assistente-idiomas/services/queueservice.ts`
+is created or updated.
 
-- [ ] **Step 4: Verificar o conteúdo gerado**
+- [ ] **Step 4: Verify the generated content**
 
 Run: `grep -E "export function (ListQueue|RetryLesson)" frontend/bindings/assistente-idiomas/services/queueservice.ts`
-Expected: duas linhas, uma pra cada função
+Expected: two lines, one for each function
 
 Run: `grep -A8 "interface QueueItem" frontend/bindings/assistente-idiomas/services/models.ts`
-Expected: interface com os campos `lessonId`, `lessonDate`, `tutor`, `stage`, `status`,
+Expected: interface with the fields `lessonId`, `lessonDate`, `tutor`, `stage`, `status`,
 `attempts`, `lastError`
 
-- [ ] **Step 5: Rodar toda a suíte Go e `go vet`**
+- [ ] **Step 5: Run the full Go suite and `go vet`**
 
 Run: `go test ./... && go vet ./...`
-Expected: `ok` em todos os pacotes, `go vet` sem output
+Expected: `ok` for all packages, `go vet` with no output
 
 - [ ] **Step 6: Commit**
 
-`frontend/bindings` está no `.gitignore` (gerado localmente por `wails3 generate bindings`, não
-versionado — mesmo tratamento de `frontend/dist`/`frontend/node_modules`), então só `main.go`
-entra no commit:
+`frontend/bindings` is in `.gitignore` (generated locally by `wails3 generate bindings`, not
+versioned — same treatment as `frontend/dist`/`frontend/node_modules`), so only `main.go`
+goes into the commit:
 
 ```bash
 git add main.go
-git commit -m "feat: registra QueueService no app"
+git commit -m "feat: register QueueService in the app"
 ```
 
 ---
 
-### Task 4: `frontend/src/lib/jobsStore.svelte.ts` — store reativo compartilhado
+### Task 4: `frontend/src/lib/jobsStore.svelte.ts` — shared reactive store
 
 **Files:**
 - Create: `frontend/src/lib/jobsStore.svelte.ts`
 
 **Interfaces:**
-- Consumes: `QueueService.ListQueue(): $CancellablePromise<QueueItem[] | null>` e `QueueItem`
-  (Task 3, bindings geradas); `Events.On(eventName: string, callback: (ev) => void): () => void`
-  de `@wailsio/runtime` (já usado como transporte desde a História 4, evento
-  `"job:updated"` — ver `services/jobs_notifier.go:13`).
-- Produces: `export const jobsStore: { items: QueueItem[]; activeCount: number }` (getters
-  reativos) e `export function initJobsStore(): void` — consumidos pelas Tasks 5 e 6.
+- Consumes: `QueueService.ListQueue(): $CancellablePromise<QueueItem[] | null>` and `QueueItem`
+  (Task 3, generated bindings); `Events.On(eventName: string, callback: (ev) => void): () => void`
+  from `@wailsio/runtime` (already used as the transport since Story 4, `"job:updated"` event —
+  see `services/jobs_notifier.go:13`).
+- Produces: `export const jobsStore: { items: QueueItem[]; activeCount: number }` (reactive
+  getters) and `export function initJobsStore(): void` — consumed by Tasks 5 and 6.
 
-- [ ] **Step 1: Criar o arquivo**
+- [ ] **Step 1: Create the file**
 
 ```ts
 // frontend/src/lib/jobsStore.svelte.ts
@@ -676,13 +677,13 @@ import type { QueueItem } from "../../bindings/assistente-idiomas/services/model
 let items: QueueItem[] = $state([]);
 let initialized = false;
 
-// jobsStore é o único ponto de leitura do estado da fila no frontend —
-// Queue.svelte e o badge da Sidebar.svelte leem daqui, sem cada um se
-// inscrever separadamente em "job:updated" (ver
+// jobsStore is the single read point for the queue state on the frontend —
+// Queue.svelte and the badge in Sidebar.svelte read from here, instead of
+// each one subscribing separately to "job:updated" (see
 // docs/superpowers/specs/2026-07-23-historia-7-fila-visivel-design.md).
-// Getters (não uma exportação direta de `items`) porque `export let` não
-// propaga reatividade entre módulos no Svelte 5 — funções/objetos com
-// getter são o padrão recomendado pra estado compartilhado em .svelte.ts.
+// Getters (not a direct export of `items`) because `export let` doesn't
+// propagate reactivity across modules in Svelte 5 — functions/objects with
+// getters are the recommended pattern for shared state in .svelte.ts.
 export const jobsStore = {
   get items() {
     return items;
@@ -696,10 +697,9 @@ async function refetch() {
   items = (await QueueService.ListQueue()) ?? [];
 }
 
-// initJobsStore busca a fila uma vez e assina "job:updated" pra refazer a
-// busca a cada transição de status de job. Chamado uma única vez em
-// App.svelte — chamadas repetidas são no-op (evita inscrições duplicadas
-// no evento).
+// initJobsStore fetches the queue once and subscribes to "job:updated" to
+// refetch on every job status transition. Called once in App.svelte — repeat
+// calls are a no-op (avoids duplicate event subscriptions).
 export function initJobsStore() {
   if (initialized) return;
   initialized = true;
@@ -708,33 +708,33 @@ export function initJobsStore() {
 }
 ```
 
-- [ ] **Step 2: Checar tipos**
+- [ ] **Step 2: Check types**
 
-Run (dentro de `frontend/`): `corepack pnpm run check`
-Expected: `0 ERRORS 0 WARNINGS` (o arquivo ainda não é importado por nenhum componente, então
-`svelte-check` só valida sintaxe/tipos do próprio módulo)
+Run (inside `frontend/`): `corepack pnpm run check`
+Expected: `0 ERRORS 0 WARNINGS` (the file isn't imported by any component yet, so
+`svelte-check` only validates the module's own syntax/types)
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add frontend/src/lib/jobsStore.svelte.ts
-git commit -m "feat: adiciona store reativo da fila de jobs"
+git commit -m "feat: add reactive store for the jobs queue"
 ```
 
 ---
 
-### Task 5: `frontend/src/lib/screens/Queue.svelte` — lista da Fila
+### Task 5: `frontend/src/lib/screens/Queue.svelte` — Queue list
 
 **Files:**
-- Modify: `frontend/src/lib/screens/Queue.svelte` (reescrita completa — hoje é um placeholder
-  estático de 18 linhas)
+- Modify: `frontend/src/lib/screens/Queue.svelte` (complete rewrite — currently a static
+  18-line placeholder)
 
 **Interfaces:**
 - Consumes: `jobsStore.items: QueueItem[]` (Task 4); `QueueService.RetryLesson(lessonId:
   number): $CancellablePromise<void>` (Task 3, bindings).
-- Produces: nada consumido por outra task.
+- Produces: nothing consumed by another task.
 
-- [ ] **Step 1: Reescrever o arquivo**
+- [ ] **Step 1: Rewrite the file**
 
 ```svelte
 <script lang="ts">
@@ -745,8 +745,8 @@ git commit -m "feat: adiciona store reativo da fila de jobs"
   let retryingId: number | null = $state(null);
   let error: string = $state("");
 
-  // Mesmo formato de Library.svelte (lessonDate é "AAAA-MM-DD" ou
-  // "AAAA-MM-DDTHH:MM", sem fuso — não é um timestamp com "Z").
+  // Same format as Library.svelte (lessonDate is "YYYY-MM-DD" or
+  // "YYYY-MM-DDTHH:MM", no timezone — not a timestamp with "Z").
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
@@ -870,21 +870,21 @@ git commit -m "feat: adiciona store reativo da fila de jobs"
 </style>
 ```
 
-- [ ] **Step 2: Checar tipos**
+- [ ] **Step 2: Check types**
 
-Run (dentro de `frontend/`): `corepack pnpm run check`
+Run (inside `frontend/`): `corepack pnpm run check`
 Expected: `0 ERRORS 0 WARNINGS`
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add frontend/src/lib/screens/Queue.svelte
-git commit -m "feat: lista a fila de jobs ativos/em erro com reprocessar"
+git commit -m "feat: list the active/failed jobs queue with retry"
 ```
 
 ---
 
-### Task 6: Badge na `Sidebar.svelte` e inicialização do store em `App.svelte`
+### Task 6: Badge in `Sidebar.svelte` and store initialization in `App.svelte`
 
 **Files:**
 - Modify: `frontend/src/lib/Sidebar.svelte`
@@ -892,11 +892,11 @@ git commit -m "feat: lista a fila de jobs ativos/em erro com reprocessar"
 
 **Interfaces:**
 - Consumes: `jobsStore.activeCount: number`, `initJobsStore(): void` (Task 4).
-- Produces: nada consumido por outra task.
+- Produces: nothing consumed by another task.
 
-- [ ] **Step 1: Adicionar o badge em `Sidebar.svelte`**
+- [ ] **Step 1: Add the badge in `Sidebar.svelte`**
 
-De:
+From:
 ```svelte
 <script lang="ts">
   import { colors, fonts } from "./theme";
@@ -913,7 +913,7 @@ De:
 </script>
 ```
 
-Para:
+To:
 ```svelte
 <script lang="ts">
   import { colors, fonts } from "./theme";
@@ -931,14 +931,14 @@ Para:
 </script>
 ```
 
-De:
+From:
 ```svelte
       <span class="icon">{item.icon}</span>
       {item.label}
     </button>
 ```
 
-Para:
+To:
 ```svelte
       <span class="icon">{item.icon}</span>
       {item.label}
@@ -950,7 +950,7 @@ Para:
     </button>
 ```
 
-Adicionar ao `<style>` (depois da regra `.icon`):
+Add to the `<style>` block (after the `.icon` rule):
 ```css
   .badge {
     margin-left: auto;
@@ -962,9 +962,9 @@ Adicionar ao `<style>` (depois da regra `.icon`):
   }
 ```
 
-- [ ] **Step 2: Inicializar o store em `App.svelte`**
+- [ ] **Step 2: Initialize the store in `App.svelte`**
 
-De:
+From:
 ```svelte
   import Sidebar from "./lib/Sidebar.svelte";
   import Header from "./lib/Header.svelte";
@@ -977,7 +977,7 @@ De:
   import * as SetupService from "../bindings/assistente-idiomas/services/setupservice";
 ```
 
-Para:
+To:
 ```svelte
   import Sidebar from "./lib/Sidebar.svelte";
   import Header from "./lib/Header.svelte";
@@ -991,7 +991,7 @@ Para:
   import * as SetupService from "../bindings/assistente-idiomas/services/setupservice";
 ```
 
-De:
+From:
 ```svelte
   onMount(async () => {
     try {
@@ -1002,7 +1002,7 @@ De:
   });
 ```
 
-Para:
+To:
 ```svelte
   onMount(async () => {
     initJobsStore();
@@ -1014,78 +1014,79 @@ Para:
   });
 ```
 
-- [ ] **Step 3: Checar tipos**
+- [ ] **Step 3: Check types**
 
-Run (dentro de `frontend/`): `corepack pnpm run check`
+Run (inside `frontend/`): `corepack pnpm run check`
 Expected: `0 ERRORS 0 WARNINGS`
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/src/lib/Sidebar.svelte frontend/src/App.svelte
-git commit -m "feat: badge de jobs ativos na sidebar e inicializa o store da fila"
+git commit -m "feat: active-jobs badge in the sidebar and initialize the queue store"
 ```
 
 ---
 
-### Task 7: Verificação final e fechamento da história
+### Task 7: Final verification and story closeout
 
 **Files:**
-- Modify: `docs/fase-1-mvp.md:171-176` (critérios de aceite da História 7)
-- Modify: `docs/fase-1-mvp.md` (tabela de "Registro de progresso", nova linha ao final)
+- Modify: `docs/fase-1-mvp.md:171-176` (Story 7 acceptance criteria)
+- Modify: `docs/fase-1-mvp.md` (the "Progress log" table, new row at the end)
 
-**Interfaces:** nenhuma — task de verificação e documentação, não produz símbolos.
+**Interfaces:** none — verification and documentation task, produces no symbols.
 
-- [ ] **Step 1: Suíte Go completa**
+- [ ] **Step 1: Full Go suite**
 
-`go build ./...` inclui `build/ios` (stub de scaffold do Wails, quebrado mesmo na `main` sem
-relação com esta história — ver Task 3 Step 2), por isso o build fica escopado.
+`go build ./...` includes `build/ios` (Wails scaffold stub, broken even at `main` with no
+relation to this story — see Task 3 Step 2), so the build is scoped accordingly.
 
 Run: `go build ./internal/... ./services/... . && go vet ./... && go test ./...`
-Expected: build limpo, vet sem output, `ok` em todos os pacotes
+Expected: clean build, vet with no output, `ok` for all packages
 
-- [ ] **Step 2: Suíte frontend completa**
+- [ ] **Step 2: Full frontend suite**
 
-Run (dentro de `frontend/`):
+Run (inside `frontend/`):
 ```bash
 corepack pnpm run check
 corepack pnpm run build
 ```
-Expected: `check` com `0 ERRORS 0 WARNINGS`; `build` termina sem erro (gera `frontend/dist`)
+Expected: `check` with `0 ERRORS 0 WARNINGS`; `build` finishes without error (generates
+`frontend/dist`)
 
-- [ ] **Step 3: Build do binário do app**
+- [ ] **Step 3: App binary build**
 
-Run (na raiz do projeto): `wails3 build`
-Expected: binário gerado sem erro (mesma verificação que as Histórias 4/5/6 já fizeram nesse
-ambiente sem display — abertura de janela real continua pendente em Windows/Linux, mesmo padrão
-das histórias anteriores)
+Run (from the project root): `wails3 build`
+Expected: binary generated without error (same verification Stories 4/5/6 already did in
+this display-less environment — opening a real window is still pending on Windows/Linux,
+same pattern as previous stories)
 
-- [ ] **Step 4: Marcar os critérios de aceite da História 7 em `docs/fase-1-mvp.md`**
+- [ ] **Step 4: Mark Story 7's acceptance criteria in `docs/fase-1-mvp.md`**
 
-De:
+From:
 ```markdown
-### Critérios de aceite
-- [ ] Tela de Fila com jobs, estado, progresso e `last_error` legível; ação de reprocessar em erros.
-- [ ] Badge na sidebar com contagem de jobs ativos, atualizada por eventos.
+### Acceptance criteria
+- [ ] Queue screen with jobs, state, progress, and readable `last_error`; a reprocess action on errors.
+- [ ] Sidebar badge with a count of active jobs, updated by events.
 ```
 
-Para:
+To:
 ```markdown
-### Critérios de aceite
-- [x] Tela de Fila com jobs, estado, progresso e `last_error` legível; ação de reprocessar em erros.
-- [x] Badge na sidebar com contagem de jobs ativos, atualizada por eventos.
+### Acceptance criteria
+- [x] Queue screen with jobs, state, progress, and readable `last_error`; a reprocess action on errors.
+- [x] Sidebar badge with a count of active jobs, updated by events.
 ```
 
-- [ ] **Step 5: Adicionar linha na tabela de "Registro de progresso"**
+- [ ] **Step 5: Add a row to the "Progress log" table**
 
-Adicionar, depois da linha de 23/07/2026 da História 6 (última linha da tabela):
+Add, after the 23/07/2026 row for Story 6 (the last row in the table):
 ```markdown
-| 23/07/2026 | História 7 implementada: `internal/db.ListQueueEntries` deriva, por aula, qual job (extract_audio ou transcribe) está ativo agora ou em erro — checando extract_audio antes de transcribe, já que o job transcribe fica com status "pending" no banco o tempo todo em que está bloqueado esperando extract_audio (o Worker só pula ele em memória); `QueueService` traduz pro frontend (Stage/Status em PT-BR), reaproveitando `db.ResetErrorJobsForLesson` pro Reprocessar; `jobsStore.svelte.ts` é o primeiro consumidor real do evento `job:updated` (transporte pronto desde a História 4) — busca a fila uma vez e refaz a busca a cada evento, compartilhado entre `Queue.svelte` e o badge numérico da Sidebar (só pending+running, erro fica de fora do número) | Verificação visual (janela real) do badge atualizando ao vivo durante um processamento real e da lista da Fila mudando junto continua pendente em Windows/Linux, mesmo padrão das histórias anteriores |
+| 23/07/2026 | Story 7 implemented: `internal/db.ListQueueEntries` derives, per lesson, which job (extract_audio or transcribe) is currently active or in error — checking extract_audio before transcribe, since the transcribe job stays with status "pending" in the database the whole time it's blocked waiting on extract_audio (the Worker only skips it in memory); `QueueService` translates it for the frontend (Stage/Status in PT-BR), reusing `db.ResetErrorJobsForLesson` for Reprocess; `jobsStore.svelte.ts` is the first real consumer of the `job:updated` event (transport ready since Story 4) — it fetches the queue once and refetches on every event, shared between `Queue.svelte` and the Sidebar's numeric badge (only pending+running; errors are left out of the count) | Visual verification (real window) of the badge updating live during real processing and of the Queue list changing along with it remains pending on Windows/Linux, the same pattern as previous stories |
 ```
 
-- [ ] **Step 6: Commit final**
+- [ ] **Step 6: Final commit**
 
 ```bash
 git add docs/fase-1-mvp.md
-git commit -m "docs: marca História 7 concluída e registra progresso"
+git commit -m "docs: mark Story 7 complete and record progress"
 ```

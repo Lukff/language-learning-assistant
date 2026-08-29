@@ -1,47 +1,47 @@
-# Fase 0 — História 3: Análise LLM v1 — Design
+# Phase 0 — Story 3: LLM Analysis v1 — Design
 
-> Cobre a arquitetura completa do pacote `internal/analysis` e do prompt `prompts/analyze-v1.md`
-> (`docs/fase-0-validacao.md`, História 3), incluindo o contrato de todos os 6 candidatos de LLM
-> considerados. A implementação, porém, segue em **fatias priorizadas por custo** (ver seção
-> abaixo) — este documento não implica implementar os 6 de uma vez.
+> Covers the complete architecture of the `internal/analysis` package and the
+> `prompts/analyze-v1.md` prompt (`docs/fase-0-validacao.md`, Story 3), including the contract for
+> all 6 LLM candidates considered. Implementation, however, proceeds in **slices prioritized by
+> cost** (see section below) — this document does not imply implementing all 6 at once.
 >
-> Diferente da História 2 (STT), esta exploração de LLM continua **não-vinculante**: o critério da
-> História 3 em `fase-0-validacao.md` já marca a comparação de LLM como opcional ("sem obrigação de
-> fechar a decisão nesta fase"). `decisoes-tecnologia.md` permanece "em aberto" em Análise via LLM
-> até o usuário decidir fechar, mesmo depois desta exploração.
+> Unlike Story 2 (STT), this LLM exploration remains **non-binding**: Story 3's criterion in
+> `fase-0-validacao.md` already marks the LLM comparison as optional ("no obligation to close the
+> decision in this phase"). `decisoes-tecnologia.md` stays "open" on LLM Analysis until the user
+> decides to close it, even after this exploration.
 
-## Objetivo
+## Objective
 
-Implementar `analysis.Provider` (interface única, múltiplas implementações) que recebe a
-transcrição diarizada de uma aula e devolve correções do aluno, vocabulário novo e expressões do
-tutor, em JSON estruturado — e rodar essa análise, na aula 01, em candidatos de LLM começando
-pelos mais baratos, parando assim que a qualidade convencer.
+Implement `analysis.Provider` (a single interface, multiple implementations) that takes a lesson's
+diarized transcript and returns student corrections, new vocabulary, and tutor expressions, as
+structured JSON — and run that analysis, on lesson 01, against LLM candidates starting with the
+cheapest, stopping as soon as the quality is convincing.
 
-## Estratégia de fatias (priorização por custo)
+## Slice strategy (cost-based prioritization)
 
-Preço direto/oficial por milhão de tokens, pesquisado em julho/2026:
+Direct/official price per million tokens, researched in July/2026:
 
-| Provedor | Entrada (US$/1M) | Saída (US$/1M) |
+| Provider | Input (US$/1M) | Output (US$/1M) |
 |---|---|---|
-| DeepSeek V4 | ~0,14 (Flash) – ~0,44 (Pro) | ~0,28 (Flash) – ~0,87 (Pro) |
-| Qwen 3.7 Max (Alibaba) | ~1,25 (promocional) | ~3,75 |
-| GLM 5.2 (Zhipu/Z.ai) | ~1,40 | ~4,40 |
-| Anthropic, OpenAI, Gemini | tipicamente acima dos 3 anteriores nos tiers flagship | — |
+| DeepSeek V4 | ~0.14 (Flash) – ~0.44 (Pro) | ~0.28 (Flash) – ~0.87 (Pro) |
+| Qwen 3.7 Max (Alibaba) | ~1.25 (promotional) | ~3.75 |
+| GLM 5.2 (Zhipu/Z.ai) | ~1.40 | ~4.40 |
+| Anthropic, OpenAI, Gemini | typically above the three above at flagship tiers | — |
 
-Ordem de implementação e teste:
+Implementation and testing order:
 
-1. **Fatia 1 — DeepSeek.** Implementa o client, roda na aula 01, anota qualidade em
+1. **Slice 1 — DeepSeek.** Implement the client, run it on lesson 01, note quality in
    `docs/notas-analise-llm.md`.
-2. Se a qualidade não convencer → **Fatia 2 — Qwen**. Se convencer, para aqui — as fatias
-   seguintes (incluindo Anthropic/OpenAI/Gemini) não são implementadas nesta rodada.
-3. Se ainda não convencer → **Fatia 3 — GLM**.
-4. Só se nenhum dos 3 convencer, seguem fatias com Anthropic, OpenAI e Gemini — ordem e
-   necessidade a decidir na hora, fora do escopo de planejamento deste documento.
+2. If the quality isn't convincing → **Slice 2 — Qwen**. If it is, stop here — the following
+   slices (including Anthropic/OpenAI/Gemini) are not implemented in this round.
+3. If it still isn't convincing → **Slice 3 — GLM**.
+4. Only if none of the 3 convince, slices with Anthropic, OpenAI, and Gemini follow — order and
+   necessity to be decided at the time, outside this document's planning scope.
 
-Cada fatia é planejada e executada isoladamente (mesmo padrão usado nas 4 fatias do STT), não
-todas de uma vez.
+Each slice is planned and executed in isolation (same pattern used for STT's 4 slices), not all
+at once.
 
-## Arquitetura do pacote `internal/analysis`
+## `internal/analysis` package architecture
 
 ```go
 package analysis
@@ -71,33 +71,33 @@ type VocabularyItem struct {
 
 type Expression struct {
     Text string
-    Note string // PT-BR, contexto de uso
+    Note string // PT-BR, usage context
 }
 ```
 
-**Split de clientes (Abordagem B — aprovada em conversa, rejeitando um cliente totalmente
-independente por provedor):**
+**Client split (Approach B — approved in discussion, rejecting a fully independent client per
+provider):**
 
-- `openai_compatible.go`: struct genérica `openAICompatibleProvider{name, baseURL, apiKey, model
-  string}`, satisfazendo `Provider`. Usada por 4 construtores — `NewOpenAIProvider`,
-  `NewDeepSeekProvider`, `NewGLMProvider`, `NewQwenProvider` — cada um só fixando `baseURL`/`model`
-  diferentes, já que os 4 expõem (segundo documentação de cada um) um endpoint `/chat/completions`
-  compatível com o formato OpenAI.
-- `anthropic.go`: cliente próprio (Messages API — formato de request/response diferente do padrão
-  OpenAI).
-- `gemini.go`: cliente próprio (formato de request/response do Gemini).
-- `parsing.go`: `parseAnalysisResponse(raw []byte) (*Result, error)`, compartilhado pelos 6 — o
-  formato de saída é definido por nós no prompt, não pelo provedor, então não há mapeamento
-  provedor-específico como no `internal/stt`.
+- `openai_compatible.go`: a generic `openAICompatibleProvider{name, baseURL, apiKey, model
+  string}` struct, satisfying `Provider`. Used by 4 constructors — `NewOpenAIProvider`,
+  `NewDeepSeekProvider`, `NewGLMProvider`, `NewQwenProvider` — each only fixing a different
+  `baseURL`/`model`, since all 4 expose (per each one's documentation) a `/chat/completions`
+  endpoint compatible with the OpenAI format.
+- `anthropic.go`: its own client (Messages API — a request/response format different from the
+  OpenAI standard).
+- `gemini.go`: its own client (Gemini's request/response format).
+- `parsing.go`: `parseAnalysisResponse(raw []byte) (*Result, error)`, shared by all 6 — the output
+  format is defined by us in the prompt, not by the provider, so there's no provider-specific
+  mapping like in `internal/stt`.
 
-**Risco assumido:** se algum dos 4 "OpenAI-compatible" (especialmente GLM ou Qwen) se mostrar
-incompatível na prática (campo de resposta diferente, JSON-mode com nome de parâmetro distinto),
-ele sai do `openai_compatible.go` e vira cliente próprio isolado — decisão a confirmar durante a
-implementação de cada fatia, sem contaminar os demais.
+**Accepted risk:** if any of the 4 "OpenAI-compatible" ones (especially GLM or Qwen) turns out to
+be incompatible in practice (a different response field, JSON mode with a different parameter
+name), it leaves `openai_compatible.go` and becomes its own isolated client — a decision to
+confirm during each slice's implementation, without contaminating the others.
 
 ## Prompt (`prompts/analyze-v1.md`)
 
-Pede **somente** este JSON, sem texto fora do objeto:
+Asks for **only** this JSON, with no text outside the object:
 
 ```json
 {
@@ -107,52 +107,53 @@ Pede **somente** este JSON, sem texto fora do objeto:
 }
 ```
 
-Trata code-switching explicitamente (`CLAUDE.md`): uma palavra/frase em PT ou ES na fala do aluno
-**não** entra em `corrections` — é candidata a `vocabulary` (o inglês equivalente que o aluno
-"buscou" no idioma nativo), nunca tratada como erro de inglês.
+Handles code-switching explicitly (`CLAUDE.md`): a word/phrase in PT or ES in the student's speech
+**doesn't** go into `corrections` — it's a candidate for `vocabulary` (the equivalent English the
+student "reached for" in their native language instead), never treated as an English mistake.
 
-### Prefill (mitigação de wrapping em markdown)
+### Prefill (markdown-wrapping mitigation)
 
-Onde o provedor suporta "assistant prefill" (última mensagem da conversa já como `role:
-"assistant"` com conteúdo parcial, forçando o modelo a continuar dali), o prefill enviado é
-`"```json\n"` — a abertura do bloco. O modelo, já "dentro" do bloco, só completa o JSON e fecha com
-` ``` `, que é o comportamento natural dele de qualquer forma (decisão do usuário: aproveitar esse
-comportamento em vez de tentar suprimi-lo).
+Where the provider supports "assistant prefill" (the conversation's last message already as
+`role: "assistant"` with partial content, forcing the model to continue from there), the prefill
+sent is `"```json\n"` — the block's opening. The model, already "inside" the block, only needs to
+complete the JSON and close it with ` ``` `, which is its natural behavior anyway (a deliberate
+choice: leverage that behavior instead of trying to suppress it).
 
-- **Anthropic:** suporte confirmado — Messages API aceita a última mensagem como `assistant` com
-  conteúdo parcial, e a resposta retorna só a continuação.
-- **DeepSeek:** documentava um recurso beta de "Chat Prefix Completion" — a confirmar se persiste
-  na V4.
-- **GLM, Qwen:** a confirmar na implementação de cada fatia se aceitam o mesmo mecanismo (comum em
-  backends OpenAI-compatible estilo vLLM, mas não garantido).
-- **OpenAI, Gemini:** sem suporte a prefill na API hospedada — defesa fica só no modo JSON nativo
-  de cada um (`response_format: json_object` / `responseMimeType: application/json`), que já
-  devolve JSON puro.
+- **Anthropic:** confirmed support — the Messages API accepts the last message as `assistant` with
+  partial content, and the response returns only the continuation.
+- **DeepSeek:** documented a beta "Chat Prefix Completion" feature — to confirm whether it persists
+  in V4.
+- **GLM, Qwen:** to confirm during each slice's implementation whether they accept the same
+  mechanism (common in vLLM-style OpenAI-compatible backends, but not guaranteed).
+- **OpenAI, Gemini:** no prefill support in the hosted API — the defense is just each one's native
+  JSON mode (`response_format: json_object` / `responseMimeType: application/json`), which already
+  returns pure JSON.
 
-O provedor devolve só a **continuação** — não repete o prefill. Como o prefill já força o modelo a
-começar direto no conteúdo do JSON (logo depois de `` ```json\n ``), a continuação em si já é JSON
-quase puro: não é preciso reconstituir nada com o prefixo. `parseAnalysisResponse` recebe
-diretamente essa continuação e só precisa remover um eventual fechamento ` ``` ` (e espaço em
-branco) sobrando no final antes do `json.Unmarshal` — no-op inofensivo para OpenAI/Gemini, que já
-devolvem JSON puro via modo JSON nativo e não têm esse fechamento.
+The provider returns only the **continuation** — it doesn't repeat the prefill. Since the prefill
+already forces the model to start right at the JSON content (right after `` ```json\n ``), the
+continuation itself is already near-pure JSON: there's no need to reconstruct anything with the
+prefix. `parseAnalysisResponse` receives that continuation directly and only needs to strip a
+possible trailing ` ``` ` closing (and whitespace) before `json.Unmarshal` — a harmless no-op for
+OpenAI/Gemini, which already return pure JSON via native JSON mode and don't have that closing
+fence.
 
-Confirmado na documentação do DeepSeek (`api-docs.deepseek.com/guides/chat_prefix_completion`): o
-recurso de prefill exige `base_url = "https://api.deepseek.com/beta"`, a última mensagem com
-`role: "assistant"` e `"prefix": true`, e aceita um `stop` opcional (ex.: `["```"]`) — usado
-exatamente para este caso (impedir o modelo de continuar com explicação depois de fechar o bloco).
-Definir esse `stop` é a defesa de primeira linha; o strip em `parseAnalysisResponse` é a
-segunda, para quando `stop` não for suportado ou não pegar o fechamento.
+Confirmed in DeepSeek's documentation (`api-docs.deepseek.com/guides/chat_prefix_completion`): the
+prefill feature requires `base_url = "https://api.deepseek.com/beta"`, the last message with
+`role: "assistant"` and `"prefix": true`, and accepts an optional `stop` (e.g. `["```"]`) — used
+exactly for this case (preventing the model from continuing with an explanation after closing the
+block). Setting that `stop` is the first line of defense; the strip in `parseAnalysisResponse` is
+the second, for when `stop` isn't supported or doesn't catch the closing fence.
 
-## Fluxo de dados
+## Data flow
 
-**Entrada: reaproveitar o resultado do STT sem re-transcrever.** Hoje `cmd/spike` só salva
-`raw.json` (JSON bruto do provedor) e `transcript.txt` (texto legível) por provedor de STT. Nenhum
-dos dois é reconstruível em `[]stt.Utterance` sem chamar a função de mapeamento
-provedor-específica, que é não-exportada de propósito. Para permitir rodar a análise em várias
-fatias/candidatos sem re-pagar/re-rodar o STT a cada vez, o passo de STT em `cmd/spike` passa a
-salvar também `utterances.json` — um `encoding/json.Marshal` direto de `result.Utterances`
-(`[]stt.Utterance`, já com campos exportados; `time.Duration` serializa como inteiro em
-nanossegundos e desserializa de volta sem perda). A análise lê esse arquivo diretamente:
+**Input: reuse the STT result without re-transcribing.** Today `cmd/spike` only saves `raw.json`
+(the provider's raw JSON) and `transcript.txt` (readable text) per STT provider. Neither is
+reconstructible into `[]stt.Utterance` without calling the provider-specific mapping function,
+which is deliberately unexported. To allow running the analysis across several slices/candidates
+without re-paying/re-running STT every time, the STT step in `cmd/spike` now also saves
+`utterances.json` — a direct `encoding/json.Marshal` of `result.Utterances`
+(`[]stt.Utterance`, already with exported fields; `time.Duration` serializes as an integer in
+nanoseconds and deserializes back without loss). The analysis reads that file directly:
 
 ```
 local/output/aula-01/elevenlabs/{raw.json, transcript.txt, utterances.json}
@@ -160,112 +161,111 @@ local/output/aula-01/elevenlabs/{raw.json, transcript.txt, utterances.json}
                                           v
                               analysis.SpeakerExamples(utterances, 3)
                                           |
-                              confirmação interativa via stdin
-                             (speaker_0 é aluno ou tutor?)
+                              interactive confirmation via stdin
+                             (is speaker_0 the student or the tutor?)
                                           |
                                           v
                         analysis.FormatTranscript(utterances, speakerRoles)
                                           |
                        +------------------+------------------+
                        v                  v                  v
-                DeepSeekProvider    QwenProvider  ...   (fatia atual)
+                DeepSeekProvider    QwenProvider  ...   (current slice)
                    .Analyze           .Analyze
                        |                  |
                        v                  v
         local/output/aula-01/analysis/deepseek/{raw.json, result.txt}
 ```
 
-**Confirmação interativa de speaker → papel:**
+**Interactive speaker → role confirmation:**
 
 ```go
-// SpeakerExamples retorna até n falas de exemplo por rótulo de speaker, pra
-// um humano conferir quem é aluno e quem é tutor antes de montar o
-// speakerRoles usado por FormatTranscript.
+// SpeakerExamples returns up to n example utterances per speaker label, for
+// a human to confirm who is the student and who is the tutor before
+// building the speakerRoles used by FormatTranscript.
 func SpeakerExamples(utterances []stt.Utterance, n int) map[string][]string
 ```
 
-`cmd/spike` imprime as falas de exemplo de cada locutor e pergunta via stdin qual é aluno/tutor
-(aula do Cambly é sempre 1:1 — confirmando um dos dois, o outro é implícito). Sem flag pra pular
-essa confirmação: é rápida e evita mapear errado silenciosamente, o que contaminaria toda a
-análise.
+`cmd/spike` prints each speaker's example utterances and asks via stdin which one is the
+student/tutor (a Cambly lesson is always 1:1 — confirming one of the two implies the other).
+No flag to skip this confirmation: it's quick and avoids silently mismapping, which would
+contaminate the whole analysis.
 
 ```go
-// FormatTranscript converte as utterances diarizadas num texto legível pro
-// prompt, rotulando cada fala como "Aluno" ou "Tutor" via speakerRoles.
-// Erro se algum Speaker não estiver mapeado.
+// FormatTranscript converts the diarized utterances into text readable by
+// the prompt, labeling each utterance as "Aluno" or "Tutor" via
+// speakerRoles. Errors if some Speaker isn't mapped.
 func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error)
 ```
 
-## Integração `cmd/spike`
+## `cmd/spike` integration
 
-Mesmo padrão do STT: mapa `providerFactories` (agora para `analysis.Provider`), flag
-`-analysis-providers` (nomes: `deepseek`, `qwen`, `glm`, `anthropic`, `openai`, `gemini`),
-isolamento de falha por provedor. Cada fatia só adiciona a entrada correspondente no mapa — sem
-mudança estrutural no arquivo a cada fatia nova (mesmo comportamento observado nas 4 fatias do
-STT).
+Same pattern as STT: a `providerFactories` map (now for `analysis.Provider`), an
+`-analysis-providers` flag (names: `deepseek`, `qwen`, `glm`, `anthropic`, `openai`, `gemini`),
+per-provider failure isolation. Each slice only adds the corresponding entry to the map — no
+structural change to the file per new slice (same behavior observed across STT's 4 slices).
 
-## Custo e notas de qualidade
+## Cost and quality notes
 
-Novo doc `docs/notas-analise-llm.md`, espelhando `docs/notas-stt.md` (mesmo header de privacidade:
-anotações parafraseadas, sem transcrever trechos literais ou dados identificáveis). Critérios por
-provedor/aula:
+New doc `docs/notas-analise-llm.md`, mirroring `docs/notas-stt.md` (same privacy header:
+paraphrased notes, no transcribing literal snippets or identifiable data). Criteria per
+provider/lesson:
 
-- **Qualidade geral**
-- **Correções:** são reais? O modelo inventa erro que não existe (falso positivo)?
-- **Vocabulário:** útil? Trata corretamente code-switching PT/ES como vocabulário, não como erro?
-- **Expressões do tutor:** reaproveitáveis?
-- **Custo real:** conferido manualmente no dashboard de billing de cada provedor (mesma convenção
-  do STT — não vale a pena extrair `usage.tokens` programaticamente; cada API tem formato de
-  `usage` diferente).
-- **Outras observações**
+- **Overall quality**
+- **Corrections:** are they real? Does the model invent a mistake that isn't there (false
+  positive)?
+- **Vocabulary:** useful? Does it correctly treat PT/ES code-switching as vocabulary, not as a
+  mistake?
+- **Tutor expressions:** reusable?
+- **Real cost:** checked manually on each provider's billing dashboard (same convention as STT —
+  not worth programmatically extracting `usage.tokens`; each API has a different `usage` format).
+- **Other observations**
 
-## Tratamento de erro
+## Error handling
 
-- Falha de parse (mesmo após remover o fechamento de code fence): retorna `&Result{RawResponse:
-  raw}, err` — a chamada já custou dinheiro, então o `RawResponse` fica disponível pro chamador
-  salvar em disco mesmo com erro (mesmo padrão do `ElevenLabsProvider`).
-- Erro HTTP (status não-2xx): tratado de forma genérica por provedor, sem `RawResponse` útil pra
-  salvar.
-- Sem retry (regra do spike).
-- `SpeakerExamples`/`FormatTranscript`: erro explícito se um `Speaker` não estiver no
-  `speakerRoles` — falha visível, não um chute silencioso.
+- Parse failure (even after stripping the trailing code fence): returns `&Result{RawResponse:
+  raw}, err` — the call already cost money, so `RawResponse` stays available for the caller to
+  save to disk even with an error (same pattern as `ElevenLabsProvider`).
+- HTTP error (non-2xx status): handled generically per provider, with no useful `RawResponse` to
+  save.
+- No retry (the spike's rule).
+- `SpeakerExamples`/`FormatTranscript`: an explicit error if a `Speaker` isn't in `speakerRoles` —
+  a visible failure, not a silent guess.
 
-## Testes
+## Tests
 
-- `parsing_test.go`: fixtures cobrindo JSON válido direto, JSON com fechamento de code fence
-  sobrando no final, e JSON inválido.
-- `FormatTranscript`/`SpeakerExamples`: testes com utterances sintéticas (mesmo estilo dos
-  fixtures de STT — conversa inventada, sem dados reais).
-- Os 6 clients HTTP (`openai_compatible.go`, `anthropic.go`, `gemini.go`): sem teste unitário, mesma
-  justificativa do STT — chamada de rede real, verificada manualmente via CLI a cada fatia.
-- `cmd/spike/main.go`: sem testes (descartável).
+- `parsing_test.go`: fixtures covering valid JSON as-is, JSON with a leftover trailing code fence
+  closing, and invalid JSON.
+- `FormatTranscript`/`SpeakerExamples`: tests with synthetic utterances (same style as the STT
+  fixtures — an invented conversation, no real data).
+- The 6 HTTP clients (`openai_compatible.go`, `anthropic.go`, `gemini.go`): no unit test, same
+  justification as STT — a real network call, verified manually via the CLI on each slice.
+- `cmd/spike/main.go`: no tests (disposable).
 
-## Credenciais novas
+## New credentials
 
-Variáveis de ambiente (só leitura, nunca hardcoded, mesma convenção do `CLAUDE.md`):
-`DEEPSEEK_API_KEY`, `QWEN_API_KEY`, `GLM_API_KEY`, `GEMINI_API_KEY` (Anthropic e OpenAI já
-previstos). Cada fatia adiciona só a variável do candidato daquela fatia ao `.env.example` —
-não todas de uma vez.
+Environment variables (read-only, never hardcoded, same convention as `CLAUDE.md`):
+`DEEPSEEK_API_KEY`, `QWEN_API_KEY`, `GLM_API_KEY`, `GEMINI_API_KEY` (Anthropic and OpenAI already
+planned for). Each slice adds only that slice's candidate variable to `.env.example` — not all at
+once.
 
-## Privacidade
+## Privacy
 
-Mesmas regras já em vigor: `local/` fora do git, `docs/notas-analise-llm.md` com anotações
-parafraseadas (sem trechos literais de fala real, sem nomes de tutores), chaves de API só em
-variável de ambiente / `.env` gitignored.
+Same rules already in effect: `local/` kept out of git, `docs/notas-analise-llm.md` with
+paraphrased notes (no literal snippets of real speech, no tutor names), API keys only in
+environment variables / gitignored `.env`.
 
-## Alternativas consideradas
+## Alternatives considered
 
-- **Agregador único (ex.: OpenRouter) para os 6 candidatos (rejeitada):** simplificaria
-  credenciais/billing, mas adiciona um intermediário (custo/latência extra) e não reflete
-  fielmente custo e comportamento de cada API oficial — decisão do usuário por acesso direto a
-  cada provedor.
-- **Um cliente totalmente independente por provedor, 6 arquivos (Abordagem A, rejeitada):**
-  mesmo padrão do `internal/stt`, mas geraria duplicação real entre os 4 candidatos
-  OpenAI-compatible (OpenAI, DeepSeek, GLM, Qwen) — não é abstração prematura, já que os 4 casos
-  concretos existem agora.
-- **Prefill com `"{"` simples (rejeitada em favor de `"```json\n"`):** a versão com abertura de
-  code fence é mais previsível — aproveita o comportamento natural do modelo de fechar o bloco
-  (algo que ele tentaria fazer de qualquer forma) em vez de brigar contra esse hábito.
-- **Extração programática de tokens/custo de cada resposta (rejeitada):** formato de `usage`
-  varia demais entre 6 APIs pra justificar a complexidade num spike; mantido o mesmo processo
-  manual (dashboard de billing) já usado no STT.
+- **A single aggregator (e.g. OpenRouter) for all 6 candidates (rejected):** would simplify
+  credentials/billing, but adds a middleman (extra cost/latency) and doesn't faithfully reflect
+  each official API's real cost and behavior — the user chose direct access to each provider.
+- **A fully independent client per provider, 6 files (Approach A, rejected):** same pattern as
+  `internal/stt`, but would create real duplication across the 4 OpenAI-compatible candidates
+  (OpenAI, DeepSeek, GLM, Qwen) — not premature abstraction, since the 4 concrete cases already
+  exist now.
+- **Prefill with a plain `"{"` (rejected in favor of `"```json\n"`):** the version with the code
+  fence opening is more predictable — it leverages the model's natural behavior of closing the
+  block (something it would try to do anyway) instead of fighting that habit.
+- **Programmatic extraction of tokens/cost from each response (rejected):** the `usage` format
+  varies too much across 6 APIs to justify the complexity in a spike; kept the same manual process
+  (billing dashboard) already used for STT.

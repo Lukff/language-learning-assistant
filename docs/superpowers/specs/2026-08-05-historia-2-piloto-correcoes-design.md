@@ -1,96 +1,97 @@
-# Fase 2, História 2 — Piloto: Correções do aluno: design
+# Phase 2, Story 2 — Pilot: Student Corrections: design
 
-> Cobre a História 2 revisada de `docs/fase-2-analise-llm.md` (piloto de `analyze_corrections`).
-> Depende da História 1 (já fechada — prompts, `Provider` agnóstico, persistência em
-> `analysis_results`). Escopo: credencial DeepSeek, disparo sob demanda, exibição inline no Detalhe
-> da aula, e o ajuste de UX que se tornou necessário ao introduzir análises presas a um mapeamento
-> de falante (troca de falante deixa de ser um toggle solto e passa a viver dentro da edição da
-> aula, com aviso de descarte). **Não** inclui job em background, nem as outras 6 tarefas
-> candidatas — isso fica para quando `analyze_corrections` for confirmada
-> (`docs/notas-analise-llm.md`) e para quando cada tarefa candidata for a vez dela.
+> Covers the revised Story 2 from `docs/fase-2-analise-llm.md` (the `analyze_corrections` pilot).
+> Depends on Story 1 (already closed — prompts, agnostic `Provider`, persistence in
+> `analysis_results`). Scope: DeepSeek credential, on-demand triggering, inline display in the
+> lesson Detail screen, and the UX adjustment that became necessary once analyses got tied to a
+> speaker mapping (changing the speaker is no longer a loose toggle and now lives inside lesson
+> editing, with a discard warning). Does **not** include a background job, nor the other 6
+> candidate tasks — those wait until `analyze_corrections` is confirmed
+> (`docs/notas-analise-llm.md`) and until each candidate task's turn comes.
 
-## Contexto e motivação
+## Context and motivation
 
-A História 1 deixou pronta a infraestrutura (7 prompts versionados, `Provider` agnóstico de
-tarefa, `analysis_results`/`lesson_topics`) mas nada no app chama isso ainda — só o
-`cmd/validate-analysis`, que nunca chegou a rodar (ver replanejamento em
-`docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md`). Essa spec entrega a
-primeira tarefa de análise de fato visível na UI: `analyze_corrections`, escolhida por valor
-pedagógico apesar de ser a mais complexa de exibir (precisa ancorar na fala exata via
-`utterance_index`, e destacar só o trecho errado dentro da fala, não a fala inteira).
+Story 1 finished the infrastructure (7 versioned prompts, task-agnostic `Provider`,
+`analysis_results`/`lesson_topics`) but nothing in the app calls it yet — only
+`cmd/validate-analysis`, which never actually ran (see the replanning in
+`docs/superpowers/specs/2026-08-05-fase2-replanejamento-iterativo-design.md`). This spec delivers
+the first analysis task actually visible in the UI: `analyze_corrections`, chosen for its
+pedagogical value despite being the most complex to display (it needs to anchor to the exact
+utterance via `utterance_index`, and highlight only the wrong span within the speech, not the
+whole utterance).
 
-Ao desenhar o fluxo, surgiu um problema não previsto na spec de replanejamento: `analyze_corrections`
-só faz sentido depois que o app sabe quem é o Aluno e quem é o Tutor
-(`lesson.StudentSpeakerLabel`, escolhido na Fase 1/História 6) — esse mapeamento define o
-`speakerRoles` enviado a `FormatTranscript`. Se o usuário troca esse mapeamento depois de já ter
-uma análise salva, a análise antiga passa a apontar para a fala errada (o rótulo Aluno/Tutor que
-o modelo viu já não bate mais com o toggle atual). Esta spec também resolve isso: a escolha de
-falante deixa de ser um toggle sempre visível no painel de transcrição e passa a viver dentro do
-fluxo de edição da aula, com aviso explícito de que trocar descarta análises já feitas.
+While designing the flow, a problem not anticipated in the replanning spec came up:
+`analyze_corrections` only makes sense once the app knows who the Student is and who the Tutor is
+(`lesson.StudentSpeakerLabel`, chosen in Phase 1/Story 6) — that mapping defines the
+`speakerRoles` sent to `FormatTranscript`. If the user changes that mapping after an analysis has
+already been saved, the old analysis ends up pointing at the wrong speech (the Student/Tutor label
+the model saw no longer matches the current toggle). This spec also resolves that: the speaker
+choice stops being an always-visible toggle in the transcript panel and moves into the lesson
+editing flow, with an explicit warning that changing it discards analyses already done.
 
-## Decisões de escopo
+## Scope decisions
 
-- **Matching do trecho errado roda no backend (Go), não no frontend.** O campo `original` de cada
-  `Correction` é um trecho da fala (não a fala inteira) copiado pelo modelo — pode não bater 100%
-  com o texto exibido (maiúscula, pontuação, espaço). Resolver isso em Go permite testes
-  table-driven (padrão já usado em `internal/analysis`); o frontend não tem test runner configurado
-  hoje, então lógica de string ali ficaria sem cobertura automatizada.
-- **Sem match, a correção não desaparece.** Se o trecho não for localizado na fala (nem
-  normalizado), a fala aparece sem riscado e uma nota curta abaixo mostra
-  original → correção + explicação — nunca descarta silenciosamente uma correção que o modelo deu.
-- **Sob demanda, três ações explícitas.** `GetCorrections` (leitura, sem custo de API),
-  `AnalyzeCorrections` (primeira vez) e `ReprocessCorrections` (sobrescreve) são métodos distintos
-  no binding — sem flag booleana escondida (`reprocess bool`) misturando os dois casos na mesma
-  assinatura.
-- **Botão único que muda de rótulo e de comportamento.** Mesmo padrão do botão "Reprocessar" já
-  usado no estado de erro da transcrição (Fase 1): "Analisar correções" quando não há resultado
-  ainda, "Reprocessar correções" quando há — clicar em reprocessar sempre passa por uma confirmação
-  (sobrescreve e custa uma nova chamada de API).
-- **Explicação da correção só aparece no hover** (`title` nativo sobre o trecho em âmbar) — mantém a
-  transcrição visualmente limpa; a explicação de por que o erro aconteceu não é o dado principal da
-  leitura corrida.
-- **Escolha de falante sai do painel de transcrição e entra no `EditLessonModal`.** Uma vez que
-  `lesson.StudentSpeakerLabel` está definido, o toggle não aparece mais solto — só dentro de
-  "Editar aula". Com exatamente 2 falantes (o caso normal de uma aula 1-a-1), a UI vira um único
-  botão "Inverter falantes"; com 3+ (diarização ruidosa, caso raro já suportado hoje por
-  `neutralLabel`), continuam os botões individuais "Speaker X é você" já existentes.
-- **Trocar o falante depois de já ter análise salva pede confirmação e descarta tudo.** Não é uma
-  troca seletiva por tarefa — qualquer linha de `analysis_results` daquela aula é apagada (a tabela
-  é genérica por `(lesson_id, task)`, então isso já vale para as tarefas futuras sem precisar
-  revisitar esta decisão). Na primeira escolha (`StudentSpeakerLabel` ainda nulo) não há nada para
-  descartar, então não há aviso.
-- **`cmd/validate-analysis` é removido nesta história**, sem ter rodado — sua função é assumida pela
-  validação visual da própria História 2 (já decidido no replanejamento).
+- **Matching the wrong span runs in the backend (Go), not the frontend.** The `original` field of
+  each `Correction` is a snippet of the speech (not the whole utterance) copied by the model — it
+  may not match the displayed text 100% (capitalization, punctuation, whitespace). Solving this in
+  Go allows table-driven tests (the pattern already used in `internal/analysis`); the frontend has
+  no test runner configured today, so string logic there would go without automated coverage.
+- **Without a match, the correction doesn't disappear.** If the span isn't located in the speech
+  (even normalized), the speech shows with no strikethrough and a short note below shows
+  original → correction + explanation — a correction the model gave is never silently discarded.
+- **On demand, three explicit actions.** `GetCorrections` (read, no API cost),
+  `AnalyzeCorrections` (first time) and `ReprocessCorrections` (overwrite) are distinct methods in
+  the binding — no hidden boolean flag (`reprocess bool`) mixing both cases into the same
+  signature.
+- **A single button that changes label and behavior.** Same pattern as the "Reprocess" button
+  already used in the transcript error state (Phase 1): "Analyze corrections" when there's no
+  result yet, "Reprocess corrections" when there is — clicking reprocess always goes through a
+  confirmation (it overwrites and costs a new API call).
+- **The correction's explanation only shows on hover** (native `title` over the amber span) —
+  keeps the transcript visually clean; the explanation of why the mistake happened isn't the
+  primary data for a quick read.
+- **The speaker choice moves out of the transcript panel and into `EditLessonModal`.** Once
+  `lesson.StudentSpeakerLabel` is set, the toggle no longer appears loose — only inside "Edit
+  lesson". With exactly 2 speakers (the normal case for a 1-on-1 lesson), the UI becomes a single
+  "Swap speakers" button; with 3+ (noisy diarization, a rare case already supported today by
+  `neutralLabel`), the existing individual "Speaker X is you" buttons remain.
+- **Changing the speaker after an analysis is already saved asks for confirmation and discards
+  everything.** It isn't a selective per-task swap — every `analysis_results` row for that lesson
+  is deleted (the table is generic by `(lesson_id, task)`, so this already holds for future tasks
+  without needing to revisit this decision). On the first choice (`StudentSpeakerLabel` still
+  null) there's nothing to discard, so there's no warning.
+- **`cmd/validate-analysis` is removed in this story**, without ever having run — its role is taken
+  over by Story 2's own visual validation (already decided in the replanning).
 
-## Arquitetura
+## Architecture
 
 ```
 internal/config/
   credentials.go          # + SaveAnalysisAPIKey/GetAnalysisAPIKey (keyringUserDeepSeek)
 
 internal/analysis/
-  analysis.go              # Provider ganha Model() string
-  openai_compatible.go     # openAICompatibleProvider.Model() — devolve p.model
-  corrections_display.go   # NOVO: CorrectionDisplay, MatchCorrections (matching + split)
+  analysis.go              # Provider gains Model() string
+  openai_compatible.go     # openAICompatibleProvider.Model() — returns p.model
+  corrections_display.go   # NEW: CorrectionDisplay, MatchCorrections (matching + split)
 
 internal/db/
   analysis_results.go      # + DeleteAnalysisResultsForLesson
-  migrations/00004_analysis_results.sql   # sem mudança (schema já suporta o que falta)
+  migrations/00004_analysis_results.sql   # unchanged (schema already supports what's missing)
 
 services/
-  analysis.go              # NOVO: AnalysisService (GetCorrections/AnalyzeCorrections/ReprocessCorrections)
+  analysis.go              # NEW: AnalysisService (GetCorrections/AnalyzeCorrections/ReprocessCorrections)
   settings.go              # + HasAnalysisCredential/SaveAnalysisAPIKey
-  library.go                # SetStudentSpeaker: apaga analysis_results antes de gravar o novo label
+  library.go                # SetStudentSpeaker: deletes analysis_results before writing the new label
 
-main.go                    # + AnalysisService no app.Services; analysisProviderFactory
+main.go                    # + AnalysisService in app.Services; analysisProviderFactory
 
-cmd/validate-analysis/     # REMOVIDO
+cmd/validate-analysis/     # REMOVED
 
 frontend/src/lib/
-  EditLessonModal.svelte    # + seção "Quem é você" (inverter / botões individuais)
-  screens/Settings.svelte   # + seção "Credencial do provedor de análise"
-  screens/LessonDetail.svelte  # toggle de speaker sai daqui; + botão Analisar/Reprocessar + inline
-  bindings/.../analysisservice.ts   # gerado pelo wails3 (AnalysisService)
+  EditLessonModal.svelte    # + "Who are you" section (swap / individual buttons)
+  screens/Settings.svelte   # + "Analysis provider credential" section
+  screens/LessonDetail.svelte  # speaker toggle moves out of here; + Analyze/Reprocess button + inline
+  bindings/.../analysisservice.ts   # generated by wails3 (AnalysisService)
 ```
 
 ### `internal/config/credentials.go`
@@ -98,14 +99,14 @@ frontend/src/lib/
 ```go
 const keyringUserDeepSeek = "deepseek"
 
-func SaveAnalysisAPIKey(apiKey string) error   // espelha SaveSTTAPIKey
-func GetAnalysisAPIKey() (string, error)       // espelha GetSTTAPIKey
+func SaveAnalysisAPIKey(apiKey string) error   // mirrors SaveSTTAPIKey
+func GetAnalysisAPIKey() (string, error)       // mirrors GetSTTAPIKey
 ```
 
-### `internal/analysis` — `Provider.Model()` e matching
+### `internal/analysis` — `Provider.Model()` and matching
 
-`Provider` ganha um terceiro método, só para permitir que o chamador grave qual modelo produziu o
-resultado (coluna `analysis_results.model`) sem precisar saber o detalhe de cada implementação:
+`Provider` gains a third method, only to let the caller record which model produced the result
+(the `analysis_results.model` column) without needing to know each implementation's details:
 
 ```go
 type Provider interface {
@@ -115,44 +116,44 @@ type Provider interface {
 }
 ```
 
-`openAICompatibleProvider.Model() string { return p.model }` — já guarda `model` desde a
-construção (`"deepseek-v4-flash"`), só faltava expor.
+`openAICompatibleProvider.Model() string { return p.model }` — already holds `model` since
+construction (`"deepseek-v4-flash"`), it just needed exposing.
 
-Novo arquivo `corrections_display.go`:
+New file `corrections_display.go`:
 
 ```go
-// CorrectionDisplay é uma Correction já pronta para o frontend renderizar:
-// o trecho errado (Wrong) já separado do resto da fala (Before/After) via
-// matching normalizado contra o texto real da utterance. Wrong == "" quando
-// o trecho não foi localizado — o frontend mostra a correção como nota
-// avulsa nesse caso, nunca descarta.
+// CorrectionDisplay is a Correction already prepared for the frontend to render:
+// the wrong span (Wrong) already split from the rest of the speech (Before/After) via
+// normalized matching against the utterance's real text. Wrong == "" when
+// the span wasn't located — the frontend shows the correction as a standalone
+// note in that case, never discards it.
 type CorrectionDisplay struct {
     UtteranceIndex          int    `json:"utteranceIndex"`
-    Before, Wrong, After    string `json:"before"` // json tags completas na implementação
+    Before, Wrong, After    string `json:"before"` // full json tags in the implementation
     Correction, Explanation string `json:"correction"`
 }
 
-// MatchCorrections casa cada Correction com o texto da utterance
-// correspondente (utterances[c.UtteranceIdx]), normalizando (case-insensitive,
-// espaços colapsados) antes de comparar. Usa a primeira ocorrência quando
-// original aparece mais de uma vez na fala. utterances e corrections já
-// vieram com utterance_index validado (filterAnchored, História 1) — um
-// índice fora do range aqui seria bug de chamador, não path a tratar
-// graciosamente de novo.
+// MatchCorrections matches each Correction against the corresponding
+// utterance's text (utterances[c.UtteranceIdx]), normalizing (case-insensitive,
+// spaces collapsed) before comparing. Uses the first occurrence when
+// original appears more than once in the speech. utterances and corrections
+// already arrived with utterance_index validated (filterAnchored, Story 1) — an
+// out-of-range index here would be a caller bug, not a path to handle
+// gracefully again.
 func MatchCorrections(utterances []stt.Utterance, corrections []Correction) []CorrectionDisplay
 ```
 
 ### `internal/db/analysis_results.go`
 
 ```go
-// DeleteAnalysisResultsForLesson apaga toda análise já feita para lessonID
-// (todas as tasks) — chamada quando o mapeamento aluno/tutor muda, já que
-// qualquer análise ancorada em utterance_index passa a apontar para o papel
-// errado assim que os rótulos Aluno/Tutor trocam de falante.
+// DeleteAnalysisResultsForLesson deletes every analysis already done for lessonID
+// (all tasks) — called when the student/tutor mapping changes, since
+// any analysis anchored on utterance_index ends up pointing at the wrong
+// role as soon as the Student/Tutor labels swap speakers.
 func DeleteAnalysisResultsForLesson(conn *sql.DB, lessonID int64) error
 ```
 
-### `services/analysis.go` (novo)
+### `services/analysis.go` (new)
 
 ```go
 type AnalysisService struct {
@@ -167,70 +168,71 @@ type CorrectionsResult struct {
     Items []analysis.CorrectionDisplay `json:"items"`
 }
 
-// GetCorrections devolve o resultado já salvo, ou nil se analyze_corrections
-// nunca rodou para essa lesson — não chama a API. Internamente: busca
-// analysis_results; se não achar, devolve (nil, nil); se achar, busca a
-// transcrição (db.FindTranscriptByLessonID), decodifica result_json em
-// []analysis.Correction e roda MatchCorrections antes de devolver — o
-// resultado salvo é sempre re-casado contra o texto atual da transcrição,
-// nunca cacheado já "achatado".
+// GetCorrections returns the already-saved result, or nil if analyze_corrections
+// has never run for this lesson — doesn't call the API. Internally: looks up
+// analysis_results; if not found, returns (nil, nil); if found, looks up the
+// transcript (db.FindTranscriptByLessonID), decodes result_json into
+// []analysis.Correction and runs MatchCorrections before returning — the
+// saved result is always re-matched against the transcript's current text,
+// never cached already "flattened".
 func (s *AnalysisService) GetCorrections(lessonID int64) (*CorrectionsResult, error)
 
-// AnalyzeCorrections roda analyze_corrections se ainda não houver resultado
-// salvo; se já houver, devolve o existente sem chamar a API de novo
-// (idempotente).
+// AnalyzeCorrections runs analyze_corrections if there's no saved result yet;
+// if there already is one, returns the existing one without calling the API
+// again (idempotent).
 func (s *AnalysisService) AnalyzeCorrections(lessonID int64) (CorrectionsResult, error)
 
-// ReprocessCorrections roda analyze_corrections e sobrescreve o resultado
-// existente, mesmo que já haja um — ação explícita, nunca automática.
+// ReprocessCorrections runs analyze_corrections and overwrites the existing
+// result, even if there already is one — an explicit action, never automatic.
 func (s *AnalysisService) ReprocessCorrections(lessonID int64) (CorrectionsResult, error)
 ```
 
-`internal/analysis` ganha duas exportações para o pacote `services` não duplicar schema:
-`newCorrectionsTask` vira `NewCorrectionsTask() TaskDef` (só capitaliza — segue o mesmo formato dos
-outros construtores de tarefa), e uma nova `ParseCorrectionsResult(resultJSON json.RawMessage)
-([]Correction, error)` (decodifica o `result_json` já persistido de volta em `[]Correction`) —
-reaproveitada por todo caminho que precisa reconstituir `CorrectionDisplay` a partir do que está
-salvo no banco (`GetCorrections` e o atalho idempotente de `runCorrections`, abaixo), em vez de cada
-um fazer seu próprio `json.Unmarshal`.
+`internal/analysis` gains two exports so the `services` package doesn't duplicate the schema:
+`newCorrectionsTask` becomes `NewCorrectionsTask() TaskDef` (just capitalized — follows the same
+shape as the other task constructors), and a new `ParseCorrectionsResult(resultJSON json.RawMessage)
+([]Correction, error)` (decodes the already-persisted `result_json` back into `[]Correction`) —
+reused by every path that needs to reconstruct `CorrectionDisplay` from what's saved in the
+database (`GetCorrections` and the idempotent shortcut in `runCorrections`, below), instead of each
+one doing its own `json.Unmarshal`.
 
-`AnalyzeCorrections`/`ReprocessCorrections` compartilham um `runCorrections(lessonID, overwrite
-bool)` interno:
+`AnalyzeCorrections`/`ReprocessCorrections` share an internal `runCorrections(lessonID, overwrite
+bool)`:
 
-1. Busca `lesson` (`db.FindLessonByID`); erro claro se `StudentSpeakerLabel == nil`
-   ("escolha quem é você na aula antes de analisar" — mensagem voltada ao usuário, PT-BR).
-2. Busca a transcrição (`db.FindTranscriptByLessonID`, já existente da Fase 1) — necessária tanto
-   pelo atalho idempotente (passo 3) quanto pelo caminho que chama o provedor (passo 4 em diante).
-3. Se `!overwrite`: `db.FindAnalysisResult(conn, lessonID, "analyze_corrections")`; se existir,
+1. Looks up `lesson` (`db.FindLessonByID`); a clear error if `StudentSpeakerLabel == nil`
+   ("choose who you are in the lesson before analyzing" — a user-facing message, in PT-BR).
+2. Looks up the transcript (`db.FindTranscriptByLessonID`, already existing from Phase 1) —
+   needed both by the idempotent shortcut (step 3) and by the path that calls the provider (step 4
+   onward).
+3. If `!overwrite`: `db.FindAnalysisResult(conn, lessonID, "analyze_corrections")`; if it exists,
    `analysis.ParseCorrectionsResult(result_json)` + `analysis.MatchCorrections(utterances,
-   corrections)` e devolve direto — sem tocar no provedor.
-4. Monta `speakerRoles` a partir de `StudentSpeakerLabel` (esse speaker → `"aluno"`, qualquer outro
-   → `"tutor"`), chama `analysis.FormatTranscript`.
-5. `provider, err := s.providerFactory()` — erro aqui já cobre credencial ausente/keyring
-   indisponível (mesma mensagem de diagnóstico usada em `HasSTTCredential`).
+   corrections)` and returns directly — without touching the provider.
+4. Builds `speakerRoles` from `StudentSpeakerLabel` (that speaker → `"aluno"`, any other →
+   `"tutor"`), calls `analysis.FormatTranscript`.
+5. `provider, err := s.providerFactory()` — an error here already covers missing
+   credential/unavailable keyring (same diagnostic message used in `HasSTTCredential`).
 6. `resultJSON, raw, err := analysis.NewCorrectionsTask().Execute(ctx, provider, transcript,
    len(utterances))`.
-7. Grava `raw` em disco **mesmo se `err != nil`** (`rawJSONRelPath`-like: mesmo diretório do vídeo,
-   `<basename>.analysis.analyze_corrections.json`, relativo à `storageRoot`) — a chamada já custou.
-   Se `err != nil`, devolve o erro (não avança para os passos seguintes).
-8. `db.UpsertPrompt(conn, "analyze_corrections", version, prompt)` para obter o `prompt_id` (mesma
-   chamada idempotente já usada em `RegisterPrompts` — reaproveitada aqui, não uma consulta nova).
+7. Writes `raw` to disk **even if `err != nil`** (`rawJSONRelPath`-like: same directory as the
+   video, `<basename>.analysis.analyze_corrections.json`, relative to `storageRoot`) — the call
+   already cost money. If `err != nil`, returns the error (doesn't advance to the following steps).
+8. `db.UpsertPrompt(conn, "analyze_corrections", version, prompt)` to get the `prompt_id` (same
+   idempotent call already used in `RegisterPrompts` — reused here, not a new query).
 9. `db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, provider.Model(),
    resultJSON, rawRelPath)`.
 10. `analysis.ParseCorrectionsResult(resultJSON)` + `analysis.MatchCorrections(utterances,
-    corrections)`, devolve `CorrectionsResult{Items: ...}`.
+    corrections)`, returns `CorrectionsResult{Items: ...}`.
 
 ### `services/settings.go`
 
 ```go
-func (s *SettingsService) HasAnalysisCredential() (bool, error)   // espelha HasSTTCredential
-func (s *SettingsService) SaveAnalysisAPIKey(apiKey string) error // espelha SaveSTTAPIKey
+func (s *SettingsService) HasAnalysisCredential() (bool, error)   // mirrors HasSTTCredential
+func (s *SettingsService) SaveAnalysisAPIKey(apiKey string) error // mirrors SaveSTTAPIKey
 ```
 
 ### `services/library.go` — `SetStudentSpeaker`
 
-Passa a apagar análises existentes antes de gravar o novo label, só quando há de fato uma troca
-(não na primeira escolha):
+Now deletes existing analyses before writing the new label, only when there's an actual change
+(not on the first choice):
 
 ```go
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
@@ -241,13 +243,14 @@ func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) 
             return err
         }
     }
-    // grava speakerLabel como já acontece hoje
+    // saves speakerLabel as it already does today
 }
 ```
 
-O aviso de confirmação ("trocar descarta análises já feitas") é responsabilidade do frontend, antes
-de chamar `SetStudentSpeaker` — o backend só executa; não há um segundo parâmetro tipo `confirm
-bool`, a confirmação é inteiramente uma decisão de UI que decide se chama o binding ou não.
+The confirmation warning ("changing this discards analyses already done") is the frontend's
+responsibility, before calling `SetStudentSpeaker` — the backend just executes; there's no second
+parameter like `confirm bool`, the confirmation is entirely a UI decision about whether to call the
+binding at all.
 
 ### `main.go`
 
@@ -266,188 +269,194 @@ Services: []application.Service{
 },
 ```
 
-Resolvida por chamada (não no boot), mesmo motivo do `sttFactory` já existente: a credencial pode
-não existir ainda na primeira sessão do app.
+Resolved per call (not at boot), same reason as the already-existing `sttFactory`: the credential
+may not exist yet in the app's first session.
 
 ### `frontend/src/lib/EditLessonModal.svelte`
 
-Novos props: `speakerOptions: string[]` (ordem de primeira fala, mesma lista que hoje é
-`speakerOrder` em `LessonDetail.svelte`), `currentStudentSpeaker: string | null`,
-`hasAnalysisResults: boolean` (calculado pelo chamador: `!!corrections` já carregado). Nova seção
-no modal, entre "Tutor" e os botões de ação:
+New props: `speakerOptions: string[]` (first-speech order, the same list that today is
+`speakerOrder` in `LessonDetail.svelte`), `currentStudentSpeaker: string | null`,
+`hasAnalysisResults: boolean` (computed by the caller: `!!corrections` already loaded). New section
+in the modal, between "Tutor" and the action buttons:
 
 ```
-Quem é você
-  [se speakerOptions.length === 2]:  [Inverter falantes]
-  [senão]:                            [Speaker A é você] [Speaker B é você] [Speaker C é você] ...
+Who are you
+  [if speakerOptions.length === 2]:  [Swap speakers]
+  [otherwise]:                       [Speaker A is you] [Speaker B is you] [Speaker C is you] ...
 
-  (ao clicar, se currentStudentSpeaker != null e o novo valor é diferente do atual):
-    confirm("Trocar quem é você descarta as análises já feitas dessa aula — você vai precisar
-             reprocessar. Continuar?")
-    — só chama LibraryService.SetStudentSpeaker se confirmado
+  (on click, if currentStudentSpeaker != null and the new value differs from the current one):
+    confirm("Changing who you are discards analyses already done for this lesson — you'll need to
+             reprocess. Continue?")
+    — only calls LibraryService.SetStudentSpeaker if confirmed
 ```
 
-Sem aviso quando `currentStudentSpeaker == null` (primeira escolha). Depois de salvar, `onSaved()`
-já recarrega a `lesson` (padrão existente) — `LessonDetail` re-busca `GetCorrections` no mesmo
-`onLessonSaved` (ver abaixo), já que o resultado pode ter sido apagado.
+No warning when `currentStudentSpeaker == null` (first choice). After saving, `onSaved()` already
+reloads the `lesson` (existing pattern) — `LessonDetail` refetches `GetCorrections` in the same
+`onLessonSaved` (see below), since the result may have been deleted.
 
 ### `frontend/src/lib/screens/LessonDetail.svelte`
 
-- `speakerOrder`/`neutralLabel`/`chooseStudentSpeaker`/o bloco `.speaker-toggle` do painel de
-  transcrição **saem** daqui — viram props passados para `EditLessonModal` (`speakerOrder` já é
-  `$derived.by`, só passa a ser lido pelo modal também).
-- Novo estado: `corrections: CorrectionDisplay[] | null`, `loadingCorrections`, `analyzingCorrections`,
-  `correctionsError`.
-- `fetchCorrectionsIfReady()` (chamada no `onMount`, junto de `fetchTranscriptIfReady`, e de novo em
-  `onLessonSaved`): se `lesson.status !== "pronta"` ou `!lesson.studentSpeakerLabel`, `corrections =
-  null`; senão `AnalysisService.GetCorrections(lessonId)`.
-- Botão, visível só quando `lesson.studentSpeakerLabel` está definido e a transcrição está pronta:
-  - `corrections == null` → `"Analisar correções"`, chama `AnalyzeCorrections`.
-  - `corrections != null` → `"Reprocessar correções"`; `onclick` abre `confirm("Isso sobrescreve a
-    análise atual e gera uma nova chamada à API. Continuar?")`; se confirmado, chama
+- `speakerOrder`/`neutralLabel`/`chooseStudentSpeaker`/the `.speaker-toggle` block in the
+  transcript panel **move out** of here — they become props passed to `EditLessonModal`
+  (`speakerOrder` is already `$derived.by`, it just also gets read by the modal now).
+- New state: `corrections: CorrectionDisplay[] | null`, `loadingCorrections`,
+  `analyzingCorrections`, `correctionsError`.
+- `fetchCorrectionsIfReady()` (called in `onMount`, alongside `fetchTranscriptIfReady`, and again
+  in `onLessonSaved`): if `lesson.status !== "pronta"` or `!lesson.studentSpeakerLabel`,
+  `corrections = null`; otherwise `AnalysisService.GetCorrections(lessonId)`.
+- Button, visible only when `lesson.studentSpeakerLabel` is set and the transcript is ready:
+  - `corrections == null` → `"Analyze corrections"`, calls `AnalyzeCorrections`.
+  - `corrections != null` → `"Reprocess corrections"`; `onclick` opens `confirm("This overwrites
+    the current analysis and makes a new API call. Continue?")`; if confirmed, calls
     `ReprocessCorrections`.
-  - Estado de carregamento: `"Analisando…"` / `"Reprocessando…"`, desabilitado durante a chamada.
-  - Erro vai para `correctionsError` (não `actionError` nem `lessonError`) — só essa seção mostra
-    o problema, vídeo e transcrição continuam intactos.
-- Renderização de cada `utterance` do aluno: busca `corrections?.find(c => c.utteranceIndex ===
-  i)`; se achar e `Wrong !== ""`, renderiza `Before` + `<span style="text-decoration:
+  - Loading state: `"Analyzing…"` / `"Reprocessing…"`, disabled during the call.
+  - Errors go to `correctionsError` (not `actionError` nor `lessonError`) — only this section shows
+    the problem, video and transcript stay intact.
+- Rendering each student `utterance`: looks up `corrections?.find(c => c.utteranceIndex ===
+  i)`; if found and `Wrong !== ""`, renders `Before` + `<span style="text-decoration:
   line-through; color: mut">{Wrong}</span>` + `<span style="color: amber; font-weight: 600"
-  title={Explanation}>{Correction}</span>` + `After`; se achar e `Wrong === ""`, renderiza a fala
-  normal e, abaixo, `⚠ correção não localizada: "{original}" → "{Correction}" — {Explanation}`
-  (cor `mut`); sem correção para essa fala, renderiza normal (sem nenhuma marcação) — mesmo
-  princípio de resiliência já usado para aulas sem transcrição pronta.
+  title={Explanation}>{Correction}</span>` + `After`; if found and `Wrong === ""`, renders the
+  speech normally and, below, `⚠ correção não localizada: "{original}" → "{Correction}" — {Explanation}`
+  (`mut` color); with no correction for that utterance, renders normally (no markup at all) — same
+  resilience principle already used for lessons without a ready transcript.
 
 ### `frontend/src/lib/screens/Settings.svelte`
 
-Segunda seção de credencial, mesmo padrão visual da existente:
+Second credential section, same visual pattern as the existing one:
 
 ```
-Credencial do provedor de análise
-  {hasAnalysisCredential ? "Credencial configurada" : "Nenhuma credencial configurada"}
-  [input password] [Salvar]
+Analysis provider credential
+  {hasAnalysisCredential ? "Credential configured" : "No credential configured"}
+  [password input] [Save]
 ```
 
-## Fluxo de dados
+## Data flow
 
 ```
 LessonDetail.svelte (onMount / onLessonSaved)
   GetCorrections(lessonId) ──► AnalysisService.GetCorrections
                                   db.FindAnalysisResult(lessonID, "analyze_corrections")
-                                  nil ──► null pro frontend (botão "Analisar correções")
-                                  achou ──► ParseCorrectionsResult + MatchCorrections ──► CorrectionsResult
+                                  nil ──► null to the frontend ("Analyze corrections" button)
+                                  found ──► ParseCorrectionsResult + MatchCorrections ──► CorrectionsResult
 
-[usuário clica "Analisar correções"]
+[user clicks "Analyze corrections"]
   AnalyzeCorrections(lessonId) ──► AnalysisService.runCorrections(lessonID, overwrite=false)
-    FindLessonByID + checa StudentSpeakerLabel
+    FindLessonByID + checks StudentSpeakerLabel
     FindTranscriptByLessonID
-    já existe (FindAnalysisResult)? ──► ParseCorrectionsResult + MatchCorrections ──► CorrectionsResult
-                                          (sem chamar provider)
-    não existe:
+    already exists (FindAnalysisResult)? ──► ParseCorrectionsResult + MatchCorrections ──► CorrectionsResult
+                                          (without calling the provider)
+    doesn't exist:
       FormatTranscript(utterances, speakerRoles)
       providerFactory() ──► config.GetAnalysisAPIKey + NewDeepSeekProvider
       analysis.NewCorrectionsTask().Execute(ctx, provider, transcript, len(utterances))
-        raw sempre gravado em disco
+        raw always written to disk
         err == nil:
-          UpsertPrompt (idempotente) ──► promptID
+          UpsertPrompt (idempotent) ──► promptID
           UpsertAnalysisResult(lessonID, "analyze_corrections", promptID, provider.Model(), ...)
           ParseCorrectionsResult + MatchCorrections(utterances, corrections) ──► CorrectionsResult
-        err != nil: devolve erro pro frontend (correctionsError), raw já ficou salvo em disco
+        err != nil: returns error to the frontend (correctionsError), raw was already saved to disk
 
-[usuário troca falante em "Editar aula"]
-  EditLessonModal: currentStudentSpeaker != null e mudou?
-    confirm() ──► cancelado: nada acontece
-              ──► confirmado: SetStudentSpeaker(lessonId, novoLabel)
+[user changes speaker in "Edit lesson"]
+  EditLessonModal: currentStudentSpeaker != null and it changed?
+    confirm() ──► canceled: nothing happens
+              ──► confirmed: SetStudentSpeaker(lessonId, newLabel)
                     LibraryService.SetStudentSpeaker:
-                      label mudou de fato? ──► DeleteAnalysisResultsForLesson(lessonID)
-                      grava novo studentSpeakerLabel
-  onSaved() ──► LessonDetail recarrega lesson + GetCorrections (agora null de novo)
+                      did the label actually change? ──► DeleteAnalysisResultsForLesson(lessonID)
+                      saves the new studentSpeakerLabel
+  onSaved() ──► LessonDetail reloads lesson + GetCorrections (now null again)
 ```
 
-## Tratamento de erros
+## Error handling
 
-- **Falta credencial / keyring indisponível**: `providerFactory()` retorna erro antes de qualquer
-  chamada de rede; mensagem reaproveita o texto já usado em `HasSTTCredential`
-  ("verifique se o gnome-keyring/kwallet está rodando"). Aparece em `correctionsError`, nunca
-  bloqueia vídeo/transcrição.
-- **`StudentSpeakerLabel` nulo**: erro claro antes de chamar o provedor — na prática nunca deve
-  acontecer pela UI (o botão só aparece com o label definido), mas o backend valida de qualquer
-  forma (defesa contra chamada direta ao binding).
-- **Erro de rede/API do provedor** (`provider.Complete` falha): mesmo princípio da transcrição —
-  `raw` (o que tiver sido lido) é gravado em disco mesmo assim; erro sobe para `correctionsError`,
-  recuperável via novo clique em "Analisar correções" (idempotente: não achou resultado salvo,
-  tenta de novo).
-- **JSON malformado/schema inesperado** (`parse` falha dentro de `Execute`): mesmo tratamento —
-  `raw` preservado, erro descreve a tarefa e a causa.
-- **`original` não localizado na fala** (`MatchCorrections`): não é erro — `Wrong == ""`, a correção
-  aparece como nota avulsa, nunca é descartada.
-- **Falha ao gravar `raw` em disco** (permissão, disco cheio): erro sobe para `correctionsError`
-  antes mesmo de tentar persistir em `analysis_results` — sem gravação parcial inconsistente
-  (resultado sem raw correspondente).
-- **Troca de falante com análises existentes, usuário cancela a confirmação**: nada acontece — nem
-  `SetStudentSpeaker` nem `DeleteAnalysisResultsForLesson` são chamados.
+- **Missing credential / unavailable keyring**: `providerFactory()` returns an error before any
+  network call; the message reuses the text already used in `HasSTTCredential`
+  ("verifique se o gnome-keyring/kwallet está rodando"). Shows up in `correctionsError`, never
+  blocks video/transcript.
+- **`StudentSpeakerLabel` null**: clear error before calling the provider — in practice this
+  should never happen through the UI (the button only shows up with the label set), but the
+  backend validates it anyway (defense against a direct call to the binding).
+- **Provider network/API error** (`provider.Complete` fails): same principle as transcription —
+  `raw` (whatever was read) is written to disk regardless; the error bubbles up to
+  `correctionsError`, recoverable by clicking "Analyze corrections" again (idempotent: it didn't
+  find a saved result, tries again).
+- **Malformed JSON/unexpected schema** (`parse` fails inside `Execute`): same handling — `raw`
+  preserved, the error describes the task and the cause.
+- **`original` not located in the speech** (`MatchCorrections`): not an error — `Wrong == ""`, the
+  correction shows as a standalone note, never discarded.
+- **Failure writing `raw` to disk** (permissions, disk full): error bubbles up to
+  `correctionsError` before even attempting to persist to `analysis_results` — no inconsistent
+  partial write (a result with no matching raw file).
+- **Speaker change with existing analyses, user cancels the confirmation**: nothing happens —
+  neither `SetStudentSpeaker` nor `DeleteAnalysisResultsForLesson` gets called.
 
-## Fora de escopo desta história
+## Out of scope for this story
 
-- Job em background para `analyze_corrections` — só depois que a tarefa for confirmada em
-  `docs/notas-analise-llm.md` (critério "Promoção a job em background" do doc da fase).
-- As outras 6 tarefas candidatas (`analyze_vocabulary` etc.) — cada uma vira uma história própria
-  quando for a vez dela.
-- Edição manual de correções pelo usuário, taxonomia de erros, qualquer agregação entre aulas
-  (Progresso, Fase 3).
-- Medir/exibir custo por chamada na UI — Fase 5. O `usage` já logado por `openai_compatible.go`
-  (`slog.Info`) é suficiente para a validação manual desta história.
-- Mudar o comportamento de `speakerOrder`/`neutralLabel` além de mover onde são exibidos — a lógica
-  de rotulagem (Speaker A/B/C...) não muda.
+- A background job for `analyze_corrections` — only once the task is confirmed in
+  `docs/notas-analise-llm.md` (the "Promotion to background job" criterion from the phase doc).
+- The other 6 candidate tasks (`analyze_vocabulary` etc.) — each becomes its own story when its
+  turn comes.
+- Manual editing of corrections by the user, an error taxonomy, any aggregation across lessons
+  (Progress, Phase 3).
+- Measuring/displaying cost per call in the UI — Phase 5. The `usage` already logged by
+  `openai_compatible.go` (`slog.Info`) is enough for this story's manual validation.
+- Changing `speakerOrder`/`neutralLabel` behavior beyond moving where they're displayed — the
+  labeling logic (Speaker A/B/C...) doesn't change.
 
-## Testes
+## Tests
 
-**`internal/analysis`** (`corrections_display_test.go`, novo, fixtures sintéticas):
-- `MatchCorrections`: match exato; diferença de maiúscula; diferença de pontuação/espaço; `original`
-  não encontrado (`Wrong == ""`, `Before`/`After` vazios); `original` aparecendo mais de uma vez na
-  fala (usa a primeira ocorrência); múltiplas correções na mesma fala (índices distintos).
-- `openAICompatibleProvider.Model()`: devolve o modelo configurado na construção.
+**`internal/analysis`** (`corrections_display_test.go`, new, synthetic fixtures):
+- `MatchCorrections`: exact match; capitalization difference; punctuation/whitespace difference;
+  `original` not found (`Wrong == ""`, `Before`/`After` empty); `original` appearing more than
+  once in the speech (uses the first occurrence); multiple corrections in the same utterance
+  (distinct indices).
+- `openAICompatibleProvider.Model()`: returns the model configured at construction.
 
-**`internal/db`** (`analysis_results_test.go`, estendido):
-- `DeleteAnalysisResultsForLesson`: apaga todas as linhas de uma lesson (múltiplas tasks) e não
-  toca em linhas de outra lesson.
+**`internal/db`** (`analysis_results_test.go`, extended):
+- `DeleteAnalysisResultsForLesson`: deletes every row for a lesson (multiple tasks) and doesn't
+  touch rows for another lesson.
 
-**`services`** (`analysis_test.go`, novo, `Provider` fake controlado pelo teste):
-- `GetCorrections` sem resultado salvo devolve `nil, nil` sem chamar o provider fake.
-- `AnalyzeCorrections` chamado duas vezes: a segunda não invoca o provider fake de novo (idempotente).
-- `ReprocessCorrections` sempre invoca o provider fake, mesmo com resultado existente, e sobrescreve
-  `result_json`/`model`/`raw_response_path`.
-- `AnalyzeCorrections` sem `StudentSpeakerLabel`: erro antes de tocar no provider fake.
-- Erro do provider fake: `raw` (se houver) é gravado em disco mesmo assim; `analysis_results` não
-  ganha linha nova.
-- `SetStudentSpeaker` (`library_test.go`, estendido): trocar o label com análise existente apaga
-  `analysis_results`; primeira definição (`nil` → algo) não apaga nada (não havia nada a apagar);
-  definir o mesmo label já atual não dispara `DeleteAnalysisResultsForLesson`.
+**`services`** (`analysis_test.go`, new, `Provider` faked and controlled by the test):
+- `GetCorrections` with no saved result returns `nil, nil` without calling the fake provider.
+- `AnalyzeCorrections` called twice: the second call doesn't invoke the fake provider again
+  (idempotent).
+- `ReprocessCorrections` always invokes the fake provider, even with an existing result, and
+  overwrites `result_json`/`model`/`raw_response_path`.
+- `AnalyzeCorrections` with no `StudentSpeakerLabel`: error before touching the fake provider.
+- Fake provider error: `raw` (if any) is written to disk regardless; `analysis_results` doesn't
+  get a new row.
+- `SetStudentSpeaker` (`library_test.go`, extended): changing the label with an existing analysis
+  deletes `analysis_results`; the first assignment (`nil` → something) deletes nothing (there was
+  nothing to delete); setting the same label that's already current doesn't trigger
+  `DeleteAnalysisResultsForLesson`.
 
-**Validação manual** (critério que fecha a história, não parte do plano de implementação): rodar
-`AnalyzeCorrections` contra algumas aulas reais pela UI, observar qualidade das correções e do
-matching, registrar a decisão (manter/refinar/descartar) em `docs/notas-analise-llm.md`.
+**Manual validation** (the criterion that closes the story, not part of the implementation plan):
+run `AnalyzeCorrections` against a few real lessons through the UI, observe the quality of the
+corrections and the matching, record the decision (keep/refine/discard) in
+`docs/notas-analise-llm.md`.
 
-**Frontend**: sem test runner configurado no projeto — verificação desta fatia é manual, testando o
-fluxo completo (`wails3 dev`) com uma aula real: escolher falante, analisar, ver o inline, trocar
-falante e confirmar que o aviso aparece e a análise some, reprocessar.
+**Frontend**: no test runner configured in the project — verifying this slice is manual, testing
+the full flow (`wails3 dev`) with a real lesson: choose the speaker, analyze, see the inline
+markup, change the speaker and confirm the warning appears and the analysis disappears,
+reprocess.
 
-## Critérios de aceite (de `docs/fase-2-analise-llm.md`, História 2)
+## Acceptance criteria (from `docs/fase-2-analise-llm.md`, Story 2)
 
-- [ ] Credencial do provedor de análise (DeepSeek) via `go-keyring` + campo em Configurações.
-- [ ] Ação manual na aula dispara `analyze_corrections` sob demanda — sem job em background.
-- [ ] Resultado salvo em `analysis_results`, idempotente; reprocessar é ação explícita que
-      sobrescreve.
-- [ ] Falha (rede/API, parsing) não quebra a aula — erro visível e recuperável, nunca impede
-      assistir ao vídeo.
-- [ ] Fala do aluno com correção mostra o trecho original riscado + a correção em destaque
-      (riscado em cinza, correção em âmbar), inline na transcrição do Detalhe.
-- [ ] Aula sem a tarefa concluída mostra a transcrição normalmente, sem marcação.
-- [ ] Decisão registrada em `docs/notas-analise-llm.md` depois de observar em aulas reais
-      (manter/refinar/descartar) — fecha a história.
-- [ ] `cmd/validate-analysis` removido do repositório.
+- [ ] Analysis provider credential (DeepSeek) via `go-keyring` + a field in Settings.
+- [ ] A manual action on the lesson triggers `analyze_corrections` on demand — no background job.
+- [ ] Result saved to `analysis_results`, idempotent; reprocessing is an explicit action that
+      overwrites.
+- [ ] Failure (network/API, parsing) doesn't break the lesson — visible and recoverable error,
+      never blocks watching the video.
+- [ ] A student utterance with a correction shows the original span struck through + the
+      correction highlighted (strikethrough in gray, correction in amber), inline in the Detail
+      screen's transcript.
+- [ ] A lesson without the task completed shows the transcript normally, with no markup.
+- [ ] Decision recorded in `docs/notas-analise-llm.md` after observing real lessons
+      (keep/refine/discard) — closes the story.
+- [ ] `cmd/validate-analysis` removed from the repository.
 
-Critérios adicionais introduzidos por esta spec (consequência do design, não do doc da fase):
-- [ ] Escolha de falante só é editável dentro de "Editar aula"; toggle solto no painel de
-      transcrição é removido.
-- [ ] Trocar o falante com análise já existente pede confirmação e apaga `analysis_results` da
-      lesson antes de gravar o novo label.
+Additional criteria introduced by this spec (a consequence of the design, not of the phase doc):
+- [ ] The speaker choice is only editable inside "Edit lesson"; the loose toggle in the transcript
+      panel is removed.
+- [ ] Changing the speaker with an existing analysis asks for confirmation and deletes the
+      lesson's `analysis_results` before writing the new label.

@@ -1,9 +1,9 @@
-# História 1 — Esqueleto do app: Implementation Plan
+# Story 1 — App Skeleton: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the Wails v3 + Svelte 5 app shell — window opens, sidebar navigates between
-Biblioteca / Progresso / Fila, visual identity (dark theme, Sora/Inter/JetBrains Mono) matches
+Library / Progress / Queue, visual identity (dark theme, Sora/Inter/JetBrains Mono) matches
 `docs/prototipo-app-aulas.jsx` — with zero business logic (no DB, no data, no imports).
 
 **Architecture:** Scaffold the Wails v3 `svelte` template into a scratch directory, then merge
@@ -24,7 +24,7 @@ in either source.
   principle is non-negotiable (`CLAUDE.md`).
 - Svelte 5 runes only (`$state`, `$derived`, `$props`) — no Svelte 3/4 legacy syntax (`export let`,
   `$:` reactive statements, stores-as-props).
-- No fake/sample data anywhere in this story — Biblioteca and Fila show real empty states; Progresso
+- No fake/sample data anywhere in this story — Library and Queue show real empty states; Progress
   shows a fixed "chega na Fase 3" placeholder.
 - No SyncPill / sync UI in the header this story — header stays empty.
 - Fonts are self-hosted (npm packages bundled by Vite) — never a runtime `@import` from
@@ -785,15 +785,15 @@ cmd.exe /c "wails3 dev"
 ```
 
 Expected: a window opens titled "Assistente de Idiomas", dark background (`#14181F`), sidebar on
-the left with "Replay" branding and three nav items (Biblioteca / Progresso / Fila), Biblioteca
-active by default showing "Nenhuma aula importada ainda.". Clicking Progresso/Fila switches the
+the left with "Replay" branding and three nav items (Library / Progress / Queue), Library
+active by default showing "Nenhuma aula importada ainda.". Clicking Progress/Queue switches the
 content pane and the active nav highlight. Header area is empty. Repeat this check on the Linux
 machine (risk 3 area — confirms nothing OS-specific broke, per `docs/fase-1-mvp.md` risk list).
 This step needs a real display, so it is manual — not scriptable in this environment.
 
 - [ ] **Step 9: Update `docs/fase-1-mvp.md` progress table**
 
-In `docs/fase-1-mvp.md`, the `## Registro de progresso` table currently has one empty row:
+In `docs/fase-1-mvp.md`, the `## Progress log` table currently has one empty row:
 
 ```
 | Data | O que foi feito | Observações |
@@ -806,10 +806,10 @@ Replace the empty row with:
 ```
 | Data | O que foi feito | Observações |
 |------|-----------------|-------------|
-| 20/07/2026 | História 1 concluída: esqueleto Wails v3 + Svelte 5 (sidebar, header vazio, 3 telas placeholder) | wails3 v3.0.0-alpha2.117 pinada; fontes auto-hospedadas via @fontsource |
+| 20/07/2026 | Story 1 complete: Wails v3 + Svelte 5 skeleton (sidebar, empty header, 3 placeholder screens) | wails3 v3.0.0-alpha2.117 pinned; self-hosted fonts via @fontsource |
 ```
 
-Also check the checkboxes under `## História 1` (all four acceptance criteria) from `- [ ]` to
+Also check the checkboxes under `## Story 1` (all four acceptance criteria) from `- [ ]` to
 `- [x]`.
 
 - [ ] **Step 10: Stage (do not commit — user controls commit timing)**
@@ -833,7 +833,7 @@ Expected: `git status` shows the seven deleted demo files (six under `frontend/`
 
 ## Self-Review Notes
 
-- **Spec coverage:** all four `docs/fase-1-mvp.md` História 1 acceptance criteria map to tasks —
+- **Spec coverage:** all four `docs/fase-1-mvp.md` Story 1 acceptance criteria map to tasks —
   compiling/opening window → Task 1 Step 5 + Task 5 Step 6/8; thin-layer/no-Wails-in-internal →
   Global Constraints (nothing in this story touches `internal/`, so it holds trivially, verified
   by `go vet` after every Go change); sidebar/header portado → Tasks 3–5; Svelte 5 runes only →

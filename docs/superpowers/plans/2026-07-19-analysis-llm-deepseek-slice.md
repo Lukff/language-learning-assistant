@@ -1,4 +1,4 @@
-# Fase 0 — História 3, Fatia 1: Análise LLM via DeepSeek Implementation Plan
+# Phase 0 — Story 3, Slice 1: LLM Analysis via DeepSeek Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -26,12 +26,12 @@ dependencies.
   `cmd/spike/analysis.go` stay disposable.
 - `DEEPSEEK_API_KEY` read only from environment (or `.env` via the existing `loadDotEnv`), never
   hardcoded/committed.
-- DeepSeek auth header is `Authorization: Bearer <chave>` (OpenAI-compatible format).
+- DeepSeek auth header is `Authorization: Bearer <key>` (OpenAI-compatible format).
 - DeepSeek's Chat Prefix Completion (the mechanism behind the `` ```json `` prefill) requires
   `base_url = "https://api.deepseek.com/beta"` and the last message in the request to have
   `role: "assistant"`, `content: "```json\n"`, and `"prefix": true`. Model used:
   `deepseek-v4-flash` (cheapest tier: ~$0.14/M input, ~$0.28/M output — confirmed at
-  `api-docs.deepseek.com/quick_start/pricing/`, julho/2026).
+  `api-docs.deepseek.com/quick_start/pricing/`, July/2026).
 - Also send `response_format: {"type": "json_object"}` (DeepSeek's native JSON mode — belt and
   suspenders with the prefill) and `stop: ["```"]` (stops generation right after the model closes
   the fence, so there's usually nothing to strip).
@@ -41,12 +41,12 @@ dependencies.
 - Raw provider JSON (the full chat-completion envelope) is always preserved on disk, even when
   parsing fails — same pattern as `internal/stt`.
 - No elaborate flags, no parallelism, no sophisticated retry.
-- Commit messages: one line, semantic format (`tipo: descrição`) — do not run `git commit`
+- Commit messages: one line, semantic format (`type: description`) — do not run `git commit`
   automatically; stage only (`git add`), per this project's established workflow preference.
 - This plan implements **only the DeepSeek slice**. `analysisProviderFactories` in
   `cmd/spike/analysis.go` gets exactly one entry (`"deepseek"`); Qwen/GLM/Anthropic/OpenAI/Gemini
   are out of scope here — they get their own future plans if DeepSeek's quality doesn't convince
-  (see `docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md`, "Estratégia de fatias").
+  (see `docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md`, "Slice Strategy").
 
 ---
 
@@ -70,17 +70,17 @@ package analysis
 
 import "context"
 
-// Provider é a interface única implementada por cada serviço de análise LLM
-// candidato (DeepSeek, e em fatias futuras: Anthropic, OpenAI, Gemini, GLM,
-// Qwen — ver docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md).
+// Provider is the single interface implemented by each candidate LLM
+// analysis service (DeepSeek, and in future slices: Anthropic, OpenAI,
+// Gemini, GLM, Qwen — see docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md).
 type Provider interface {
 	Name() string
 	Analyze(ctx context.Context, transcript string) (*Result, error)
 }
 
-// Result carrega tanto o JSON bruto retornado pelo provedor (envelope HTTP
-// completo, pra salvar em disco sem perda) quanto a análise já mapeada para
-// o domínio comum.
+// Result carries both the raw JSON returned by the provider (the full HTTP
+// envelope, to save to disk without loss) and the analysis already mapped
+// to the common domain.
 type Result struct {
 	RawResponse      []byte
 	Corrections      []Correction
@@ -88,25 +88,25 @@ type Result struct {
 	TutorExpressions []Expression
 }
 
-// Correction é uma correção de uma fala do Aluno.
+// Correction is a correction of a Student utterance.
 type Correction struct {
 	Original    string
 	Correction  string
 	Explanation string // PT-BR
 }
 
-// VocabularyItem é uma palavra ou expressão nova pro Aluno aprender —
-// inclui palavras em PT/ES usadas como recurso ao idioma nativo, nunca
-// tratadas como erro de inglês.
+// VocabularyItem is a word or expression new to the Student —
+// includes words in PT/ES used as a native-language resource, never
+// treated as an English mistake.
 type VocabularyItem struct {
 	Term        string
 	Translation string
 }
 
-// Expression é uma expressão do Tutor que vale a pena o Aluno reutilizar.
+// Expression is a Tutor expression worth the Student reusing.
 type Expression struct {
 	Text string
-	Note string // PT-BR, contexto de uso
+	Note string // PT-BR, usage context
 }
 ```
 
@@ -193,17 +193,18 @@ import (
 	"fmt"
 )
 
-// parseAnalysisResponse converte o texto de conteúdo devolvido pelo LLM (já
-// sem o envelope HTTP do provedor) para o domínio comum Result. O schema é
-// definido por nós em prompts/analyze-v1.md, não pelo provedor — por isso
-// esta função é compartilhada por todos os clients, ao contrário do
-// mapeamento por provedor do internal/stt.
+// parseAnalysisResponse converts the content text returned by the LLM
+// (already without the provider's HTTP envelope) into the common Result
+// domain. The schema is ours, defined in prompts/analyze-v1.md, not the
+// provider's — that's why this function is shared by every client, unlike
+// internal/stt's per-provider mapping.
 //
-// Quando o provedor suporta prefill (ver openai_compatible.go), o modelo já
-// começa a resposta direto no conteúdo do JSON — a única sujeira possível é
-// um fechamento de code fence sobrando no final, removido abaixo. Não há
-// abertura de fence a remover, e provedores sem prefill (modo JSON nativo)
-// já devolvem JSON puro, então o strip é um no-op inofensivo para eles.
+// When the provider supports prefill (see openai_compatible.go), the model
+// already starts the response directly with the JSON content — the only
+// possible mess is a leftover closing code fence at the end, stripped
+// below. There's no opening fence to remove, and providers without prefill
+// (native JSON mode) already return pure JSON, so the strip is a harmless
+// no-op for them.
 func parseAnalysisResponse(raw []byte) (*Result, error) {
 	trimmed := stripTrailingCodeFence(raw)
 
@@ -389,11 +390,11 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// FormatTranscript converte as utterances diarizadas num texto legível pro
-// prompt, rotulando cada fala como "Aluno" ou "Tutor" conforme
-// speakerRoles (valores aceitos: "aluno" ou "tutor"). Erro se algum
-// Speaker não estiver mapeado ou tiver um papel diferente desses dois —
-// falha explícita, sem chute silencioso que contaminaria toda a análise.
+// FormatTranscript converts the diarized utterances into text readable by
+// the prompt, labeling each utterance as "Aluno" or "Tutor" according to
+// speakerRoles (accepted values: "aluno" or "tutor"). Errors if some
+// Speaker isn't mapped or has a role other than these two — an explicit
+// failure, with no silent guess that would contaminate the whole analysis.
 func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error) {
 	var b strings.Builder
 	for _, u := range utterances {
@@ -417,10 +418,10 @@ func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string
 	return b.String(), nil
 }
 
-// SpeakerExamples retorna até n falas de exemplo por rótulo de speaker, na
-// ordem em que aparecem em utterances — insumo pra um humano confirmar quem
-// é aluno e quem é tutor antes de montar o speakerRoles usado por
-// FormatTranscript.
+// SpeakerExamples returns up to n example utterances per speaker label, in
+// the order they appear in utterances — input for a human to confirm who
+// is the student and who is the tutor before building the speakerRoles
+// used by FormatTranscript.
 func SpeakerExamples(utterances []stt.Utterance, n int) map[string][]string {
 	examples := make(map[string][]string)
 	for _, u := range utterances {
@@ -551,11 +552,11 @@ import (
 	"time"
 )
 
-// openAICompatibleProvider implementa Provider para qualquer serviço que
-// exponha um endpoint /chat/completions no formato OpenAI. Hoje só é usado
-// por DeepSeek; em fatias futuras (ver
-// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md) pode ganhar
-// construtores para OpenAI, GLM e Qwen, reaproveitando este mesmo tipo.
+// openAICompatibleProvider implements Provider for any service that
+// exposes a /chat/completions endpoint in the OpenAI format. Today it's
+// only used by DeepSeek; in future slices (see
+// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md) it may gain
+// constructors for OpenAI, GLM, and Qwen, reusing this same type.
 type openAICompatibleProvider struct {
 	name            string
 	baseURL         string
@@ -584,10 +585,10 @@ func newOpenAICompatibleProvider(name, baseURL, apiKey, model, systemPrompt stri
 	}, nil
 }
 
-// NewDeepSeekProvider cria um Provider pra API do DeepSeek, modelo
-// deepseek-v4-flash (tier mais barato — ver "Estratégia de fatias" no design
-// doc). Usa o base URL beta, exigido pelo recurso de "Chat Prefix
-// Completion" que sustenta o prefill de ```json.
+// NewDeepSeekProvider creates a Provider for the DeepSeek API, model
+// deepseek-v4-flash (cheapest tier — see "Slice Strategy" in the design
+// doc). Uses the beta base URL, required by the "Chat Prefix
+// Completion" feature that backs the ```json prefill.
 func NewDeepSeekProvider(apiKey, systemPrompt string) (Provider, error) {
 	return newOpenAICompatibleProvider("deepseek", "https://api.deepseek.com/beta", apiKey, "deepseek-v4-flash", systemPrompt, true)
 }
@@ -607,9 +608,9 @@ func (p *openAICompatibleProvider) Analyze(ctx context.Context, transcript strin
 
 	var envelope openAICompatibleEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		// Preserva o envelope bruto mesmo em falha de parse: a chamada já
-		// custou dinheiro, então o chamador deve conseguir salvar
-		// result.RawResponse em disco mesmo com err != nil.
+		// Preserves the raw envelope even on a parse failure: the call
+		// already cost money, so the caller must be able to save
+		// result.RawResponse to disk even with err != nil.
 		return &Result{RawResponse: raw}, fmt.Errorf("analysis: parsear envelope %s: %w", p.name, err)
 	}
 	if len(envelope.Choices) == 0 {
@@ -659,8 +660,8 @@ func (p *openAICompatibleProvider) buildRequest(ctx context.Context, transcript 
 	return req, nil
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if
+// the status isn't 2xx (the message includes status and body, for debugging).
 func (p *openAICompatibleProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -765,10 +766,10 @@ the `txtPath := ...` line:
 And add the new helper function near `saveRawResponse`:
 
 ```go
-// saveUtterances grava result.Utterances como JSON em outDir/utterances.json
-// — permite que a análise LLM (História 3) reaproveite a transcrição
-// diarizada sem re-rodar o STT nem depender das funções de mapeamento
-// não-exportadas de cada provedor de STT.
+// saveUtterances writes result.Utterances as JSON to outDir/utterances.json
+// — lets the LLM analysis (Story 3) reuse the diarized transcript without
+// re-running STT or depending on each STT provider's unexported mapping
+// functions.
 func saveUtterances(outDir string, result *stt.Result) error {
 	data, err := json.Marshal(result.Utterances)
 	if err != nil {
@@ -809,10 +810,10 @@ var analysisProviderEnvVars = map[string]string{
 	"deepseek": "DEEPSEEK_API_KEY",
 }
 
-// runAnalysis roda a análise LLM v1 (História 3) sobre a transcrição já
-// salva pelo provedor de STT vencedor (ElevenLabs — ver
-// docs/decisoes-tecnologia.md). Não re-executa STT: lê o utterances.json já
-// salvo por runProvider.
+// runAnalysis runs the v1 LLM analysis (Story 3) over the transcript
+// already saved by the winning STT provider (ElevenLabs — see
+// docs/decisoes-tecnologia.md). Doesn't re-run STT: reads the utterances.json
+// already saved by runProvider.
 func runAnalysis(ctx context.Context, logger *slog.Logger, names []string) bool {
 	const (
 		utterancesPath = "local/output/aula-01/elevenlabs/utterances.json"
@@ -870,10 +871,11 @@ func loadUtterances(path string) ([]stt.Utterance, error) {
 	return utterances, nil
 }
 
-// confirmSpeakerRoles mostra até 3 falas de exemplo por locutor e pergunta
-// ao usuário, via stdin, qual dos dois é o Aluno — o outro vira Tutor (aula
-// do Cambly é sempre 1:1). Falha explícita se a transcrição não tiver
-// exatamente 2 locutores, ou se a resposta não for "aluno"/"tutor".
+// confirmSpeakerRoles shows up to 3 example utterances per speaker and asks
+// the user, via stdin, which of the two is the Student — the other becomes
+// the Tutor (a Cambly lesson is always 1:1). Explicit failure if the
+// transcript doesn't have exactly 2 speakers, or if the answer isn't
+// "aluno"/"tutor".
 func confirmSpeakerRoles(utterances []stt.Utterance) (map[string]string, error) {
 	examples := analysis.SpeakerExamples(utterances, 3)
 
@@ -1054,8 +1056,8 @@ stays exactly as-is below this block.
 Current `.env.example`:
 
 ```
-# Copie este arquivo para .env e preencha com sua chave real.
-# O .env nunca deve ser commitado (já está no .gitignore).
+# Copy this file to .env and fill in your real key.
+# .env must never be committed (it's already in .gitignore).
 GLADIA_API_KEY=
 ASSEMBLYAI_API_KEY=
 DEEPGRAM_API_KEY=
@@ -1065,8 +1067,8 @@ ELEVENLABS_API_KEY=
 Change it to:
 
 ```
-# Copie este arquivo para .env e preencha com sua chave real.
-# O .env nunca deve ser commitado (já está no .gitignore).
+# Copy this file to .env and fill in your real key.
+# .env must never be committed (it's already in .gitignore).
 GLADIA_API_KEY=
 ASSEMBLYAI_API_KEY=
 DEEPGRAM_API_KEY=
@@ -1110,15 +1112,15 @@ stdin prompt to confirm which speaker is the Aluno, real network, real billed us
 intentionally NOT part of this task's automated steps — happens later, directly with the human.
 Afterwards, fill in `docs/notas-analise-llm.md` (new file, to be created by hand at that point,
 mirroring `docs/notas-stt.md`'s structure) with the DeepSeek quality/cost notes from aula 01, and
-decide whether to stop here or move to the Qwen slice per the spec's "Estratégia de fatias".
+decide whether to stop here or move to the Qwen slice per the spec's "Slice Strategy".
 
 ---
 
-## Após este plano
+## After this plan
 
-Se a qualidade do DeepSeek convencer, a exploração de LLM para (`fase-0-validacao.md`, História 3)
-já tem uma resposta suficiente por ora — sem necessidade de implementar Qwen/GLM/Anthropic/
-OpenAI/Gemini nesta rodada. Se não convencer, a próxima fatia (Qwen) segue o mesmo padrão deste
-plano: um novo construtor em `openai_compatible.go` (ou um cliente próprio, se a API não for
-compatível na prática) + uma entrada em `analysisProviderFactories` — sem mudança estrutural no
-resto do pacote.
+If DeepSeek's quality is convincing, the LLM exploration for (`fase-0-validacao.md`, Story 3)
+already has a good-enough answer for now — no need to implement Qwen/GLM/Anthropic/OpenAI/Gemini
+in this round. If it isn't convincing, the next slice (Qwen) follows the same pattern as this
+plan: a new constructor in `openai_compatible.go` (or its own client, if the API isn't compatible
+in practice) + an entry in `analysisProviderFactories` — no structural change to the rest of the
+package.

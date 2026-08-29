@@ -1,124 +1,124 @@
-# Fase 0 — Spike de validação das APIs
+# Phase 0 — API Validation Spike
 
-> Objetivo: validar, com aulas reais e custo mínimo, as duas maiores incertezas do projeto —
-> qualidade da transcrição com diarização (incluindo code-switching PT/ES) e utilidade da análise via LLM —
-> **antes** de construir qualquer aplicação visual.
+> Goal: validate, with real lessons and minimal cost, the two biggest uncertainties in the project —
+> transcription quality with diarization (including PT/ES code-switching) and the usefulness of LLM-based analysis —
+> **before** building any visual application.
 >
-> Formato: CLI em Go (`go run`), sem Wails. Os packages criados aqui (`media`, `stt`, `analysis`)
-> são os definitivos do app; descartável é apenas o `main.go` do CLI.
+> Format: Go CLI (`go run`), no Wails. The packages created here (`media`, `stt`, `analysis`)
+> are the app's final ones; only the CLI's `main.go` is disposable.
 >
-> Regra de escopo: sem flags elaboradas, sem paralelismo, sem retry sofisticado, paths hardcoded.
-> Robustez vem depois, com a fila de jobs.
+> Scope rule: no elaborate flags, no parallelism, no sophisticated retry, hardcoded paths.
+> Robustness comes later, with the job queue.
 
-## Candidatos de STT (atualizado em 18/07/2026)
+## STT candidates (updated 18/07/2026)
 
-Todos atendem batch + diarização + timestamps por palavra. No volume do projeto (~10 aulas/mês),
-custo é empate técnico (~US$ 0,08–0,17/aula); os diferenciais estão em qualidade e free tier.
+All support batch + diarization + word-level timestamps. At the project's volume (~10 lessons/month),
+cost is a technical tie (~US$0.08–0.17/lesson); the differentiators are quality and free tier.
 
-| Provedor | Preço batch | Por aula ~30 min | Observações |
+| Provider | Batch price | Per ~30 min lesson | Notes |
 |----------|------------|------------------|-------------|
-| AssemblyAI (Universal-2) | US$ 0,0025/min | ~US$ 0,08 | Maduro; free tier generoso (US$ 50) |
-| Deepgram (Nova-3) | US$ 0,0043/min + US$ 0,0015/min diarização | ~US$ 0,17 | Maduro; US$ 200 em créditos grátis |
-| ElevenLabs Scribe | US$ 0,004/min (diarização incluída) | ~US$ 0,12 | Lançado em 2026; forte em multilíngue/troca de idioma no meio da conversa |
-| Gladia | Free tier: 10h/mês (600 min) | US$ 0 no volume atual | Autoproclamada líder em code-switching (fonte: blog próprio — validar no teste) |
+| AssemblyAI (Universal-2) | US$0.0025/min | ~US$0.08 | Mature; generous free tier (US$50) |
+| Deepgram (Nova-3) | US$0.0043/min + US$0.0015/min diarization | ~US$0.17 | Mature; US$200 in free credits |
+| ElevenLabs Scribe | US$0.004/min (diarization included) | ~US$0.12 | Released in 2026; strong at multilingual/mid-conversation language switching |
+| Gladia | Free tier: 10h/month (600 min) | US$0 at current volume | Self-proclaimed leader in code-switching (source: their own blog — verify in testing) |
 
-Descartado: OpenAI gpt-4o-transcribe (limite de 25 MB/arquivo é fricção para áudio de 30 min;
-diarização menos estabelecida).
+Discarded: OpenAI gpt-4o-transcribe (25 MB/file limit is friction for 30-min audio;
+less established diarization).
 
-## Preparação — seleção da amostra
+## Preparation — sample selection
 
-- [ ] Selecionar 3–5 aulas do tutor atual, variando em:
-  - [ ] uma com áudio/conexão ruim
-  - [ ] uma com bastante sobreposição de fala (interrupções, risadas)
-  - [ ] uma em que o aluno falou muito e outra em que falou pouco
-  - [ ] pelo menos uma com **code-switching** (palavras/frases em português ou espanhol no meio do inglês)
-  - [ ] se possível, aulas de meses diferentes (setup de microfone e qualidade de chamada variam)
-- [ ] Anotar, de memória, 2–3 trechos por aula que sirvam de gabarito (ex.: "aqui eu disse X errado", "aqui falei 'saudade' em português") — vira referência objetiva na comparação.
+- [ ] Select 3–5 lessons from the current tutor, varying by:
+  - [ ] one with poor audio/connection
+  - [ ] one with a lot of speech overlap (interruptions, laughter)
+  - [ ] one where the student talked a lot and another where they talked little
+  - [ ] at least one with **code-switching** (words/phrases in Portuguese or Spanish mixed into English)
+  - [ ] if possible, lessons from different months (mic setup and call quality vary)
+- [ ] Note, from memory, 2–3 passages per lesson to serve as an answer key (e.g., "here I said X wrong", "here I said 'saudade' in Portuguese") — becomes an objective reference for the comparison.
 
-**Limitação registrada:** todas as aulas são do mesmo tutor. A decisão de STT sai validada para
-este tutor; ao trocar de professor (especialmente com sotaque muito diferente), rodar uma aula
-de sanidade pelo CLI antes de confiar no resultado.
-
----
-
-## História 1 — Extração de áudio e transcrição dupla
-
-**Como** desenvolvedor do projeto, **quero** um CLI que extraia o áudio de uma gravação do Cambly
-e a transcreva em **todos os provedores candidatos** (Deepgram, AssemblyAI, ElevenLabs Scribe,
-Gladia), **para** obter resultados comparáveis sobre as mesmas aulas reais.
-
-### Critérios de aceite
-- [x] Package `media`: dado um `.mp4` do Cambly, extrai áudio via ffmpeg (`os/exec`) num formato aceito pelos dois serviços; falha com mensagem clara se o ffmpeg não estiver no PATH.
-- [x] Package `stt`: interface única com uma implementação por candidato (Deepgram, AssemblyAI, ElevenLabs Scribe, Gladia), usando `net/http` da stdlib; chaves de API lidas de variável de ambiente (nunca hardcoded/commitadas). Nenhum candidato foi eliminado já na integração — todos os 4 chegaram até a comparação da História 2.
-- [x] Cada serviço é chamado **com diarização e timestamps por palavra habilitados** e **na configuração multilíngue/code-switching adequada** do provedor (documentar no código qual configuração foi usada e por quê).
-- [x] A resposta bruta de cada serviço é salva em disco (JSON) por aula/provedor — insumo da História 2 e teste de regressão gratuito para o futuro.
-- [x] Uma saída legível (texto simples) é gerada por aula/provedor: falas com locutor identificado e timestamps.
-- [ ] Rodou de ponta a ponta nas 3–5 aulas da amostra, em todos os candidatos não eliminados — **limitação registrada:** só a aula 01 foi rodada até agora (mesma limitação assumida conscientemente na decisão de STT/LLM).
-
-### Dependências
-Amostra selecionada; contas e chaves de API criadas nos provedores candidatos (aproveitar free tiers/créditos — o spike inteiro pode sair de graça).
+**Recorded limitation:** all lessons are from the same tutor. The STT decision is validated for
+this tutor; when switching tutors (especially one with a very different accent), run a
+sanity-check lesson through the CLI before trusting the result.
 
 ---
 
-## História 2 — Comparação lado a lado e decisão do STT
+## Story 1 — Audio extraction and dual transcription
 
-**Como** desenvolvedor do projeto, **quero** comparar as transcrições dos candidatos sob
-critérios definidos de antemão, **para** fechar a decisão em aberto do `decisoes-tecnologia.md`
-com base em evidência das minhas próprias aulas.
+**As** the project developer, **I want** a CLI that extracts audio from a Cambly recording
+and transcribes it with **all candidate providers** (Deepgram, AssemblyAI, ElevenLabs Scribe,
+Gladia), **so that** I get comparable results across the same real lessons.
 
-> **Decisão fechada com base só na aula 01:** a diferença de diarização entre os candidatos já foi
-> clara o suficiente para fechar a escolha sem rodar as aulas restantes da amostra — decisão
-> consciente de não completar a comparação, registrada como limitação em `decisoes-tecnologia.md`.
+### Acceptance criteria
+- [x] `media` package: given a Cambly `.mp4`, extracts audio via ffmpeg (`os/exec`) into a format accepted by the two services; fails with a clear message if ffmpeg isn't on the PATH.
+- [x] `stt` package: a single interface with one implementation per candidate (Deepgram, AssemblyAI, ElevenLabs Scribe, Gladia), using stdlib `net/http`; API keys read from environment variables (never hardcoded/committed). No candidate was eliminated at integration time — all 4 made it to the Story 2 comparison.
+- [x] Each service is called **with diarization and word-level timestamps enabled** and **in the provider's appropriate multilingual/code-switching configuration** (document in the code which configuration was used and why).
+- [x] Each service's raw response is saved to disk (JSON) per lesson/provider — input for Story 2 and a free regression test for the future.
+- [x] A readable (plain-text) output is generated per lesson/provider: utterances with speaker identified and timestamps.
+- [ ] Ran end-to-end on the 3–5 sample lessons, across all non-eliminated candidates — **recorded limitation:** only lesson 01 has been run so far (the same limitation consciously accepted in the STT/LLM decision).
 
-### Critérios de comparação (definidos antes de olhar os resultados)
-- [x] **Diarização:** trocas de locutor corretas? (erro fatal para o produto — as correções dependem de saber quem falou). Contar confusões aluno/tutor por aula.
-- [x] **Code-switching PT/ES:** palavras/frases em português ou espanhol são transcritas corretamente, estropiadas ou omitidas? A palavra estrangeira quebra a diarização ou os timestamps ao redor? Avaliar nos trechos-gabarito.
-- [x] **Timestamps por palavra:** precisos o suficiente para o clique-na-fala-pula-o-vídeo (tolerância ~1s).
-- [x] **Pontuação/formatação:** frases legíveis sem pós-processamento pesado.
-- [x] **Custo real por aula** de ~30 min, por serviço (valor cobrado, não o de tabela), incluindo se o free tier do provedor cobre o volume mensal do projeto (~300 min/mês).
-
-### Critérios de aceite
-- [x] Tabela comparativa preenchida (uma linha por critério × serviço) com dados da aula 01 — ver `docs/notas-stt.md` (limitação: não cobre as demais aulas da amostra, decisão tomada mesmo assim).
-- [x] Decisão tomada e registrada no `decisoes-tecnologia.md` (seção Speech-to-text sai de "em aberto": ElevenLabs Scribe escolhido, AssemblyAI mantida como alternativa documentada; configuração multilíngue e custos reais registrados).
-- [x] Fixtures de teste do package `stt` derivadas dos JSONs do serviço vencedor (ElevenLabs), **anonimizadas** (repo público) — já existem em `testdata/elevenlabs_response.json` / `internal/stt/elevenlabs_mapping_test.go`.
-
-### Dependências
-História 1 concluída.
+### Dependencies
+Sample selected; accounts and API keys created with the candidate providers (take advantage of free tiers/credits — the whole spike can come out free).
 
 ---
 
-## História 3 — Análise LLM v1 sobre a transcrição
+## Story 2 — Side-by-side comparison and STT decision
 
-**Como** desenvolvedor do projeto, **quero** rodar uma análise via LLM sobre as transcrições do
-serviço escolhido, **para** validar que as correções e o vocabulário extraídos são úteis e que a
-saída estruturada é confiável de parsear.
+**As** the project developer, **I want** to compare the candidates' transcriptions against
+criteria defined in advance, **so that** I can close the open decision in `decisoes-tecnologia.md`
+based on evidence from my own lessons.
 
-### Critérios de aceite
-- [x] Package `analysis`: recebe a transcrição diarizada e chama o LLM via `net/http`; prompt pede **apenas JSON** com: correções das falas do aluno (original + correção + explicação curta em PT-BR), vocabulário novo com tradução, expressões do tutor para reutilizar.
-- [x] O prompt trata code-switching explicitamente: palavra em PT/ES na fala do aluno deve ser reconhecida como "recurso ao idioma nativo" (candidata a vocabulário a aprender), não como erro de inglês.
-- [x] O prompt é salvo como arquivo versionado no repositório (`prompts/analyze-v1.md`) — nasce aqui o prompt versionado nº 1 do banco futuro.
-- [x] Parse do JSON de resposta com tratamento de erro — testado com fixtures sintéticas (`internal/analysis/parsing_test.go`) e confirmado numa execução real (DeepSeek) na aula 01. Taxa de 4/5 execuções não medida (só 1 execução real feita até agora).
-- [x] Avaliação manual na aula 01: correções, vocabulário (incluindo candidatos de code-switching) e expressões do tutor extraídos foram avaliados como úteis pelo dev — ver `docs/notas-analise-llm.md`. Avaliação nas demais aulas da amostra não feita.
-- [x] Custo real por aula registrado (`docs/decisoes-tecnologia.md`, seção "Análise via LLM").
-- [ ] (Opcional, se sobrar fôlego) Rodar o mesmo prompt em Anthropic e OpenAI e anotar impressões — **decisão consciente de não fazer**: a qualidade do DeepSeek já convenceu na primeira execução (ver `docs/decisoes-tecnologia.md`), então os demais candidatos ficam on hold sem necessidade de comparação nesta fase.
+> **Decision closed based on lesson 01 alone:** the diarization difference between the candidates was
+> already clear enough to close the choice without running the remaining sample lessons — a
+> conscious decision not to complete the comparison, recorded as a limitation in `decisoes-tecnologia.md`.
 
-### Dependências
-História 2 concluída (usa o serviço vencedor).
+### Comparison criteria (defined before looking at the results)
+- [x] **Diarization:** are speaker changes correct? (a fatal error for the product — corrections depend on knowing who spoke). Count student/tutor mix-ups per lesson.
+- [x] **PT/ES code-switching:** are words/phrases in Portuguese or Spanish transcribed correctly, garbled, or omitted? Does the foreign word break diarization or the surrounding timestamps? Evaluate on the answer-key passages.
+- [x] **Word-level timestamps:** accurate enough for click-a-line-to-jump-the-video (tolerance ~1s).
+- [x] **Punctuation/formatting:** readable sentences without heavy post-processing.
+- [x] **Real cost per ~30-min lesson**, per service (the amount actually charged, not the list price), including whether the provider's free tier covers the project's monthly volume (~300 min/month).
+
+### Acceptance criteria
+- [x] Comparison table filled in (one row per criterion × service) with lesson 01 data — see `docs/notas-stt.md` (limitation: doesn't cover the rest of the sample lessons, decision made anyway).
+- [x] Decision made and recorded in `decisoes-tecnologia.md` (Speech-to-text section moves out of "open": ElevenLabs Scribe chosen, AssemblyAI kept as a documented alternative; multilingual configuration and real costs recorded).
+- [x] Test fixtures for the `stt` package derived from the winning service's (ElevenLabs) JSONs, **anonymized** (public repo) — already exist at `testdata/elevenlabs_response.json` / `internal/stt/elevenlabs_mapping_test.go`.
+
+### Dependencies
+Story 1 completed.
 
 ---
 
-## Critério de saída da Fase 0
+## Story 3 — LLM analysis v1 over the transcript
 
-- [x] Decisão de STT fechada e registrada no `decisoes-tecnologia.md` (ElevenLabs Scribe escolhido; AssemblyAI documentada como alternativa).
-- [x] Prompt de análise v1 versionado no repositório (`prompts/analyze-v1.md`).
-- [x] Custos reais por aula (STT + LLM) anotados no `decisoes-tecnologia.md`.
-- [ ] Packages `media`, `stt` e `analysis` funcionando de ponta a ponta em pelo menos 3 aulas reais — **limitação registrada:** só a aula 01 foi rodada até agora, para os dois pacotes.
-- [x] Veredito honesto por escrito: a qualidade valida o produto? Algo muda no desenho do MVP? — sim, valida: DeepSeek já é "mais do que suficiente" para a aplicação na avaliação do dev (ver `docs/notas-analise-llm.md`); nada muda no desenho do MVP.
+**As** the project developer, **I want** to run an LLM analysis over the transcripts from the
+chosen service, **so that** I can validate that the corrections and vocabulary extracted are useful and that the
+structured output is reliable to parse.
 
-## Registro de progresso
+### Acceptance criteria
+- [x] `analysis` package: receives the diarized transcript and calls the LLM via `net/http`; the prompt requests **JSON only** with: corrections for the student's speech (original + correction + short explanation in PT-BR), new vocabulary with translation, tutor expressions worth reusing.
+- [x] The prompt explicitly handles code-switching: a PT/ES word in the student's speech should be recognized as a "recourse to the native language" (a vocabulary candidate to learn), not as an English error.
+- [x] The prompt is saved as a versioned file in the repository (`prompts/analyze-v1.md`) — this is where versioned prompt #1 of the future database is born.
+- [x] Parsing of the response JSON with error handling — tested with synthetic fixtures (`internal/analysis/parsing_test.go`) and confirmed in one real run (DeepSeek) on lesson 01. The 4/5-runs success rate wasn't measured (only 1 real run done so far).
+- [x] Manual evaluation on lesson 01: corrections, vocabulary (including code-switching candidates), and tutor expressions extracted were rated as useful by the dev — see `docs/notas-analise-llm.md`. Evaluation on the rest of the sample lessons not done.
+- [x] Real cost per lesson recorded (`docs/decisoes-tecnologia.md`, "LLM-based analysis" section).
+- [ ] (Optional, if time allows) Run the same prompt on Anthropic and OpenAI and note impressions — **conscious decision not to do this**: DeepSeek's quality already proved convincing on the first run (see `docs/decisoes-tecnologia.md`), so the other candidates remain on hold without needing a comparison at this phase.
 
-| Data | O que foi feito | Observações |
+### Dependencies
+Story 2 completed (uses the winning service).
+
+---
+
+## Phase 0 exit criteria
+
+- [x] STT decision closed and recorded in `decisoes-tecnologia.md` (ElevenLabs Scribe chosen; AssemblyAI documented as an alternative).
+- [x] Analysis prompt v1 versioned in the repository (`prompts/analyze-v1.md`).
+- [x] Real costs per lesson (STT + LLM) recorded in `decisoes-tecnologia.md`.
+- [ ] `media`, `stt`, and `analysis` packages working end-to-end on at least 3 real lessons — **recorded limitation:** only lesson 01 has been run so far, for both packages.
+- [x] Honest written verdict: does the quality validate the product? Does anything change in the MVP design? — yes, it validates: DeepSeek is already "more than enough" for the application in the dev's assessment (see `docs/notas-analise-llm.md`); nothing changes in the MVP design.
+
+## Progress log
+
+| Date | What was done | Notes |
 |------|-----------------|-------------|
-| 19/07/2026 | Decisão de STT fechada (História 2): **ElevenLabs Scribe** escolhido como provedor principal; **AssemblyAI** mantida como alternativa documentada para possível seleção de provedor no app final. | Decisão tomada com evidência de 1 aula (aula 01); comparação completa nas aulas restantes da amostra não foi feita. |
-| 19/07/2026 | Decisão de análise LLM fechada (História 3): **DeepSeek** (`deepseek-v4-flash`) escolhido como provedor principal — qualidade avaliada como "mais do que suficiente" pelo dev na aula 01, custo desprezível. Qwen/GLM/Anthropic/OpenAI/Gemini ficam on hold. | Decisão tomada com 1 execução em 1 aula; comparação opcional com Anthropic/OpenAI não feita (dispensada conscientemente). Exploração futura registrada: modelos "flash" mais simples para tarefas complementares de análise. |
-| 19/07/2026 | Teste pontual com `deepseek-v4-pro` na aula 01 (não é o provedor default): mais correções que o Flash (6 vs. 0), mas com imprecisão (falso positivo do próprio prompt) e ~3,6x o custo. | Não convenceu o suficiente pra trocar o default; mantido como backup documentado para uma futura opção de análise mais aprofundada, após refinar o prompt. Ver `docs/notas-analise-llm.md` e `docs/decisoes-tecnologia.md`. |
+| 19/07/2026 | STT decision closed (Story 2): **ElevenLabs Scribe** chosen as the primary provider; **AssemblyAI** kept as a documented alternative for possible provider selection in the final app. | Decision made with evidence from 1 lesson (lesson 01); the full comparison on the remaining sample lessons wasn't done. |
+| 19/07/2026 | LLM analysis decision closed (Story 3): **DeepSeek** (`deepseek-v4-flash`) chosen as the primary provider — quality rated by the dev as "more than enough" on lesson 01, negligible cost. Qwen/GLM/Anthropic/OpenAI/Gemini remain on hold. | Decision made with 1 run on 1 lesson; the optional comparison with Anthropic/OpenAI wasn't done (consciously skipped). Future exploration recorded: simpler "flash" models for complementary analysis tasks. |
+| 19/07/2026 | One-off test with `deepseek-v4-pro` on lesson 01 (not the default provider): more corrections than Flash (6 vs. 0), but with inaccuracy (a false positive from the prompt itself) and ~3.6x the cost. | Not convincing enough to switch the default; kept as a documented backup for a future more in-depth analysis option, after refining the prompt. See `docs/notas-analise-llm.md` and `docs/decisoes-tecnologia.md`. |

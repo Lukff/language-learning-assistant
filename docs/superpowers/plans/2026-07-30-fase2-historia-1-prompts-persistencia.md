@@ -1,39 +1,40 @@
-# Fase 2, História 1 — Prompts por tarefa e persistência da análise: Implementation Plan
+# Phase 2, Story 1 — Per-task prompts and analysis persistence: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Quebrar a análise via LLM em 7 tarefas independentes (um prompt/schema por tarefa), tornar
-`internal/analysis.Provider` agnóstico de tarefa, e persistir os resultados em duas tabelas novas
-(`analysis_results`, `lesson_topics`) — sem ainda ligar nada ao `Worker`/fila (História 2) ou à UI
-(Histórias 3-5).
+**Goal:** Break the LLM analysis into 7 independent tasks (one prompt/schema per task), make
+`internal/analysis.Provider` task-agnostic, and persist the results into two new tables
+(`analysis_results`, `lesson_topics`) — without yet wiring anything to the `Worker`/queue (Story 2)
+or the UI (Stories 3-5).
 
-**Architecture:** `prompts/` vira também um pacote Go mínimo (`embed.FS`) para os 7 `.md` novos;
-`internal/analysis` ganha uma abstração `TaskDef`/`task[T]` genérica por cima de um `Provider`
-agnóstico (`Complete(ctx, systemPrompt, transcript) (json.RawMessage, error)`); `internal/db` ganha
-o repositório de `analysis_results`/`lesson_topics` e o registro idempotente de prompts; um CLI
-temporário (`cmd/validate-analysis`, removido ao final) valida as 7 tarefas contra uma aula real.
+**Architecture:** `prompts/` also becomes a minimal Go package (`embed.FS`) for the 7 new `.md`
+files; `internal/analysis` gains a generic `TaskDef`/`task[T]` abstraction on top of a
+task-agnostic `Provider` (`Complete(ctx, systemPrompt, transcript) (json.RawMessage, error)`);
+`internal/db` gains the `analysis_results`/`lesson_topics` repository and idempotent prompt
+registration; a temporary CLI (`cmd/validate-analysis`, removed at the end) validates the 7 tasks
+against a real lesson.
 
 **Tech Stack:** Go stdlib (`embed`, `database/sql`, `encoding/json`, `log/slog`), `modernc.org/sqlite`
-(driver já em uso), `goose` (migrations já em uso). Nenhuma dependência nova.
+(driver already in use), `goose` (migrations already in use). No new dependency.
 
 ## Global Constraints
 
-- Pacotes em `internal/` não importam Wails — camada fina (`CLAUDE.md`).
-- SQL portável na camada de repositório — nada específico de driver (`CLAUDE.md`).
-- Código e identificadores em inglês; mensagens de erro voltadas ao usuário, documentação e
-  conteúdo de prompt em PT-BR (`CLAUDE.md`).
-- Nenhum dado real de aula (transcrição, JSON de provedor) entra no repositório — `local/` e
-  `.env` já estão no `.gitignore` (`CLAUDE.md`, seção Privacidade).
-- Palavra em PT/ES na fala do aluno é recurso ao idioma nativo (candidata a vocabulário), nunca
-  erro de inglês (`CLAUDE.md`).
-- Reprocessar continua ação explícita — nenhum job/tarefa roda de novo sozinho ao mudar de prompt
+- Packages under `internal/` never import Wails — thin layer (`CLAUDE.md`).
+- Portable SQL at the repository layer — nothing driver-specific (`CLAUDE.md`).
+- Code and identifiers in English; user-facing error messages, documentation, and prompt content
+  in PT-BR (`CLAUDE.md`).
+- No real lesson data (transcript, provider JSON) enters the repository — `local/` and `.env` are
+  already in `.gitignore` (`CLAUDE.md`, Privacy section).
+- A PT/ES word in the student's speech is a native-language fallback (a vocabulary candidate),
+  never an English mistake (`CLAUDE.md`).
+- Reprocessing stays an explicit action — no job/task reruns on its own when a prompt changes
   (`docs/fase-2-analise-llm.md`).
-- Commits em uma linha só, formato semântico (`tipo: descrição`) (`CLAUDE.md`).
-- `go vet ./...` limpo antes de qualquer commit que toque `.go` (`CLAUDE.md`).
+- Commits are single-line, semantic format (`type: description`) (`CLAUDE.md`).
+- `go vet ./...` clean before any commit touching `.go` (`CLAUDE.md`).
 
 ---
 
-## Task 1: Persistência — migration + repositório `analysis_results`/`lesson_topics`
+## Task 1: Persistence — migration + `analysis_results`/`lesson_topics` repository
 
 **Files:**
 - Create: `internal/db/migrations/00004_analysis_results.sql`
@@ -41,18 +42,18 @@ temporário (`cmd/validate-analysis`, removido ao final) valida as 7 tarefas con
 - Create: `internal/db/analysis_results_test.go`
 
 **Interfaces:**
-- Consumes: nada (só a infraestrutura já existente de `internal/db`: `Open`, migrations via
-  `goose`, tabela `lessons` já existente para as fixtures de teste).
-- Produces (usado pela Task 4 e por `cmd/validate-analysis` na Task 6):
+- Consumes: nothing (just the existing `internal/db` infrastructure: `Open`, migrations via
+  `goose`, the already-existing `lessons` table for test fixtures).
+- Produces (used by Task 4 and by `cmd/validate-analysis` in Task 6):
   - `func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64, error)`
   - `func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID int64, model, resultJSON, rawResponsePath string) error`
   - `type AnalysisResult struct { LessonID int64; Task string; PromptID int64; Model string; ResultJSON string; RawResponsePath string }`
   - `func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisResult, error)`
   - `func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error`
 
-- [ ] **Step 1: Escrever a migration**
+- [ ] **Step 1: Write the migration**
 
-Crie `internal/db/migrations/00004_analysis_results.sql`:
+Create `internal/db/migrations/00004_analysis_results.sql`:
 
 ```sql
 -- +goose Up
@@ -83,12 +84,12 @@ DROP TABLE analysis_results;
 DROP INDEX idx_prompts_name_version;
 ```
 
-`internal/db/db.go` já embute `migrations/*.sql` (`//go:embed migrations/*.sql`) e já roda
-`goose.Up` em `Open()` — nenhuma mudança de código é necessária para essa migration ser aplicada.
+`internal/db/db.go` already embeds `migrations/*.sql` (`//go:embed migrations/*.sql`) and already
+runs `goose.Up` in `Open()` — no code change is needed for this migration to be applied.
 
-- [ ] **Step 2: Escrever o teste falho de `UpsertPrompt`**
+- [ ] **Step 2: Write the failing test for `UpsertPrompt`**
 
-Crie `internal/db/analysis_results_test.go`:
+Create `internal/db/analysis_results_test.go`:
 
 ```go
 package db
@@ -266,12 +267,12 @@ func TestReplaceLessonTopics_ReplacesEntirely(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Rodar os testes para confirmar que falham (funções ainda não existem)**
+- [ ] **Step 3: Run the tests to confirm they fail (functions don't exist yet)**
 
 Run: `go test ./internal/db/... -run 'TestUpsertPrompt|TestUpsertAnalysisResult|TestFindAnalysisResult|TestReplaceLessonTopics' -v`
-Expected: FAIL — `undefined: UpsertPrompt` (e as demais funções).
+Expected: FAIL — `undefined: UpsertPrompt` (and the other functions).
 
-- [ ] **Step 4: Implementar `internal/db/analysis_results.go`**
+- [ ] **Step 4: Implement `internal/db/analysis_results.go`**
 
 ```go
 // internal/db/analysis_results.go
@@ -284,11 +285,12 @@ import (
 	"time"
 )
 
-// UpsertPrompt insere (name, version, content) na tabela prompts se ainda
-// não existir. Se (name, version) já existir com content diferente, é
-// sinal de versão esquecida no código (convenção "-vN" no nome do arquivo
-// em prompts/); loga um aviso e mantém o conteúdo já gravado — não
-// sobrescreve, porque analysis_results já pode referenciar esse prompt_id.
+// UpsertPrompt inserts (name, version, content) into the prompts table if it
+// doesn't already exist. If (name, version) already exists with different
+// content, that signals a version bump forgotten in the code (the "-vN"
+// naming convention for files under prompts/); it logs a warning and keeps
+// the content already stored — it never overwrites, because
+// analysis_results may already reference that prompt_id.
 func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64, error) {
 	var id int64
 	var existingContent string
@@ -313,9 +315,9 @@ func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64
 	return res.LastInsertId()
 }
 
-// UpsertAnalysisResult grava (ou substitui, se já existir) o resultado de
-// task para lessonID — reprocessar (História 2) sobrescreve a linha
-// existente.
+// UpsertAnalysisResult stores (or replaces, if one already exists) the
+// result of task for lessonID — reprocessing (Story 2) overwrites the
+// existing row.
 func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID int64, model, resultJSON, rawResponsePath string) error {
 	_, err := conn.Exec(
 		`INSERT INTO analysis_results (lesson_id, task, prompt_id, model, result_json, raw_response_path, created_at)
@@ -334,7 +336,7 @@ func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID in
 	return nil
 }
 
-// AnalysisResult é o resultado persistido de uma tarefa de análise para uma lesson.
+// AnalysisResult is the persisted result of an analysis task for a lesson.
 type AnalysisResult struct {
 	LessonID        int64
 	Task            string
@@ -344,9 +346,9 @@ type AnalysisResult struct {
 	RawResponsePath string
 }
 
-// FindAnalysisResult retorna (nil, nil) se a tarefa ainda não rodou pra
-// essa lesson — estado normal enquanto o job correspondente (História 2)
-// está pending/running/error, não um erro.
+// FindAnalysisResult returns (nil, nil) if the task hasn't run yet for
+// that lesson — a normal state while the corresponding job (Story 2) is
+// pending/running/error, not an error.
 func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisResult, error) {
 	r := AnalysisResult{LessonID: lessonID, Task: task}
 	err := conn.QueryRow(
@@ -362,11 +364,12 @@ func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisRes
 	return &r, nil
 }
 
-// ReplaceLessonTopics apaga os tópicos existentes de lessonID e insere os
-// novos — a lista é sempre derivada por inteiro do resultado mais recente
-// de analyze_topics, nunca um merge incremental. INSERT OR IGNORE absorve
-// um tópico duplicado que o próprio modelo eventualmente repita na mesma
-// resposta, sem falhar a transação inteira por causa do UNIQUE(lesson_id, topic).
+// ReplaceLessonTopics deletes lessonID's existing topics and inserts the
+// new ones — the list is always derived wholesale from the most recent
+// analyze_topics result, never an incremental merge. INSERT OR IGNORE
+// absorbs a duplicate topic the model itself might repeat within the same
+// response, without failing the whole transaction because of
+// UNIQUE(lesson_id, topic).
 func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error {
 	tx, err := conn.Begin()
 	if err != nil {
@@ -389,24 +392,24 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topics []string) error {
 }
 ```
 
-- [ ] **Step 5: Rodar os testes de novo e confirmar que passam**
+- [ ] **Step 5: Run the tests again and confirm they pass**
 
 Run: `go test ./internal/db/... -v`
-Expected: PASS em todos os testes do pacote, incluindo os 5 novos.
+Expected: PASS on all tests in the package, including the 5 new ones.
 
-- [ ] **Step 6: `go vet` e commit**
+- [ ] **Step 6: `go vet` and commit**
 
 Run: `go vet ./internal/db/...`
-Expected: sem saída (limpo).
+Expected: no output (clean).
 
 ```bash
 git add internal/db/migrations/00004_analysis_results.sql internal/db/analysis_results.go internal/db/analysis_results_test.go
-git commit -m "feat: adiciona persistência de analysis_results e lesson_topics"
+git commit -m "feat: add persistence for analysis_results and lesson_topics"
 ```
 
 ---
 
-## Task 2: Pacote `prompts/` + 7 arquivos de prompt
+## Task 2: `prompts/` package + 7 prompt files
 
 **Files:**
 - Create: `prompts/embed.go`
@@ -421,14 +424,14 @@ git commit -m "feat: adiciona persistência de analysis_results e lesson_topics"
 - Delete: `prompts/analyze-v1.md`
 
 **Interfaces:**
-- Consumes: nada.
-- Produces (usado pela Task 4): `var prompts.FS embed.FS` — pacote Go
-  `assistente-idiomas/prompts`, com `FS.ReadFile("analyze-corrections-v1.md")` etc. devolvendo o
-  conteúdo de cada arquivo.
+- Consumes: nothing.
+- Produces (used by Task 4): `var prompts.FS embed.FS` — Go package
+  `assistente-idiomas/prompts`, with `FS.ReadFile("analyze-corrections-v1.md")` etc. returning the
+  content of each file.
 
-- [ ] **Step 1: Escrever o teste falho do embed**
+- [ ] **Step 1: Write the failing embed test**
 
-Crie `prompts/embed_test.go`:
+Create `prompts/embed_test.go`:
 
 ```go
 // prompts/embed_test.go
@@ -459,12 +462,12 @@ func TestFS_ContainsAllTaskPrompts(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar o teste e confirmar que falha (pacote/arquivos ainda não existem)**
+- [ ] **Step 2: Run the test and confirm it fails (package/files don't exist yet)**
 
 Run: `go test ./prompts/... -v`
-Expected: FAIL — `no Go files in prompts` ou similar.
+Expected: FAIL — `no Go files in prompts` or similar.
 
-- [ ] **Step 3: Criar `prompts/embed.go`**
+- [ ] **Step 3: Create `prompts/embed.go`**
 
 ```go
 // prompts/embed.go
@@ -476,17 +479,17 @@ import "embed"
 var FS embed.FS
 ```
 
-- [ ] **Step 4: Remover o prompt único da Fase 0**
+- [ ] **Step 4: Remove the single Phase 0 prompt**
 
 ```bash
 git rm prompts/analyze-v1.md
 ```
 
-(Sem chamador desde a remoção do `cmd/spike` ao fechar a Fase 0 — substituído pelos 7 abaixo.)
+(No caller since `cmd/spike` was removed when Phase 0 closed — replaced by the 7 below.)
 
-- [ ] **Step 5: Criar os 7 arquivos de prompt**
+- [ ] **Step 5: Create the 7 prompt files**
 
-Crie `prompts/analyze-corrections-v1.md`:
+Create `prompts/analyze-corrections-v1.md`:
 
 ````markdown
 # Prompt de análise — Correções do Aluno (v1)
@@ -525,7 +528,7 @@ JSON**, sem nenhum texto antes ou depois, seguindo exatamente este formato:
 A transcrição da aula será enviada na mensagem seguinte.
 ````
 
-Crie `prompts/analyze-vocabulary-v1.md`:
+Create `prompts/analyze-vocabulary-v1.md`:
 
 ````markdown
 # Prompt de análise — Vocabulário novo (v1)
@@ -562,7 +565,7 @@ A transcrição da aula será enviada na mensagem seguinte, com cada fala numera
 "Aluno:" ou "Tutor:".
 ````
 
-Crie `prompts/analyze-tutor-expressions-v1.md`:
+Create `prompts/analyze-tutor-expressions-v1.md`:
 
 ````markdown
 # Prompt de análise — Expressões do Tutor (v1)
@@ -599,7 +602,7 @@ A transcrição da aula será enviada na mensagem seguinte, com cada fala numera
 "Aluno:" ou "Tutor:".
 ````
 
-Crie `prompts/analyze-tutor-taught-terms-v1.md`:
+Create `prompts/analyze-tutor-taught-terms-v1.md`:
 
 ````markdown
 # Prompt de análise — Termos apresentados pelo Tutor (v1)
@@ -637,7 +640,7 @@ A transcrição da aula será enviada na mensagem seguinte, com cada fala numera
 "Aluno:" ou "Tutor:".
 ````
 
-Crie `prompts/analyze-tutor-feedback-v1.md`:
+Create `prompts/analyze-tutor-feedback-v1.md`:
 
 ````markdown
 # Prompt de análise — Feedback do Tutor (v1)
@@ -675,7 +678,7 @@ seguindo exatamente este formato:
 A transcrição da aula será enviada na mensagem seguinte.
 ````
 
-Crie `prompts/analyze-tutor-corrections-v1.md`:
+Create `prompts/analyze-tutor-corrections-v1.md`:
 
 ````markdown
 # Prompt de análise — Correções dadas pelo Tutor (v1)
@@ -715,7 +718,7 @@ seguindo exatamente este formato:
 A transcrição da aula será enviada na mensagem seguinte.
 ````
 
-Crie `prompts/analyze-topics-v1.md`:
+Create `prompts/analyze-topics-v1.md`:
 
 ````markdown
 # Prompt de análise — Tópicos da aula (v1)
@@ -749,24 +752,24 @@ A transcrição da aula será enviada na mensagem seguinte, com cada fala numera
 "Aluno:" ou "Tutor:".
 ````
 
-- [ ] **Step 6: Rodar o teste e confirmar que passa**
+- [ ] **Step 6: Run the test and confirm it passes**
 
 Run: `go test ./prompts/... -v`
 Expected: PASS.
 
-- [ ] **Step 7: `go vet` e commit**
+- [ ] **Step 7: `go vet` and commit**
 
 Run: `go vet ./prompts/...`
-Expected: sem saída.
+Expected: no output.
 
 ```bash
 git add prompts/
-git commit -m "feat: substitui o prompt único da Fase 0 pelos 7 prompts por tarefa da Fase 2"
+git commit -m "feat: replace Phase 0's single prompt with Phase 2's 7 per-task prompts"
 ```
 
 ---
 
-## Task 3: `internal/analysis` — Provider agnóstico + framework de tarefas
+## Task 3: `internal/analysis` — task-agnostic Provider + task framework
 
 **Files:**
 - Modify: `internal/analysis/analysis.go`
@@ -774,14 +777,14 @@ git commit -m "feat: substitui o prompt único da Fase 0 pelos 7 prompts por tar
 - Modify: `internal/analysis/parsing.go`
 - Modify: `internal/analysis/transcript.go`
 - Create: `internal/analysis/task.go`
-- Modify: `internal/analysis/parsing_test.go` (reescrito)
-- Modify: `internal/analysis/transcript_test.go` (numeração)
+- Modify: `internal/analysis/parsing_test.go` (rewritten)
+- Modify: `internal/analysis/transcript_test.go` (numbering)
 - Create: `internal/analysis/openai_compatible_test.go`
 - Create: `internal/analysis/task_test.go`
 
 **Interfaces:**
-- Consumes: nada de fora do pacote (`internal/stt.Utterance`, já usado por `transcript.go`).
-- Produces (usado pela Task 4):
+- Consumes: nothing from outside the package (`internal/stt.Utterance`, already used by `transcript.go`).
+- Produces (used by Task 4):
   - `type Provider interface { Name() string; Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) }`
   - `func NewDeepSeekProvider(apiKey string) (Provider, error)`
   - `type TaskDef interface { Name() string; Version() int; Prompt() string; Execute(ctx context.Context, provider Provider, transcript string, utteranceCount int) (resultJSON, raw json.RawMessage, err error) }`
@@ -790,11 +793,11 @@ git commit -m "feat: substitui o prompt único da Fase 0 pelos 7 prompts por tar
   - `func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discarded int)`
   - `func mustLoadPrompt(filename string) string`
   - `func unmarshalJSON(raw json.RawMessage, v any) error`
-  - `func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error)` — inalterada na assinatura, muda só o formato da saída (agora numerada).
+  - `func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error)` — signature unchanged, only the output format changes (now numbered).
 
-- [ ] **Step 1: Reescrever `transcript_test.go` esperando numeração (falho)**
+- [ ] **Step 1: Rewrite `transcript_test.go` expecting numbering (failing)**
 
-Substitua o conteúdo de `internal/analysis/transcript_test.go`:
+Replace the content of `internal/analysis/transcript_test.go`:
 
 ```go
 // internal/analysis/transcript_test.go
@@ -867,31 +870,32 @@ func TestSpeakerExamples_LimitsToN(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar e confirmar que falha só no teste de numeração**
+- [ ] **Step 2: Run and confirm only the numbering test fails**
 
 Run: `go test ./internal/analysis/... -run TestFormatTranscript -v`
-Expected: `TestFormatTranscript` FAIL (string sem os prefixos `[N]`); as demais funções ainda
-compilam e passam.
+Expected: `TestFormatTranscript` FAILs (string without the `[N]` prefixes); the other functions
+still compile and pass.
 
-- [ ] **Step 3: Atualizar `FormatTranscript` em `transcript.go`**
+- [ ] **Step 3: Update `FormatTranscript` in `transcript.go`**
 
-Em `internal/analysis/transcript.go`, troque a linha do `Fprintf` dentro do loop:
+In `internal/analysis/transcript.go`, replace the `Fprintf` line inside the loop:
 
 ```go
 		fmt.Fprintf(&b, "[%d] %s: %s\n", i, label, u.Text)
 ```
 
-(era `fmt.Fprintf(&b, "%s: %s\n", label, u.Text)`; o loop já precisa virar `for i, u := range
-utterances` em vez de `for _, u := range utterances` — é a única outra mudança na função.)
+(it was `fmt.Fprintf(&b, "%s: %s\n", label, u.Text)`; the loop also needs to become `for i, u :=
+range utterances` instead of `for _, u := range utterances` — that's the only other change in the
+function.)
 
-- [ ] **Step 4: Rodar de novo e confirmar que passa**
+- [ ] **Step 4: Run again and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run TestFormatTranscript -v`
 Expected: PASS.
 
-- [ ] **Step 5: Reescrever `analysis.go` (Provider agnóstico)**
+- [ ] **Step 5: Rewrite `analysis.go` (task-agnostic Provider)**
 
-Substitua o conteúdo de `internal/analysis/analysis.go`:
+Replace the content of `internal/analysis/analysis.go`:
 
 ```go
 // internal/analysis/analysis.go
@@ -902,21 +906,22 @@ import (
 	"encoding/json"
 )
 
-// Provider é a interface única implementada por cada serviço de análise LLM
-// candidato (DeepSeek, e em fatias futuras: Anthropic, OpenAI, Gemini, GLM,
-// Qwen — ver docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md).
-// Agnóstica de tarefa: não conhece Correction/VocabularyItem/etc, só troca
-// um prompt de sistema + a transcrição por um JSON de resposta bruto — cada
-// TaskDef (ver task.go) é quem sabe interpretar esse JSON.
+// Provider is the single interface implemented by each candidate LLM
+// analysis service (DeepSeek, and in future slices: Anthropic, OpenAI,
+// Gemini, GLM, Qwen — see
+// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md).
+// Task-agnostic: it knows nothing about Correction/VocabularyItem/etc, it
+// just trades a system prompt + the transcript for a raw JSON response —
+// each TaskDef (see task.go) is what knows how to interpret that JSON.
 type Provider interface {
 	Name() string
 	Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error)
 }
 ```
 
-- [ ] **Step 6: Reescrever `parsing.go`**
+- [ ] **Step 6: Rewrite `parsing.go`**
 
-Substitua o conteúdo de `internal/analysis/parsing.go`:
+Replace the content of `internal/analysis/parsing.go`:
 
 ```go
 // internal/analysis/parsing.go
@@ -928,19 +933,19 @@ import (
 	"fmt"
 )
 
-// stripTrailingCodeFence remove um fechamento de code fence (```) sobrando
-// no final do conteúdo — a única sujeira possível quando o provedor usa
-// prefill (ver openai_compatible.go); no-op inofensivo pra provedores sem
-// prefill (JSON já vem puro).
+// stripTrailingCodeFence removes a leftover closing code fence (```) at
+// the end of the content — the only mess possible when the provider uses
+// prefill (see openai_compatible.go); a harmless no-op for providers
+// without prefill (JSON already comes clean).
 func stripTrailingCodeFence(raw []byte) []byte {
 	trimmed := bytes.TrimSpace(raw)
 	trimmed = bytes.TrimSuffix(trimmed, []byte("```"))
 	return bytes.TrimSpace(trimmed)
 }
 
-// unmarshalJSON desserializa raw (já sem envelope HTTP nem code fence — ver
-// Provider.Complete) em v. Compartilhado pelas 7 tarefas; não sabe nada
-// sobre o schema de nenhuma tarefa específica.
+// unmarshalJSON unmarshals raw (already stripped of the HTTP envelope and
+// code fence — see Provider.Complete) into v. Shared by all 7 tasks; it
+// knows nothing about the schema of any specific task.
 func unmarshalJSON(raw json.RawMessage, v any) error {
 	if err := json.Unmarshal(raw, v); err != nil {
 		return fmt.Errorf("analysis: json inválido: %w", err)
@@ -949,9 +954,9 @@ func unmarshalJSON(raw json.RawMessage, v any) error {
 }
 ```
 
-- [ ] **Step 7: Escrever `parsing_test.go` novo (substituindo o antigo)**
+- [ ] **Step 7: Write the new `parsing_test.go` (replacing the old one)**
 
-Substitua o conteúdo de `internal/analysis/parsing_test.go`:
+Replace the content of `internal/analysis/parsing_test.go`:
 
 ```go
 // internal/analysis/parsing_test.go
@@ -996,18 +1001,18 @@ func TestUnmarshalJSON_Invalid(t *testing.T) {
 }
 ```
 
-- [ ] **Step 8: Confirmar que o pacote ainda não compila (esperado neste ponto)**
+- [ ] **Step 8: Confirm the package still doesn't compile (expected at this point)**
 
 Run: `go test ./internal/analysis/... -run 'TestStripTrailingCodeFence|TestUnmarshalJSON' -v`
-Expected: FAIL ao compilar — `openai_compatible.go` ainda referencia `Result`/`analysisJSON`/
-`parseAnalysisResponse`, removidos nos Steps 5-6. Isso é esperado: `analysis.go`, `parsing.go` e
-`openai_compatible.go` são um único bloco interdependente (o `Provider` agnóstico só faz sentido
-com os três consistentes ao mesmo tempo); o próximo step termina a reescrita e volta o pacote a
-compilar.
+Expected: FAILs to compile — `openai_compatible.go` still references `Result`/`analysisJSON`/
+`parseAnalysisResponse`, removed in Steps 5-6. This is expected: `analysis.go`, `parsing.go`, and
+`openai_compatible.go` are a single interdependent block (the task-agnostic `Provider` only makes
+sense with all three consistent at the same time); the next step finishes the rewrite and brings
+the package back to compiling.
 
-- [ ] **Step 9: Reescrever `openai_compatible.go`**
+- [ ] **Step 9: Rewrite `openai_compatible.go`**
 
-Substitua o conteúdo de `internal/analysis/openai_compatible.go`:
+Replace the content of `internal/analysis/openai_compatible.go`:
 
 ```go
 // internal/analysis/openai_compatible.go
@@ -1024,11 +1029,11 @@ import (
 	"time"
 )
 
-// openAICompatibleProvider implementa Provider para qualquer serviço que
-// exponha um endpoint /chat/completions no formato OpenAI. Hoje só é usado
-// por DeepSeek; em fatias futuras (ver
-// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md) pode ganhar
-// construtores para OpenAI, GLM e Qwen, reaproveitando este mesmo tipo.
+// openAICompatibleProvider implements Provider for any service that
+// exposes a /chat/completions endpoint in the OpenAI format. Today it's
+// only used by DeepSeek; in future slices (see
+// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md) it may gain
+// constructors for OpenAI, GLM, and Qwen, reusing this same type.
 type openAICompatibleProvider struct {
 	name            string
 	baseURL         string
@@ -1052,19 +1057,20 @@ func newOpenAICompatibleProvider(name, baseURL, apiKey, model string, supportsPr
 	}, nil
 }
 
-// NewDeepSeekProvider cria um Provider pra API do DeepSeek, modelo
-// deepseek-v4-flash (tier mais barato — ver "Estratégia de fatias" no design
-// doc). Usa o base URL beta, exigido pelo recurso de "Chat Prefix
-// Completion" que sustenta o prefill de ```json.
+// NewDeepSeekProvider creates a Provider for the DeepSeek API, model
+// deepseek-v4-flash (the cheapest tier — see "Slicing strategy" in the
+// design doc). Uses the beta base URL, required by the "Chat Prefix
+// Completion" feature that backs the ```json prefill.
 func NewDeepSeekProvider(apiKey string) (Provider, error) {
 	return newOpenAICompatibleProvider("deepseek", "https://api.deepseek.com/beta", apiKey, "deepseek-v4-flash", true)
 }
 
 func (p *openAICompatibleProvider) Name() string { return p.name }
 
-// Complete envia systemPrompt + transcript e devolve o conteúdo bruto (já
-// sem envelope HTTP nem code fence) que o modelo produziu — cada TaskDef
-// (task.go) é quem sabe o schema esperado desse conteúdo.
+// Complete sends systemPrompt + transcript and returns the raw content
+// (already stripped of the HTTP envelope and code fence) the model
+// produced — each TaskDef (task.go) is what knows the expected schema of
+// that content.
 func (p *openAICompatibleProvider) Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) {
 	if systemPrompt == "" {
 		return nil, fmt.Errorf("analysis: prompt de sistema vazio para %s", p.name)
@@ -1106,11 +1112,11 @@ func (p *openAICompatibleProvider) buildRequest(ctx context.Context, systemPromp
 	}
 
 	if p.supportsPrefill {
-		// DeepSeek rejeita a combinação response_format=json_object + prefix
-		// (erro 400 "response_format json_object should not be used with
-		// prefix", confirmado numa chamada real) — o prefill por si só já
-		// força o conteúdo a começar como JSON, então response_format fica
-		// de fora quando há prefill.
+		// DeepSeek rejects the combination response_format=json_object +
+		// prefix (400 error "response_format json_object should not be used
+		// with prefix", confirmed in a real call) — the prefill alone
+		// already forces the content to start as JSON, so response_format
+		// is left out when there's a prefill.
 		reqBody.Messages = append(reqBody.Messages, chatMessage{
 			Role:    "assistant",
 			Content: "```json\n",
@@ -1135,8 +1141,9 @@ func (p *openAICompatibleProvider) buildRequest(ctx context.Context, systemPromp
 	return req, nil
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if
+// the status isn't 2xx (the message includes status and body, for
+// debugging).
 func (p *openAICompatibleProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -1184,7 +1191,7 @@ type openAICompatibleEnvelope struct {
 }
 ```
 
-- [ ] **Step 10: Escrever `openai_compatible_test.go`**
+- [ ] **Step 10: Write `openai_compatible_test.go`**
 
 ```go
 // internal/analysis/openai_compatible_test.go
@@ -1250,14 +1257,14 @@ func TestOpenAICompatibleProvider_Complete_EmptySystemPrompt(t *testing.T) {
 }
 ```
 
-Com isso, `analysis.go`, `parsing.go` e `openai_compatible.go` voltam a ser consistentes entre si
-— confirme rodando:
+With that, `analysis.go`, `parsing.go`, and `openai_compatible.go` become consistent with each
+other again — confirm by running:
 
 Run: `go test ./internal/analysis/... -v`
-Expected: PASS em todos os testes do pacote (o pacote volta a compilar; `task.go` ainda não
-existe, mas nada até aqui o referencia).
+Expected: PASS on all tests in the package (the package compiles again; `task.go` doesn't exist
+yet, but nothing up to this point references it).
 
-- [ ] **Step 11: Criar `internal/analysis/task.go`**
+- [ ] **Step 11: Create `internal/analysis/task.go`**
 
 ```go
 // internal/analysis/task.go
@@ -1271,21 +1278,23 @@ import (
 	"assistente-idiomas/prompts"
 )
 
-// TaskDef é a interface comum das 7 tarefas de análise — permite iterar
-// todas numa lista única (var Tasks, ver Task 4 deste plano) apesar de cada
-// uma ter um tipo de resultado diferente (generics não permitem slice de
-// task[T] com T variável, daí essa interface não-genérica por cima).
+// TaskDef is the common interface for the 7 analysis tasks — it lets them
+// all be iterated over a single list (var Tasks, see Task 4 of this plan)
+// even though each one has a different result type (generics don't allow a
+// slice of task[T] with a variable T, hence this non-generic interface on
+// top).
 type TaskDef interface {
-	Name() string   // ex.: "analyze_corrections" — mesmo valor gravado em prompts.name e analysis_results.task
-	Version() int   // versão do prompt (bump manual no código quando o .md mudar de conteúdo)
-	Prompt() string // conteúdo do prompt (embed.FS)
+	Name() string   // e.g.: "analyze_corrections" — same value stored in prompts.name and analysis_results.task
+	Version() int   // prompt version (manual bump in code when the .md content changes)
+	Prompt() string // prompt content (embed.FS)
 
-	// Execute chama provider.Complete, faz o parse e (quando a tarefa for
-	// ancorada) descarta itens com utterance_index inválido. Devolve o JSON
-	// já validado (pronto pra gravar em analysis_results.result_json) e o
-	// conteúdo bruto devolvido pelo provedor (pronto pra gravar em disco,
-	// raw_response_path). err != nil não impede o chamador de gravar raw em
-	// disco (mesmo princípio de runTranscribe: a chamada já custou dinheiro).
+	// Execute calls provider.Complete, parses it, and (when the task is
+	// anchored) discards items with an invalid utterance_index. Returns the
+	// already-validated JSON (ready to store in
+	// analysis_results.result_json) and the raw content returned by the
+	// provider (ready to write to disk, raw_response_path). err != nil
+	// doesn't stop the caller from writing raw to disk (same principle as
+	// runTranscribe: the call already cost money).
 	Execute(ctx context.Context, provider Provider, transcript string, utteranceCount int) (resultJSON json.RawMessage, raw json.RawMessage, err error)
 }
 
@@ -1316,16 +1325,17 @@ func (t task[T]) Execute(ctx context.Context, provider Provider, transcript stri
 	return resultJSON, raw, nil
 }
 
-// anchored é implementada pelos tipos de item cujo parse referencia uma
-// fala específica da transcrição (Correction, TutorCorrection,
-// TutorFeedbackItem, ver Task 4) — um UtteranceIndex negativo representa
-// "ausente no JSON do modelo", tratado igual a um índice fora do range.
+// anchored is implemented by item types whose parsing references a
+// specific utterance in the transcript (Correction, TutorCorrection,
+// TutorFeedbackItem, see Task 4) — a negative UtteranceIndex represents
+// "absent from the model's JSON", treated the same as an out-of-range
+// index.
 type anchored interface {
 	UtteranceIndex() int
 }
 
-// filterAnchored descarta (retornando também a contagem descartada, pra
-// log) itens cujo UtteranceIndex não caia em [0, utteranceCount).
+// filterAnchored discards (also returning the discarded count, for
+// logging) items whose UtteranceIndex doesn't fall within [0, utteranceCount).
 func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discarded int) {
 	kept = items[:0]
 	for _, it := range items {
@@ -1339,10 +1349,10 @@ func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discar
 	return kept, discarded
 }
 
-// mustLoadPrompt lê um prompt embutido em prompts.FS (prompts/embed.go,
-// Task 2) — panic em caso de ausência é intencional: um prompt faltando é
-// erro de build/empacotamento, não uma condição de runtime a tratar
-// graciosamente (mesmo espírito de um template.Must).
+// mustLoadPrompt reads a prompt embedded in prompts.FS (prompts/embed.go,
+// Task 2) — panicking when it's missing is intentional: a missing prompt is
+// a build/packaging error, not a runtime condition to handle gracefully
+// (same spirit as a template.Must).
 func mustLoadPrompt(filename string) string {
 	b, err := prompts.FS.ReadFile(filename)
 	if err != nil {
@@ -1352,7 +1362,7 @@ func mustLoadPrompt(filename string) string {
 }
 ```
 
-- [ ] **Step 12: Escrever `task_test.go`**
+- [ ] **Step 12: Write `task_test.go`**
 
 ```go
 // internal/analysis/task_test.go
@@ -1460,25 +1470,25 @@ func TestTaskExecute_ProviderErrorPreservesRaw(t *testing.T) {
 }
 ```
 
-- [ ] **Step 13: Rodar todos os testes do pacote e confirmar que passam**
+- [ ] **Step 13: Run all tests in the package and confirm they pass**
 
 Run: `go test ./internal/analysis/... -v`
-Expected: PASS em todos os testes (o pacote agora compila de ponta a ponta — `var Tasks` ainda
-não existe, mas nada neste pacote o referencia ainda; isso só chega na Task 4).
+Expected: PASS on all tests (the package now compiles end to end — `var Tasks` still doesn't
+exist, but nothing in this package references it yet; that only arrives in Task 4).
 
-- [ ] **Step 14: `go vet` e commit**
+- [ ] **Step 14: `go vet` and commit**
 
 Run: `go vet ./internal/analysis/...`
-Expected: sem saída.
+Expected: no output.
 
 ```bash
 git add internal/analysis/ prompts/
-git commit -m "refactor: torna analysis.Provider agnóstico de tarefa e introduz o framework TaskDef"
+git commit -m "refactor: make analysis.Provider task-agnostic and introduce the TaskDef framework"
 ```
 
 ---
 
-## Task 4: As 7 tarefas concretas + `RegisterPrompts`
+## Task 4: The 7 concrete tasks + `RegisterPrompts`
 
 **Files:**
 - Create: `internal/analysis/tasks_corrections.go` + `tasks_corrections_test.go`
@@ -1494,14 +1504,14 @@ git commit -m "refactor: torna analysis.Provider agnóstico de tarefa e introduz
 
 **Interfaces:**
 - Consumes: `TaskDef`/`task[T]`/`anchored`/`filterAnchored`/`mustLoadPrompt`/`unmarshalJSON` (Task
-  3); `db.UpsertPrompt` (Task 1); os 7 arquivos `.md` via `mustLoadPrompt` (Task 2).
-- Produces (usado pela Task 5 e pelo `cmd/validate-analysis` da Task 6):
-  - `var Tasks []TaskDef` com as 7 tarefas.
+  3); `db.UpsertPrompt` (Task 1); the 7 `.md` files via `mustLoadPrompt` (Task 2).
+- Produces (used by Task 5 and by `cmd/validate-analysis` in Task 6):
+  - `var Tasks []TaskDef` with the 7 tasks.
   - `func RegisterPrompts(conn *sql.DB) error`
-  - Tipos de item: `Correction`, `VocabularyItem`, `Expression`, `TutorTaughtTerm`,
-    `TutorFeedbackItem`, `TutorCorrection` (tópicos usam `[]string`, sem struct própria).
+  - Item types: `Correction`, `VocabularyItem`, `Expression`, `TutorTaughtTerm`,
+    `TutorFeedbackItem`, `TutorCorrection` (topics use `[]string`, with no dedicated struct).
 
-- [ ] **Step 1: Escrever `tasks_corrections.go` + teste**
+- [ ] **Step 1: Write `tasks_corrections.go` + test**
 
 ```go
 // internal/analysis/tasks_corrections.go
@@ -1512,8 +1522,9 @@ import (
 	"log/slog"
 )
 
-// Correction é uma correção de uma fala do Aluno, derivada pela análise
-// (ao contrário de TutorCorrection, dada ao vivo pelo próprio Tutor).
+// Correction is a correction to a student utterance, derived by the
+// analysis (as opposed to TutorCorrection, given live by the Tutor
+// themselves).
 type Correction struct {
 	UtteranceIdx int    `json:"utterance_index"`
 	Original     string `json:"original"`
@@ -1590,12 +1601,12 @@ func TestNewCorrectionsTask_HasNameAndPrompt(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Rodar e confirmar que passa**
+- [ ] **Step 2: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'Corrections' -v`
 Expected: PASS.
 
-- [ ] **Step 3: Escrever `tasks_vocabulary.go` + teste**
+- [ ] **Step 3: Write `tasks_vocabulary.go` + test**
 
 ```go
 // internal/analysis/tasks_vocabulary.go
@@ -1603,9 +1614,9 @@ package analysis
 
 import "encoding/json"
 
-// VocabularyItem é uma palavra ou expressão nova pro Aluno aprender —
-// inclui palavras em PT/ES usadas como recurso ao idioma nativo, nunca
-// tratadas como erro de inglês (ver analyze-corrections-v1.md).
+// VocabularyItem is a new word or expression for the student to learn —
+// includes PT/ES words used as a native-language fallback, never treated
+// as an English mistake (see analyze-corrections-v1.md).
 type VocabularyItem struct {
 	Term        string `json:"term"`
 	Translation string `json:"translation"`
@@ -1663,12 +1674,12 @@ func TestParseVocabulary_InvalidJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Rodar e confirmar que passa**
+- [ ] **Step 4: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'Vocabulary' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Escrever `tasks_tutor_expressions.go` + teste**
+- [ ] **Step 5: Write `tasks_tutor_expressions.go` + test**
 
 ```go
 // internal/analysis/tasks_tutor_expressions.go
@@ -1676,9 +1687,9 @@ package analysis
 
 import "encoding/json"
 
-// Expression é uma expressão que o Tutor usou naturalmente na conversa e
-// que vale a pena o Aluno reutilizar — distinta de TutorTaughtTerm (termo
-// que o Tutor explicou/ensinou explicitamente).
+// Expression is an expression the Tutor used naturally in the conversation
+// that's worth the student reusing — distinct from TutorTaughtTerm (a term
+// the Tutor explicitly explained/taught).
 type Expression struct {
 	Text string `json:"text"`
 	Note string `json:"note"`
@@ -1726,12 +1737,12 @@ func TestParseTutorExpressions_InvalidJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Rodar e confirmar que passa**
+- [ ] **Step 6: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'TutorExpressions' -v`
 Expected: PASS.
 
-- [ ] **Step 7: Escrever `tasks_tutor_taught_terms.go` + teste**
+- [ ] **Step 7: Write `tasks_tutor_taught_terms.go` + test**
 
 ```go
 // internal/analysis/tasks_tutor_taught_terms.go
@@ -1739,9 +1750,9 @@ package analysis
 
 import "encoding/json"
 
-// TutorTaughtTerm é um termo/expressão que o Tutor explicou ou ensinou
-// explicitamente durante a aula (ao contrário de Expression, que é só uso
-// natural na conversa).
+// TutorTaughtTerm is a term/expression the Tutor explicitly explained or
+// taught during the lesson (as opposed to Expression, which is just
+// natural use in the conversation).
 type TutorTaughtTerm struct {
 	Term        string `json:"term"`
 	Translation string `json:"translation"`
@@ -1790,12 +1801,12 @@ func TestParseTutorTaughtTerms_InvalidJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 8: Rodar e confirmar que passa**
+- [ ] **Step 8: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'TutorTaughtTerms' -v`
 Expected: PASS.
 
-- [ ] **Step 9: Escrever `tasks_tutor_feedback.go` + teste**
+- [ ] **Step 9: Write `tasks_tutor_feedback.go` + test**
 
 ```go
 // internal/analysis/tasks_tutor_feedback.go
@@ -1806,8 +1817,8 @@ import (
 	"log/slog"
 )
 
-// TutorFeedbackItem é uma observação do Tutor sobre o desempenho do Aluno,
-// ancorada na fala do Tutor em que foi dada.
+// TutorFeedbackItem is an observation the Tutor made about the student's
+// performance, anchored to the Tutor utterance where it was given.
 type TutorFeedbackItem struct {
 	UtteranceIdx int    `json:"utterance_index"`
 	Feedback     string `json:"feedback"`
@@ -1872,12 +1883,12 @@ func TestParseTutorFeedback_InvalidJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 10: Rodar e confirmar que passa**
+- [ ] **Step 10: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'TutorFeedback' -v`
 Expected: PASS.
 
-- [ ] **Step 11: Escrever `tasks_tutor_corrections.go` + teste**
+- [ ] **Step 11: Write `tasks_tutor_corrections.go` + test**
 
 ```go
 // internal/analysis/tasks_tutor_corrections.go
@@ -1888,9 +1899,10 @@ import (
 	"log/slog"
 )
 
-// TutorCorrection é uma correção que o próprio Tutor deu ao Aluno durante a
-// aula (ao vivo, na conversa) — diferente de Correction (derivada pela
-// análise), embora ambas possam apontar pra mesma fala.
+// TutorCorrection is a correction the Tutor themselves gave the student
+// during the lesson (live, in the conversation) — different from
+// Correction (derived by the analysis), even though both may point to the
+// same utterance.
 type TutorCorrection struct {
 	UtteranceIdx int    `json:"utterance_index"`
 	TutorSaid    string `json:"tutor_said"`
@@ -1956,12 +1968,12 @@ func TestParseTutorCorrections_InvalidJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 12: Rodar e confirmar que passa**
+- [ ] **Step 12: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'TutorCorrections' -v`
 Expected: PASS.
 
-- [ ] **Step 13: Escrever `tasks_topics.go` + teste**
+- [ ] **Step 13: Write `tasks_topics.go` + test**
 
 ```go
 // internal/analysis/tasks_topics.go
@@ -2011,20 +2023,20 @@ func TestParseTopics_InvalidJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 14: Rodar e confirmar que passa**
+- [ ] **Step 14: Run and confirm it passes**
 
 Run: `go test ./internal/analysis/... -run 'Topics' -v`
 Expected: PASS.
 
-- [ ] **Step 15: Criar `tasks.go` com `var Tasks`**
+- [ ] **Step 15: Create `tasks.go` with `var Tasks`**
 
 ```go
 // internal/analysis/tasks.go
 package analysis
 
-// Tasks lista as 7 tarefas de análise da Fase 2 — a ordem não importa pra
-// execução (independentes entre si), só pra leitura humana e pra
-// RegisterPrompts (prompts.go).
+// Tasks lists the 7 Phase 2 analysis tasks — order doesn't matter for
+// execution (they're independent of each other), only for human readability
+// and for RegisterPrompts (prompts.go).
 var Tasks = []TaskDef{
 	newCorrectionsTask(),
 	newVocabularyTask(),
@@ -2036,7 +2048,7 @@ var Tasks = []TaskDef{
 }
 ```
 
-- [ ] **Step 16: Escrever `prompts_test.go` (falho — `RegisterPrompts` ainda não existe)**
+- [ ] **Step 16: Write `prompts_test.go` (failing — `RegisterPrompts` doesn't exist yet)**
 
 ```go
 // internal/analysis/prompts_test.go
@@ -2085,12 +2097,12 @@ func TestRegisterPrompts_InsertsAllTasksAndIsIdempotent(t *testing.T) {
 }
 ```
 
-- [ ] **Step 17: Rodar e confirmar que falha (`RegisterPrompts` não existe)**
+- [ ] **Step 17: Run and confirm it fails (`RegisterPrompts` doesn't exist)**
 
 Run: `go test ./internal/analysis/... -run TestRegisterPrompts -v`
 Expected: FAIL — `undefined: RegisterPrompts`.
 
-- [ ] **Step 18: Criar `prompts.go` com `RegisterPrompts`**
+- [ ] **Step 18: Create `prompts.go` with `RegisterPrompts`**
 
 ```go
 // internal/analysis/prompts.go
@@ -2103,9 +2115,9 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// RegisterPrompts grava (nome, versão, conteúdo) de cada TaskDef em Tasks
-// na tabela prompts, se ainda não existir — idempotente entre reinícios do
-// app. Chamado uma vez em main.go, logo após db.Open.
+// RegisterPrompts stores (name, version, content) for each TaskDef in
+// Tasks into the prompts table, if it doesn't already exist — idempotent
+// across app restarts. Called once in main.go, right after db.Open.
 func RegisterPrompts(conn *sql.DB) error {
 	for _, t := range Tasks {
 		if _, err := db.UpsertPrompt(conn, t.Name(), t.Version(), t.Prompt()); err != nil {
@@ -2116,42 +2128,42 @@ func RegisterPrompts(conn *sql.DB) error {
 }
 ```
 
-- [ ] **Step 19: Rodar de novo e confirmar que passa**
+- [ ] **Step 19: Run again and confirm it passes**
 
 Run: `go test ./internal/analysis/... -v`
-Expected: PASS em todos os testes do pacote (agora com as 7 tarefas + `RegisterPrompts`).
+Expected: PASS on all tests in the package (now with the 7 tasks + `RegisterPrompts`).
 
-- [ ] **Step 20: `go build`, `go vet` de todo o módulo e commit**
+- [ ] **Step 20: `go build`, `go vet` for the whole module, and commit**
 
 Run: `go build ./... && go vet ./...`
-Expected: sem erros (confirma que `internal/db` e `internal/analysis` continuam compatíveis entre
-si e com o resto do módulo).
+Expected: no errors (confirms that `internal/db` and `internal/analysis` remain compatible with
+each other and with the rest of the module).
 
 ```bash
 git add internal/analysis/
-git commit -m "feat: implementa as 7 tarefas de análise e o registro de prompts"
+git commit -m "feat: implement the 7 analysis tasks and the prompt registry"
 ```
 
 ---
 
-## Task 5: `main.go` — registrar os prompts na inicialização
+## Task 5: `main.go` — register the prompts at startup
 
 **Files:**
 - Modify: `main.go:1-32`
 
 **Interfaces:**
 - Consumes: `analysis.RegisterPrompts(conn *sql.DB) error` (Task 4).
-- Produces: nada consumido por outra task deste plano.
+- Produces: nothing consumed by another task in this plan.
 
-- [ ] **Step 1: Adicionar o import e a chamada**
+- [ ] **Step 1: Add the import and the call**
 
-Em `main.go`, adicione o import (ordem alfabética, junto aos demais `internal/`):
+In `main.go`, add the import (alphabetical order, alongside the other `internal/` ones):
 
 ```go
 	"assistente-idiomas/internal/analysis"
 ```
 
-E logo após `defer conn.Close()` (linha 32), antes do bloco `storageRoot := ...`:
+And right after `defer conn.Close()` (line 32), before the `storageRoot := ...` block:
 
 ```go
 	if err := analysis.RegisterPrompts(conn); err != nil {
@@ -2159,37 +2171,37 @@ E logo após `defer conn.Close()` (linha 32), antes do bloco `storageRoot := ...
 	}
 ```
 
-Falha ao registrar prompts é fatal (mesmo tratamento que uma falha de `db.Open` já recebe acima)
-— não há como a fila da Fase 2 (História 2) funcionar sem os prompts na tabela, e falhar cedo é
-preferível a descobrir isso só quando o primeiro job de análise rodar.
+A failure to register prompts is fatal (the same treatment a `db.Open` failure already gets
+above) — there's no way for the Phase 2 queue (Story 2) to work without the prompts in the table,
+and failing early is preferable to only discovering this when the first analysis job runs.
 
-- [ ] **Step 2: Build e vet do módulo inteiro**
+- [ ] **Step 2: Build and vet the whole module**
 
 Run: `go build ./... && go vet ./...`
-Expected: sem erros.
+Expected: no errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add main.go
-git commit -m "feat: registra os prompts de análise na inicialização do app"
+git commit -m "feat: register the analysis prompts on app startup"
 ```
 
 ---
 
-## Task 6: `cmd/validate-analysis` — CLI temporário de validação manual
+## Task 6: `cmd/validate-analysis` — temporary manual-validation CLI
 
 **Files:**
 - Create: `cmd/validate-analysis/main.go`
 
 **Interfaces:**
-- Consumes: `db.Open`, `db.FindTranscriptByLessonID` (já existentes); `analysis.Tasks`,
+- Consumes: `db.Open`, `db.FindTranscriptByLessonID` (already existing); `analysis.Tasks`,
   `analysis.NewDeepSeekProvider`, `analysis.FormatTranscript`, `analysis.SpeakerExamples`,
-  `analysis.TaskDef.Execute` (Task 4); `config.DBPath` (já existente).
-- Produces: nada consumido por código do app — só arquivos em
-  `local/output/analysis-validation/<task>/{raw.json,result.json}`, usados manualmente na Task 7.
+  `analysis.TaskDef.Execute` (Task 4); `config.DBPath` (already existing).
+- Produces: nothing consumed by app code — just files under
+  `local/output/analysis-validation/<task>/{raw.json,result.json}`, used manually in Task 7.
 
-- [ ] **Step 1: Criar `cmd/validate-analysis/main.go`**
+- [ ] **Step 1: Create `cmd/validate-analysis/main.go`**
 
 ```go
 // cmd/validate-analysis/main.go
@@ -2213,13 +2225,13 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// validate-analysis roda as 7 tarefas de análise (Fase 2, História 1)
-// contra uma aula real já transcrita, para inspecionar qualidade e custo
-// antes de ligar isso ao Worker (História 2). Ferramenta temporária — ver
-// "Decisões de escopo" em
+// validate-analysis runs the 7 analysis tasks (Phase 2, Story 1) against
+// a real, already-transcribed lesson, to inspect quality and cost before
+// wiring this into the Worker (Story 2). Temporary tool — see "Scope
+// decisions" in
 // docs/superpowers/specs/2026-07-30-fase2-historia-1-prompts-persistencia-design.md;
-// removida depois de registrar os achados em docs/notas-analise-llm.md
-// (Task 7 deste plano), mesmo destino do extinto cmd/spike (Fase 0).
+// removed after recording the findings in docs/notas-analise-llm.md (Task
+// 7 of this plan), the same fate as the defunct cmd/spike (Phase 0).
 func main() {
 	if err := loadDotEnv(".env"); err != nil {
 		log.Fatalf("carregar .env: %v", err)
@@ -2312,10 +2324,10 @@ func runTask(ctx context.Context, tk analysis.TaskDef, provider analysis.Provide
 	return true
 }
 
-// confirmSpeakerRoles mostra até 3 falas de exemplo por locutor e pergunta
-// ao usuário, via stdin, qual dos dois é o Aluno — o outro vira Tutor (aula
-// do Cambly é sempre 1:1). Copiado do extinto cmd/spike (Fase 0), mesmo
-// comportamento.
+// confirmSpeakerRoles shows up to 3 example utterances per speaker and
+// asks the user, via stdin, which of the two is the student — the other
+// becomes the Tutor (a Cambly lesson is always 1:1). Copied from the
+// defunct cmd/spike (Phase 0), same behavior.
 func confirmSpeakerRoles(utterances []stt.Utterance) (map[string]string, error) {
 	examples := analysis.SpeakerExamples(utterances, 3)
 
@@ -2354,9 +2366,10 @@ func confirmSpeakerRoles(utterances []stt.Utterance) (map[string]string, error) 
 	return map[string]string{speakers[0]: answer, speakers[1]: other}, nil
 }
 
-// loadDotEnv lê pares CHAVE=VALOR de path e os define como variáveis de
-// ambiente, sem sobrescrever variáveis já definidas no processo. Arquivo
-// ausente não é erro. Copiado do extinto cmd/spike (Fase 0).
+// loadDotEnv reads KEY=VALUE pairs from path and sets them as environment
+// variables, without overwriting variables already set in the process. A
+// missing file is not an error. Copied from the defunct cmd/spike (Phase
+// 0).
 func loadDotEnv(path string) error {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -2384,97 +2397,96 @@ func loadDotEnv(path string) error {
 }
 ```
 
-- [ ] **Step 2: Build e vet**
+- [ ] **Step 2: Build and vet**
 
 Run: `go build ./... && go vet ./...`
-Expected: sem erros. Sem teste automatizado para este CLI — mesmo padrão do extinto `cmd/spike`
-(ferramenta de inspeção manual, não código de produção).
+Expected: no errors. No automated test for this CLI — same pattern as the defunct `cmd/spike`
+(manual inspection tool, not production code).
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add cmd/validate-analysis/
-git commit -m "feat: adiciona CLI temporário de validação manual das 7 tarefas de análise"
+git commit -m "feat: add temporary CLI for manual validation of the 7 analysis tasks"
 ```
 
 ---
 
-## Task 7: Validação manual numa aula real (executar por conta própria — não delegar a um subagent)
+## Task 7: Manual validation on a real lesson (run it yourself — do not delegate to a subagent)
 
-> **Esta task não pode ser executada de forma autônoma por um agente/subagent.** Ela exige uma
-> credencial real da DeepSeek, uma aula real já transcrita no seu banco local, e julgamento humano
-> sobre a qualidade de cada uma das 7 saídas — exatamente o tipo de coisa que este plano não pode
-> prescrever de antemão. Rode os passos abaixo você mesmo (ou em uma sessão com acesso à sua
-> máquina/API key reais), fora do fluxo de subagent-driven-development.
+> **This task cannot be run autonomously by an agent/subagent.** It requires a real DeepSeek
+> credential, a real lesson already transcribed in your local database, and human judgment about
+> the quality of each of the 7 outputs — exactly the kind of thing this plan cannot prescribe in
+> advance. Run the steps below yourself (or in a session with access to your real machine/API
+> key), outside the subagent-driven-development flow.
 
 **Files:**
 - Modify: `docs/notas-analise-llm.md`
-- Modify: `docs/fase-2-analise-llm.md` (checkboxes da História 1 + linha na tabela de progresso)
+- Modify: `docs/fase-2-analise-llm.md` (Story 1 checkboxes + a row in the progress table)
 - Delete: `cmd/validate-analysis/`
 
-- [ ] **Step 1: Descobrir o id de uma lesson já transcrita**
+- [ ] **Step 1: Find the id of an already-transcribed lesson**
 
-Abra a Biblioteca no app, escolha uma aula com status "pronta" (já transcrita) e confirme o id
-consultando diretamente o banco (o path é o mesmo que `config.DBPath()` resolve — por padrão, o
-diretório de dados do app na sua máquina):
-
-```bash
-sqlite3 <path/do/seu/app.db> "SELECT id, lesson_date, tutor FROM lessons WHERE id IN (SELECT lesson_id FROM transcripts);"
-```
-
-- [ ] **Step 2: Configurar a credencial da DeepSeek**
-
-Crie (ou confirme) um `.env` na raiz do repositório (já ignorado pelo git) com:
-
-```
-DEEPSEEK_API_KEY=sua-chave-aqui
-```
-
-- [ ] **Step 3: Rodar o CLI de validação**
+Open the Library in the app, choose a lesson with status "pronta" (already transcribed) and
+confirm the id by querying the database directly (the path is the same one `config.DBPath()`
+resolves — by default, the app's data directory on your machine):
 
 ```bash
-go run ./cmd/validate-analysis -lesson-id=<id-do-step-1>
+sqlite3 <path/to/your/app.db> "SELECT id, lesson_date, tutor FROM lessons WHERE id IN (SELECT lesson_id FROM transcripts);"
 ```
 
-Responda o prompt interativo (`aluno` ou `tutor`) quando ele mostrar as falas de exemplo.
+- [ ] **Step 2: Configure the DeepSeek credential**
 
-- [ ] **Step 4: Revisar as 7 saídas**
+Create (or confirm) a `.env` at the repository root (already gitignored) with:
 
-Abra `local/output/analysis-validation/<task>/result.json` para cada uma das 7 tarefas (o
-diretório inteiro está sob `/local/`, ignorado pelo git). Confira nos logs do terminal
-(`slog.Info("analysis: chamada concluída", ...)`) os `prompt_tokens`/`completion_tokens` de cada
-chamada.
+```
+DEEPSEEK_API_KEY=your-key-here
+```
 
-- [ ] **Step 5: Registrar os achados em `docs/notas-analise-llm.md`**
+- [ ] **Step 3: Run the validation CLI**
 
-Adicione uma seção nova ao final do arquivo, no mesmo estilo das seções existentes (DeepSeek
-flash/pro da Fase 0): qualidade observada por tarefa (as 7), quantos itens cada uma trouxe, se
-algum `utterance_index` foi descartado (e se isso pareceu correto ao ler a fala apontada), custo
-real total (soma dos tokens das 7 chamadas, convertido a USD pelos preços já registrados na Fase
-0) comparado à medição única da Fase 0 (~US$ 0,0014/aula p/ 1 chamada — 7 chamadas devem custar
-mais, quantificar quanto).
+```bash
+go run ./cmd/validate-analysis -lesson-id=<id-from-step-1>
+```
 
-- [ ] **Step 6: Remover o CLI temporário**
+Answer the interactive prompt (`aluno` or `tutor`) when it shows the example utterances.
+
+- [ ] **Step 4: Review the 7 outputs**
+
+Open `local/output/analysis-validation/<task>/result.json` for each of the 7 tasks (the whole
+directory is under `/local/`, gitignored). Check the `prompt_tokens`/`completion_tokens` of each
+call in the terminal logs (`slog.Info("analysis: chamada concluída", ...)`).
+
+- [ ] **Step 5: Record the findings in `docs/notas-analise-llm.md`**
+
+Add a new section at the end of the file, in the same style as the existing sections (Phase 0's
+DeepSeek flash/pro): observed quality per task (all 7), how many items each one produced, whether
+any `utterance_index` was discarded (and whether that looked correct when reading the referenced
+utterance), total real cost (sum of the tokens across the 7 calls, converted to USD using the
+prices already recorded in Phase 0) compared to Phase 0's single measurement (~US$0.0014/lesson
+for 1 call — 7 calls should cost more, quantify how much).
+
+- [ ] **Step 6: Remove the temporary CLI**
 
 ```bash
 git rm -r cmd/validate-analysis
-git commit -m "chore: remove o CLI temporário de validação de análise após uso"
+git commit -m "chore: remove temporary analysis validation CLI after use"
 ```
 
-- [ ] **Step 7: Marcar a História 1 como concluída em `docs/fase-2-analise-llm.md`**
+- [ ] **Step 7: Mark Story 1 as done in `docs/fase-2-analise-llm.md`**
 
-Marque os 5 checkboxes de critérios de aceite da História 1 (linhas 45-61) como `[x]`, e adicione
-uma linha na tabela "Registro de progresso" no final do arquivo, no mesmo formato das linhas de
-`docs/fase-1-mvp.md`, resumindo o que foi feito e citando este plano/spec.
+Mark the 5 Story 1 acceptance-criteria checkboxes (lines 45-61) as `[x]`, and add a row to the
+"Progress log" table at the end of the file, in the same format as the rows in
+`docs/fase-1-mvp.md`, summarizing what was done and citing this plan/spec.
 
 ```bash
 git add docs/notas-analise-llm.md docs/fase-2-analise-llm.md
-git commit -m "docs: registra validação real e fecha a História 1 da Fase 2"
+git commit -m "docs: record real validation and close Phase 2 Story 1"
 ```
 
 ---
 
-## Verificação final (rodar depois de todas as tasks, antes de considerar a história fechada)
+## Final verification (run after all tasks, before considering the story closed)
 
 ```bash
 go build ./...
@@ -2482,5 +2494,5 @@ go vet ./...
 go test ./...
 ```
 
-Expected: tudo limpo/verde. Depois disso, a História 1 da Fase 2 está pronta para a História 2
-(ligar as 7 tarefas ao `Worker`), que é um plano separado.
+Expected: everything clean/green. After that, Phase 2 Story 1 is ready for Story 2 (wiring the 7
+tasks to the `Worker`), which is a separate plan.

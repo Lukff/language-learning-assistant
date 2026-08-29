@@ -1,153 +1,152 @@
-# História 7 — Fila visível
+# Story 7 — Visible Queue
 
-> Spec de design. Histórias e critérios de aceite em `docs/fase-1-mvp.md`.
+> Design spec. Stories and acceptance criteria in `docs/fase-1-mvp.md`.
 
-## Contexto
+## Context
 
-A História 4 montou o pipeline de jobs (`extract_audio` → `transcribe`) e já emite o evento
-Wails `job:updated` a cada transição de status — mas nenhuma tela consome esse evento ainda
-("transporte pronto, nenhuma tela consome ainda", nota da História 4). A Biblioteca (História 5)
-mostra status por aula (processando/pronta/erro), mas não diz em qual etapa do pipeline a aula
-está nem expõe `attempts`/`last_error` de forma dedicada. Esta história fecha a tela "Fila" —
-hoje um placeholder estático (`Queue.svelte`) — e liga o badge de contagem na sidebar,
-consumindo `job:updated` de verdade pela primeira vez no frontend.
+Story 4 set up the jobs pipeline (`extract_audio` → `transcribe`) and already emits the Wails
+`job:updated` event on every status transition — but no screen consumes that event yet
+("transport ready, no screen consuming it yet", note from Story 4). The Library (Story 5)
+shows status per lesson (processing/ready/error), but doesn't say which pipeline stage a lesson
+is in, nor does it expose `attempts`/`last_error` in a dedicated way. This story closes the
+"Queue" screen — today a static placeholder (`Queue.svelte`) — and wires up the count badge in
+the sidebar, consuming `job:updated` for real in the frontend for the first time.
 
-## Decisões
+## Decisions
 
-### O que a Fila lista
+### What the Queue lists
 
-Só aulas com pipeline **ativo ou com erro** — `pending`/`running`/`error` em algum dos dois
-jobs. Aulas com `transcribe.status == "done"` (prontas) não aparecem: isso já é visível na
-Biblioteca, e a Fila existe pra responder "o que está processando e o que falhou agora", não
-como histórico. Não há aba/toggle pra ver jobs concluídos — fora de escopo.
+Only lessons with an **active or errored** pipeline — `pending`/`running`/`error` in either of
+the two jobs. Lessons with `transcribe.status == "done"` (ready) don't appear: that's already
+visible in the Library, and the Queue exists to answer "what's processing and what just failed
+right now", not to serve as history. There's no tab/toggle to see completed jobs — out of scope.
 
-### Granularidade: uma linha por aula, não por job
+### Granularity: one row per lesson, not per job
 
-Uma aula tem até 2 jobs. A Fila mostra **uma linha por aula**, com a etapa (`extract_audio` ou
-`transcribe`) que está atualmente ativa ou que falhou — mesma unidade de exibição da Biblioteca,
-evitando duas linhas quase idênticas pra mesma aula (ex.: `extract_audio done` ao lado de
-`transcribe running`, que só confundiria).
+A lesson has up to 2 jobs. The Queue shows **one row per lesson**, with the stage
+(`extract_audio` or `transcribe`) that's currently active or that failed — the same display unit
+as the Library, avoiding two near-identical rows for the same lesson (e.g., `extract_audio done`
+next to `transcribe running`, which would just be confusing).
 
-A etapa "atual" de uma aula segue a mesma prioridade de `deriveStatus`
-(`internal/db/lesson_status.go`, História 5), só que sem colapsar em "processando"/"erro" — aqui
-precisamos saber **qual job** e **qual estado exato**. Importante: `transcribe` fica com status
-`"pending"` no banco durante todo o tempo em que está bloqueado esperando `extract_audio`
-terminar — o Worker só pula ele em memória (`claimNextEligibleJob`), sem mudar esse status. Por
-isso a extração de áudio precisa ser checada **antes** da transcrição, senão uma aula ainda
-extraindo áudio apareceria como "Transcrição — aguardando":
+A lesson's "current" stage follows the same priority as `deriveStatus`
+(`internal/db/lesson_status.go`, Story 5), just without collapsing into "processando"/"erro" —
+here we need to know **which job** and **which exact state**. Important: `transcribe` stays with
+status `"pending"` in the database for the entire time it's blocked waiting for `extract_audio`
+to finish — the Worker only skips it in memory (`claimNextEligibleJob`), without changing that
+status. That's why the audio extraction must be checked **before** the transcription, otherwise
+a lesson still extracting audio would show up as "Transcrição — aguardando":
 
-1. `extract_audio.status == "error"` → etapa = extração de áudio, estado = erro (causa raiz).
-2. senão `extract_audio.status IN ("pending", "running")` → etapa = extração de áudio, estado =
-   aguardando/processando.
-3. senão (`extract_audio.status == "done"`) `transcribe.status == "error"` → etapa =
-   transcrição, estado = erro.
-4. senão `transcribe.status IN ("pending", "running")` → etapa = transcrição, estado =
-   aguardando/processando (aqui `transcribe` já está genuinamente elegível, não bloqueado).
-5. senão (`transcribe.status == "done"`) → aula pronta, **não entra na lista**.
+1. `extract_audio.status == "error"` → stage = audio extraction, state = error (root cause).
+2. otherwise `extract_audio.status IN ("pending", "running")` → stage = audio extraction, state =
+   waiting/processing.
+3. otherwise (`extract_audio.status == "done"`) `transcribe.status == "error"` → stage =
+   transcription, state = error.
+4. otherwise `transcribe.status IN ("pending", "running")` → stage = transcription, state =
+   waiting/processing (here `transcribe` is already genuinely eligible, not blocked).
+5. otherwise (`transcribe.status == "done"`) → lesson ready, **doesn't enter the list**.
 
-### Ordenação
+### Ordering
 
-`status == 'error'` primeiro (precisa de ação do usuário), depois o resto por
-`updated_at ASC` do job ativo — mesma ordem FIFO que o Worker já usa pra escolher o próximo job
-(`db.ListPendingJobs`), então a ordem da tela corresponde à ordem real de processamento.
+`status == 'error'` first (needs user action), then the rest by `updated_at ASC` of the active
+job — the same FIFO order the Worker already uses to pick the next job (`db.ListPendingJobs`), so
+the screen's order matches the actual processing order.
 
-### Reprocessar
+### Retry
 
-Reaproveita a primitiva de dados que a Biblioteca já usa: `db.ResetErrorJobsForLesson`. O
-`QueueService` chama essa função diretamente (mesma primitiva, sem um serviço depender do
-outro) — não há necessidade de um tipo/camada compartilhada só pra isso, é uma função de
-`internal/db` que ambos os serviços já podem chamar.
+Reuses the data primitive the Library already uses: `db.ResetErrorJobsForLesson`. The
+`QueueService` calls this function directly (same primitive, without one service depending on
+the other) — there's no need for a shared type/layer just for this, it's a function in
+`internal/db` that both services can already call.
 
-### Badge da sidebar
+### Sidebar badge
 
-Conta só `pending + running` (jobs ativos agora) — erros **não** entram no número, pra não
-confundir "está processando X coisas" com "há X aulas com problema" (a Fila já destaca erro
-visualmente, sem precisar duplicar isso no badge). Badge não aparece (nem mostra "0") quando a
-contagem é zero.
+Counts only `pending + running` (jobs active right now) — errors **do not** enter the number, to
+avoid confusing "processing X things" with "there are X lessons with a problem" (the Queue
+already highlights errors visually, without needing to duplicate that in the badge). The badge
+doesn't appear (or show "0") when the count is zero.
 
-### Atualização em tempo real: store compartilhado, sem polling
+### Real-time update: shared store, no polling
 
-`Queue.svelte` e o badge da `Sidebar.svelte` precisam do mesmo dado (lista de jobs ativos) ao
-mesmo tempo. Em vez de cada tela se inscrever em `job:updated` e buscar por conta própria (duas
-inscrições concorrentes no mesmo evento, lógica de refetch duplicada), um módulo único
-`frontend/src/lib/jobsStore.svelte.ts` guarda o estado com runes do Svelte 5 (`$state`) e é
-inicializado uma vez em `App.svelte` (`onMount`, mesmo nível que já chama
+`Queue.svelte` and the `Sidebar.svelte` badge need the same data (list of active jobs) at the
+same time. Instead of each screen subscribing to `job:updated` and fetching on its own (two
+concurrent subscriptions to the same event, duplicated refetch logic), a single module
+`frontend/src/lib/jobsStore.svelte.ts` holds the state with Svelte 5 runes (`$state`) and is
+initialized once in `App.svelte` (`onMount`, the same level that already calls
 `SetupService.IsFirstRun()`).
 
-Ao receber `job:updated`, o store **refaz a busca completa** (`QueueService.ListQueue()`) em vez
-de tentar aplicar um patch incremental: o payload do evento (`jobs.JobEvent`) só carrega
-`LessonID/Kind/Status/Attempts/LastError`, não `LessonDate/Tutor` — faltaria dado pra atualizar
-uma linha existente sem uma segunda chamada de qualquer forma. Como o worker é único e sequencial
-(processa um job por vez), os eventos chegam espaçados, não em rajada — não há necessidade de
-debounce.
+On receiving `job:updated`, the store **redoes the full fetch** (`QueueService.ListQueue()`)
+instead of trying to apply an incremental patch: the event payload (`jobs.JobEvent`) only carries
+`LessonID/Kind/Status/Attempts/LastError`, not `LessonDate/Tutor` — there wouldn't be enough data
+to update an existing row without a second call anyway. Since the worker is single and
+sequential (processes one job at a time), events arrive spaced out, not in a burst — there's no
+need for debounce.
 
-Isso é a primeira tela a consumir `job:updated` — o transporte construído na História 4 passa a
-ter um consumidor de verdade.
+This is the first screen to consume `job:updated` — the transport built in Story 4 now has a
+real consumer.
 
-## Mudanças por camada
+## Changes by layer
 
 ### `internal/db`
 
-Novo arquivo `internal/db/queue.go`, separado de `lesson_status.go` (que serve só a Biblioteca)
-pra manter cada query com um propósito único:
+New file `internal/db/queue.go`, separate from `lesson_status.go` (which only serves the
+Library) to keep each query with a single purpose:
 
 - `QueueEntry` — `LessonID int64`, `LessonDate string`, `Tutor string`, `Kind string` (
-  `"extract_audio"` ou `"transcribe"`), `Status string` (`"pending"`, `"running"`, `"error"`),
+  `"extract_audio"` or `"transcribe"`), `Status string` (`"pending"`, `"running"`, `"error"`),
   `Attempts int`, `LastError string`, `UpdatedAt string`.
-- `ListQueueEntries(conn *sql.DB) ([]QueueEntry, error)` — `LEFT JOIN jobs` duas vezes (mesmo
-  padrão de `lessonWithStatusFromJoin`), aplica em Go a prioridade descrita acima pra decidir a
-  etapa ativa de cada lesson, descarta lessons prontas, ordena erro-primeiro depois
-  `updated_at ASC`.
+- `ListQueueEntries(conn *sql.DB) ([]QueueEntry, error)` — `LEFT JOIN jobs` twice (same pattern
+  as `lessonWithStatusFromJoin`), applies in Go the priority described above to decide the active
+  stage of each lesson, discards ready lessons, sorts error-first then `updated_at ASC`.
 
 ### `services`
 
-Novo `services/queue.go`:
+New `services/queue.go`:
 
-- `QueueService` — recebe `*sql.DB`, mesmo padrão de `LibraryService`.
-- `QueueItem` (JSON) — espelha `db.QueueEntry` mais `Stage string` (`"Extração de áudio"` /
-  `"Transcrição"`, traduzido no serviço, não no frontend) e `Status string` já traduzido
-  (`"aguardando"` / `"processando"` / `"erro"`, mesmo vocabulário de `STATUS_LABEL` que
-  `Library.svelte` já usa pra "processando"/"erro").
-- `ListQueue() ([]QueueItem, error)` — chama `db.ListQueueEntries`, mapeia pro formato acima.
-- `RetryLesson(lessonID int64) error` — chama `db.ResetErrorJobsForLesson`, idêntico em
-  comportamento ao `LibraryService.RetryLesson` (idempotente, não é erro se zero jobs foram
-  resetados). Duplicar essa casca fina em vez de reexpor o método de `LibraryService` mantém os
-  dois serviços independentes (um não chama o outro).
+- `QueueService` — takes `*sql.DB`, same pattern as `LibraryService`.
+- `QueueItem` (JSON) — mirrors `db.QueueEntry` plus `Stage string` (`"Extração de áudio"` /
+  `"Transcrição"`, translated in the service, not in the frontend) and `Status string` already
+  translated (`"aguardando"` / `"processando"` / `"erro"`, same vocabulary as `STATUS_LABEL` that
+  `Library.svelte` already uses for "processando"/"erro").
+- `ListQueue() ([]QueueItem, error)` — calls `db.ListQueueEntries`, maps to the format above.
+- `RetryLesson(lessonID int64) error` — calls `db.ResetErrorJobsForLesson`, identical in
+  behavior to `LibraryService.RetryLesson` (idempotent, it's not an error if zero jobs were
+  reset). Duplicating this thin shell instead of re-exposing `LibraryService`'s method keeps the
+  two services independent (one doesn't call the other).
 
 ### `main.go`
 
-Registra `application.NewService(services.NewQueueService(conn))` junto dos serviços existentes.
+Registers `application.NewService(services.NewQueueService(conn))` alongside the existing
+services.
 
 ### Frontend
 
-- `frontend/src/lib/jobsStore.svelte.ts` (novo) — `items: QueueItem[]` via `$state`,
+- `frontend/src/lib/jobsStore.svelte.ts` (new) — `items: QueueItem[]` via `$state`,
   `activeCount` via `$derived` (`items.filter(i => i.status !== "erro").length`),
-  `initJobsStore()` (busca inicial + `Events.On("job:updated", refetch)` de
+  `initJobsStore()` (initial fetch + `Events.On("job:updated", refetch)` from
   `@wailsio/runtime`).
-- `frontend/src/App.svelte` — chama `initJobsStore()` no `onMount` existente.
-- `frontend/src/lib/screens/Queue.svelte` — lê `items` do store; cada linha mostra
-  data/tutor · etapa · estado; linhas com `status === "erro"` mostram `lastError` e botão
-  "Reprocessar" (mesmo padrão visual de `Library.svelte`, chama `QueueService.RetryLesson`).
-  Estado vazio mantém o texto atual ("Nada na fila no momento").
-- `frontend/src/lib/Sidebar.svelte` — mostra um badge numérico ao lado do item "Fila" quando
-  `activeCount > 0` (lido do store).
-- Bindings Wails regeneradas (`wails3 generate bindings -ts -i ./...`) refletindo
-  `QueueService`.
+- `frontend/src/App.svelte` — calls `initJobsStore()` in the existing `onMount`.
+- `frontend/src/lib/screens/Queue.svelte` — reads `items` from the store; each row shows
+  date/tutor · stage · state; rows with `status === "erro"` show `lastError` and a "Reprocessar"
+  button (same visual pattern as `Library.svelte`, calls `QueueService.RetryLesson`). The empty
+  state keeps the current text ("Nada na fila no momento").
+- `frontend/src/lib/Sidebar.svelte` — shows a numeric badge next to the "Fila" item when
+  `activeCount > 0` (read from the store).
+- Wails bindings regenerated (`wails3 generate bindings -ts -i ./...`) reflecting `QueueService`.
 
-## Fora de escopo (não implementar aqui)
+## Out of scope (not implementing here)
 
-Histórico de jobs concluídos na Fila; progresso percentual dentro de um job (não existe dado pra
-isso — STT não expõe progresso incremental); cancelar um job em andamento; qualquer segundo
-badge (ex.: contagem de erros separada).
+History of completed jobs in the Queue; percentage progress within a job (there's no data for
+this — STT doesn't expose incremental progress); cancelling a job in progress; any second badge
+(e.g., a separate error count).
 
-## Testes
+## Tests
 
-- `internal/db`: `ListQueueEntries` cobrindo as 5 combinações de prioridade descritas acima
-  (erro em extract_audio, erro em transcribe, transcribe pending/running, extract_audio
-  pending/running, lesson pronta excluída), e a ordenação erro-primeiro.
-- `services`: `QueueService.ListQueue` (tradução de Stage/Status), `RetryLesson` (idempotente,
-  reseta os dois jobs quando transcribe foi bloqueado — mesmo caso já coberto em
+- `internal/db`: `ListQueueEntries` covering the 5 priority combinations described above (error
+  in extract_audio, error in transcribe, transcribe pending/running, extract_audio
+  pending/running, ready lesson excluded), and the error-first ordering.
+- `services`: `QueueService.ListQueue` (Stage/Status translation), `RetryLesson` (idempotent,
+  resets both jobs when transcribe was blocked — same case already covered in
   `LibraryService.RetryLesson`).
-- Verificação visual (janela real) do badge atualizando ao vivo e da lista da Fila mudando
-  durante um processamento real continua pendente nas máquinas Windows/Linux, mesmo padrão das
-  histórias anteriores.
+- Visual verification (real window) of the badge updating live and the Queue list changing
+  during real processing remains pending on the Windows/Linux machines, same pattern as
+  previous stories.

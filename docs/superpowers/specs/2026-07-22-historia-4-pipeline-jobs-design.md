@@ -1,26 +1,26 @@
-# História 4 — Pipeline em background (fila de jobs)
+# Story 4 — Background Pipeline (Job Queue)
 
-> Design de brainstorming, 22/07/2026. Referência: `docs/fase-1-mvp.md` (História 4) e
-> `docs/decisoes-tecnologia.md` (fila em tabela + worker único, já decidido na Fase 0).
+> Brainstorming design, 22/07/2026. Reference: `docs/fase-1-mvp.md` (Story 4) and
+> `docs/decisoes-tecnologia.md` (table-based queue + single worker, already decided in Phase 0).
 
-## Objetivo
+## Goal
 
-Extração de áudio e transcrição rodam sozinhas em background depois que uma aula é confirmada
-(História 3), sem o usuário precisar esperar ou reabrir o app. Falha de rede/API nunca impede
-assistir ao vídeo — o pipeline é aditivo, não bloqueante.
+Audio extraction and transcription run on their own in the background after a lesson is confirmed
+(Story 3), without the user needing to wait or reopen the app. Network/API failure never prevents
+watching the video — the pipeline is additive, not blocking.
 
-## Arquitetura
+## Architecture
 
-Novo pacote `internal/jobs` (Go puro, sem import de Wails — camada fina, igual ao resto de
+New `internal/jobs` package (pure Go, no Wails import — thin layer, same as the rest of
 `internal/`).
 
 ```
 type Worker struct {
     conn          *sql.DB
-    storageRoot   StorageRootResolver // resolvido a cada job, não na criação (ver nota abaixo)
-    audioCacheDir string              // absoluto, fora da pasta sincronizada
-    extractAudio  MediaExtractorFunc  // assinatura de media.ExtractAudio
-    sttProvider   STTProviderFactory  // idem — resolvido a cada job
+    storageRoot   StorageRootResolver // resolved per job, not at creation (see note below)
+    audioCacheDir string              // absolute, outside the synced folder
+    extractAudio  MediaExtractorFunc  // same signature as media.ExtractAudio
+    sttProvider   STTProviderFactory  // same — resolved per job
     notifier      Notifier
     wake          chan struct{}
 }
@@ -29,17 +29,19 @@ type StorageRootResolver func() (string, error)
 type STTProviderFactory func() (stt.Provider, error)
 ```
 
-**Nota — resolução tardia de config/credencial:** o wizard de primeira execução
-(`SetupService.CompleteSetup`) roda *dentro* da mesma sessão do app, depois que `main.go` já
-montou os serviços. Se `storageRoot`/o provedor de STT fossem resolvidos uma única vez na
-construção do `Worker` (como uma primeira versão deste desenho propunha), o worker nunca
-chegaria a iniciar na sessão do primeiro uso — `config.Load()`/`config.GetSTTAPIKey()` ainda
-falhariam nesse momento. Por isso `storageRoot` e `sttProvider` são resolvidos **a cada job**
-(dentro de `runExtractAudio`/`runTranscribe`), não guardados como valor fixo. Isso também elimina
-qualquer necessidade de gating especial em `main.go`: o worker sempre inicia junto com o app;
-antes do wizard, a fila está vazia mesmo (jobs só existem depois de uma lesson confirmada, que já
-exige `storage_root` configurado), então não há nada pra processar até a resolução funcionar.
+**Note — deferred config/credential resolution:** the first-run wizard
+(`SetupService.CompleteSetup`) runs *inside* the same app session, after `main.go` has already
+assembled the services. If `storageRoot`/the STT provider were resolved once at `Worker`
+construction time (as an earlier version of this design proposed), the worker would never
+actually manage to start in the first-use session — `config.Load()`/`config.GetSTTAPIKey()` would
+still fail at that point. That's why `storageRoot` and `sttProvider` are resolved **per job**
+(inside `runExtractAudio`/`runTranscribe`), rather than stored as a fixed value. This also removes
+any need for special gating in `main.go`: the worker always starts together with the app; before
+the wizard runs, the queue is empty anyway (jobs only exist after a lesson is confirmed, which
+already requires `storage_root` to be configured), so there's nothing to process until the
+resolution actually works.
 
+```
 type Notifier interface {
     JobChanged(JobEvent)
 }
@@ -53,101 +55,106 @@ type JobEvent struct {
 }
 ```
 
-- `Worker.Run(ctx)` roda numa goroutine iniciada em `main.go`, logo após `db.Open`.
-- Ao iniciar, primeiro faz **requeue**: todo job `running` vira `pending` (cobre crash/kill no
-  meio de um job — `attempts` não é incrementado nesse requeue, só o status muda).
-- Loop principal: seleciona o próximo job elegível (ver "Seleção e precedência" abaixo);
-  se nenhum estiver elegível, espera no canal `wake` **ou** um ticker de fallback (poll
-  periódico), o que vier primeiro.
-- `Worker.Wake()` é chamado por quem insere jobs novos (`db.ConfirmPendingImport`, e futuramente
-  a História 3b) pra processar quase imediatamente, sem depender só do poll.
-- `Notifier` real (que importa Wails) mora em `services/`, implementado com `app.Event.Emit(...)`
-  — o worker em si não sabe que Wails existe. Emite `job:updated` com o `JobEvent` a cada
-  transição de status (`pending→running`, `running→done`, `running→error`). Nenhuma UI consome
-  isso nesta história (fica para Históras 5 e 7); é só o transporte.
+- `Worker.Run(ctx)` runs in a goroutine started in `main.go`, right after `db.Open`.
+- On startup, it first does a **requeue**: every `running` job becomes `pending` (covers a
+  crash/kill in the middle of a job — `attempts` is not incremented by this requeue, only the
+  status changes).
+- Main loop: selects the next eligible job (see "Selection and precedence" below); if none is
+  eligible, it waits on the `wake` channel **or** a fallback ticker (periodic poll), whichever
+  comes first.
+- `Worker.Wake()` is called by whoever inserts new jobs (`db.ConfirmPendingImport`, and in the
+  future Story 3b) to process almost immediately, without relying solely on the poll.
+- The real `Notifier` (which imports Wails) lives in `services/`, implemented with
+  `app.Event.Emit(...)` — the worker itself doesn't know Wails exists. It emits `job:updated`
+  with the `JobEvent` on every status transition (`pending→running`, `running→done`,
+  `running→error`). No UI consumes this in this story (that's for Stories 5 and 7); it's just
+  the transport.
 
-## Seleção e precedência
+## Selection and precedence
 
-Busca todos os jobs `pending` ordenados por `created_at, id`. Em Go, itera e escolhe o primeiro
-elegível:
+Fetches all `pending` jobs ordered by `created_at, id`. In Go, iterates and picks the first
+eligible one:
 
-- `extract_audio`: elegível se dentro da janela de backoff (ver abaixo).
-- `transcribe`: elegível só se o job `extract_audio` da mesma `lesson_id` estiver `done`.
-  - Se esse `extract_audio` estiver `error` (esgotou os retries), o `transcribe` é marcado
-    `error` **imediatamente**, sem executar — `last_error` = `"depende de extract_audio que
-    falhou"`. Evita gastar chamada paga de API numa precondição que nunca vai se cumprir.
-  - Se o `extract_audio` ainda não terminou (`pending`/`running`), o `transcribe` é pulado nesta
-    varredura (não é escolhido, mas continua `pending`) — na prática isso não deve acontecer sob
-    FIFO estrito de worker único, já que `extract_audio` é sempre criado (e portanto processado)
-    antes do `transcribe` da mesma lesson, mas o código não assume isso e trata defensivamente.
+- `extract_audio`: eligible if within the backoff window (see below).
+- `transcribe`: eligible only if the `extract_audio` job for the same `lesson_id` is `done`.
+  - If that `extract_audio` is `error` (retries exhausted), the `transcribe` is marked `error`
+    **immediately**, without running — `last_error` = `"depende de extract_audio que falhou"`.
+    This avoids spending a paid API call on a precondition that will never be met.
+  - If `extract_audio` hasn't finished yet (`pending`/`running`), `transcribe` is skipped in this
+    sweep (not chosen, but stays `pending`) — in practice this shouldn't happen under the strict
+    FIFO of a single worker, since `extract_audio` is always created (and therefore processed)
+    before the `transcribe` for the same lesson, but the code doesn't assume this and handles it
+    defensively.
 
-## Idempotência
+## Idempotency
 
-Idempotência real por artefato, não só por status:
+Real idempotency per artifact, not just per status:
 
-- `extract_audio`: se `audioCacheDir/<lesson_id>.wav` já existe com tamanho > 0, pula a extração
-  e marca `done` direto (sem rodar ffmpeg de novo).
-- `transcribe`: se já existe uma linha em `transcripts` para essa `lesson_id`, marca `done` direto
-  sem rechamar a API de STT.
+- `extract_audio`: if `audioCacheDir/<lesson_id>.wav` already exists with size > 0, skips the
+  extraction and marks it `done` directly (without running ffmpeg again).
+- `transcribe`: if a row already exists in `transcripts` for that `lesson_id`, marks it `done`
+  directly without calling the STT API again.
 
-## Retry e backoff
+## Retry and backoff
 
-Sem migração — reaproveita as colunas `attempts` e `updated_at` que já existem em `jobs`.
+No migration — reuses the `attempts` and `updated_at` columns that already exist in `jobs`.
 
 - `max_attempts = 3`.
-- Ao falhar a execução: `attempts++`, `last_error` gravado com a mensagem de erro.
-  - Se `attempts < 3`: status volta a `pending` (mais uma tentativa depois do backoff).
-  - Se `attempts == 3`: status vira `error`, terminal — só reprocessa manualmente (ação da
-    História 7, ainda não existe nesta fatia).
-- Backoff: um job `pending` com `attempts > 0` só é elegível de novo quando
-  `now >= updated_at + backoff[attempts]`, com `backoff = {1: 10s, 2: 60s, 3: 5min}`. Jobs
-  ainda dentro da janela são pulados na varredura (não travam a seleção de outros jobs
-  elegíveis).
+- On execution failure: `attempts++`, `last_error` recorded with the error message.
+  - If `attempts < 3`: status goes back to `pending` (one more attempt after the backoff).
+  - If `attempts == 3`: status becomes `error`, terminal — only reprocessed manually (an action
+    from Story 7, which doesn't exist yet in this slice).
+- Backoff: a `pending` job with `attempts > 0` is only eligible again when
+  `now >= updated_at + backoff[attempts]`, with `backoff = {1: 10s, 2: 60s, 3: 5min}`. Jobs still
+  within the window are skipped in the sweep (they don't block selection of other eligible jobs).
 
-## Artefatos e paths
+## Artifacts and paths
 
-- **WAV intermediário** (`extract_audio`): gravado em `audioCacheDir/<lesson_id>.wav`, fora da
-  pasta sincronizada (`AppDataDir/audio-cache/`, ao lado do banco). Apagado assim que o job
-  `transcribe` daquela lesson termina com sucesso. Se `transcribe` falhar (mesmo terminal), o
-  WAV fica — evita reextrair à toa num reprocessamento manual futuro.
-- **JSON bruto do provedor** (`transcribe`): gravado **junto do vídeo**, no mesmo diretório do
-  arquivo de vídeo (sem assumir subpasta — consistente com a História 3, que não impõe estrutura
-  de pastas), nome `<basename-do-vídeo-sem-extensão>.transcript.json`.
-  `transcripts.raw_json_path` grava esse path **relativo** à `storage_root` (mesma convenção de
+- **Intermediate WAV** (`extract_audio`): written to `audioCacheDir/<lesson_id>.wav`, outside the
+  synced folder (`AppDataDir/audio-cache/`, next to the database). Deleted as soon as the
+  `transcribe` job for that lesson finishes successfully. If `transcribe` fails (even terminally),
+  the WAV stays — this avoids needlessly re-extracting it during a future manual reprocessing.
+- **Raw provider JSON** (`transcribe`): written **alongside the video**, in the same directory as
+  the video file (without assuming a subfolder — consistent with Story 3, which doesn't impose a
+  folder structure), named `<video-basename-without-extension>.transcript.json`.
+  `transcripts.raw_json_path` stores this path **relative** to `storage_root` (same convention as
   `lessons.video_path`).
-- `transcripts.utterances` grava o JSON já mapeado para o domínio comum (`stt.Utterance`,
-  serializado).
+- `transcripts.utterances` stores the JSON already mapped to the common domain type
+  (`stt.Utterance`, serialized).
 
-## Provedor de STT
+## STT provider
 
-ElevenLabs Scribe (`internal/stt.NewElevenLabsProvider`), único provedor desta fase (decisão
-vigente em `decisoes-tecnologia.md`). `main.go` passa ao `Worker` uma `STTProviderFactory` que lê
-`config.GetSTTAPIKey()` (keyring) e chama `stt.NewElevenLabsProvider` — reavaliada a cada job de
-`transcribe` (ver nota de resolução tardia acima), não construída antecipadamente.
+ElevenLabs Scribe (`internal/stt.NewElevenLabsProvider`), the only provider in this phase
+(decision in effect in `decisoes-tecnologia.md`). `main.go` passes the `Worker` an
+`STTProviderFactory` that reads `config.GetSTTAPIKey()` (keyring) and calls
+`stt.NewElevenLabsProvider` — re-evaluated on every `transcribe` job (see the deferred-resolution
+note above), not built ahead of time.
 
-## Resiliência
+## Resilience
 
-- Falha em `extract_audio`/`transcribe` nunca mexe em `lessons` nem no vídeo em si — o vídeo
-  continua assistível. O erro fica só nos `jobs` (princípio de resiliência vigente da Fase 1).
-- Erros de execução (ffmpeg, API HTTP, I/O) são sempre capturados e viram `last_error` — nenhum
-  deles derruba o worker; a goroutine continua processando os próximos jobs.
+- A failure in `extract_audio`/`transcribe` never touches `lessons` or the video itself — the
+  video remains watchable. The error stays only in `jobs` (the resilience principle in effect for
+  Phase 1).
+- Execution errors (ffmpeg, HTTP API, I/O) are always caught and become `last_error` — none of
+  them brings the worker down; the goroutine keeps processing the next jobs.
 
-## Fora de escopo desta fatia
+## Out of scope for this slice
 
-Tela de Fila / badge de contagem (História 7) · ação manual de "reprocessar" (História 7) ·
-qualquer consumo dos eventos `job:updated` no frontend (Históras 5 e 7) · job kind `analyze`
-(Fase 2, mas o schema de `jobs`/`prompts` já comporta).
+Queue screen / count badge (Story 7) · manual "reprocess" action (Story 7) · any consumption of
+`job:updated` events in the frontend (Stories 5 and 7) · `analyze` job kind (Phase 2, though the
+`jobs`/`prompts` schema already accommodates it).
 
-## Testes (`internal/jobs`)
+## Tests (`internal/jobs`)
 
-Seguindo o padrão já usado no projeto (`db.Open(t.TempDir())`, sem mocks de banco):
+Following the pattern already used in the project (`db.Open(t.TempDir())`, no database mocks):
 
-- Fila processa `extract_audio` → `transcribe` em sequência para uma lesson, usando
-  `MediaExtractorFunc`/`stt.Provider` fakes.
-- Idempotência: reprocessar um job cujo artefato já existe não rechama o fake correspondente.
-- Retry: fake que falha 2x e sucede na 3ª chamada incrementa `attempts` e volta a `pending` entre
-  tentativas; 3 falhas seguidas termina em `error`.
-- `transcribe` com `extract_audio` em `error` vira `error` sem chamar o fake de STT.
-- Requeue: job inserido diretamente como `running` no banco volta a `pending` ao criar o
-  `Worker`.
-- `Notifier` fake grava as chamadas — sem depender de Wails nos testes.
+- The queue processes `extract_audio` → `transcribe` in sequence for a lesson, using fake
+  `MediaExtractorFunc`/`stt.Provider`.
+- Idempotency: reprocessing a job whose artifact already exists doesn't call the corresponding
+  fake again.
+- Retry: a fake that fails twice and succeeds on the 3rd call increments `attempts` and goes back
+  to `pending` between attempts; 3 failures in a row ends in `error`.
+- `transcribe` with `extract_audio` in `error` becomes `error` without calling the STT fake.
+- Requeue: a job inserted directly as `running` in the database goes back to `pending` when the
+  `Worker` is created.
+- Fake `Notifier` records the calls — without depending on Wails in the tests.

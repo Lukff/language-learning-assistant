@@ -1,4 +1,4 @@
-# História 9 — Gestão de professores e edição de aula — Implementation Plan
+# Story 9 — Teacher Management and Lesson Editing — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,8 +10,8 @@
 
 ## Global Constraints
 
-- Camada fina: nothing under `internal/` imports Wails. Only `services/` may import `github.com/wailsapp/wails/v3/...`.
-- SQL portátil na camada de repositório: no driver-specific SQL in `internal/db` beyond what's already there (e.g. the SQLite-specific unique-constraint error detection is isolated to one helper, not spread across queries).
+- Thin layer: nothing under `internal/` imports Wails. Only `services/` may import `github.com/wailsapp/wails/v3/...`.
+- Portable SQL in the repository layer: no driver-specific SQL in `internal/db` beyond what's already there (e.g. the SQLite-specific unique-constraint error detection is isolated to one helper, not spread across queries).
 - Svelte: runes only (`$state`, `$derived`, `$effect`, `$props`) — never legacy Svelte 3/4 syntax.
 - Code and identifiers in English; user-facing error messages and analysis text in PT-BR.
 - Commit messages: one line, semantic format (`tipo: descrição`).
@@ -96,127 +96,127 @@ import (
 func TestOpen_TeachersTableExistsAndLessonsHasTeacherID(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	var name string
 	if err := conn.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='teachers'`).Scan(&name); err != nil {
-		t.Errorf("tabela teachers não encontrada: %v", err)
+		t.Errorf("teachers table not found: %v", err)
 	}
 
 	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah M.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	if _, err := conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		"2026-07-21", teacherID, "aulas/2026/x.mp4", "2026-07-21T10:00:00Z", "2026-07-21T10:00:00Z",
 	); err != nil {
-		t.Fatalf("insert em lessons com teacher_id falhou: %v", err)
+		t.Fatalf("insert into lessons with teacher_id failed: %v", err)
 	}
 
 	var gotTeacherID int64
 	if err := conn.QueryRow(`SELECT teacher_id FROM lessons WHERE video_path = ?`, "aulas/2026/x.mp4").Scan(&gotTeacherID); err != nil {
-		t.Fatalf("select em lessons falhou: %v", err)
+		t.Fatalf("select on lessons failed: %v", err)
 	}
 	if gotTeacherID != teacherID {
-		t.Errorf("teacher_id = %d, esperado %d", gotTeacherID, teacherID)
+		t.Errorf("teacher_id = %d, expected %d", gotTeacherID, teacherID)
 	}
 }
 
 func TestGetOrCreateTeacherByName_ReturnsSameIDOnSecondCall(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	id1, err := GetOrCreateTeacherByName(conn, "Sarah M.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	id2, err := GetOrCreateTeacherByName(conn, "Sarah M.")
 	if err != nil {
-		t.Fatalf("segunda GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("second GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	if id1 != id2 {
-		t.Errorf("id2 = %d, esperado igual a id1 = %d (mesmo nome não deveria duplicar)", id2, id1)
+		t.Errorf("id2 = %d, expected equal to id1 = %d (same name should not duplicate)", id2, id1)
 	}
 }
 
 func TestListTeachers_ReturnsDistinctSortedByName(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	if _, err := GetOrCreateTeacherByName(conn, "Sarah M."); err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	if _, err := GetOrCreateTeacherByName(conn, "James K."); err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 
 	teachers, err := ListTeachers(conn)
 	if err != nil {
-		t.Fatalf("ListTeachers() erro inesperado: %v", err)
+		t.Fatalf("ListTeachers() unexpected error: %v", err)
 	}
 	if len(teachers) != 2 || teachers[0].Name != "James K." || teachers[1].Name != "Sarah M." {
-		t.Errorf("ListTeachers() = %+v, esperado [James K. Sarah M.] (ordem alfabética)", teachers)
+		t.Errorf("ListTeachers() = %+v, expected [James K. Sarah M.] (alphabetical order)", teachers)
 	}
 }
 
 func TestRenameTeacher_UpdatesNameAndReflectsOnLessons(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah M.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	if _, err := conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		"2026-07-21", teacherID, "aula.mp4", "2026-07-21T10:00:00Z", "2026-07-21T10:00:00Z",
 	); err != nil {
-		t.Fatalf("insert de lesson falhou: %v", err)
+		t.Fatalf("insert of lesson failed: %v", err)
 	}
 
 	if err := RenameTeacher(conn, teacherID, "Sarah Miller"); err != nil {
-		t.Fatalf("RenameTeacher() erro inesperado: %v", err)
+		t.Fatalf("RenameTeacher() unexpected error: %v", err)
 	}
 
 	lesson, err := FindLessonByPath(conn, "aula.mp4")
 	if err != nil {
-		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByPath() unexpected error: %v", err)
 	}
 	if lesson == nil || lesson.TeacherName != "Sarah Miller" {
-		t.Errorf("lesson.TeacherName = %+v, esperado Sarah Miller refletido pelo join", lesson)
+		t.Errorf("lesson.TeacherName = %+v, expected Sarah Miller reflected via the join", lesson)
 	}
 }
 
 func TestRenameTeacher_CollidingNameReturnsFriendlyError(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	if _, err := GetOrCreateTeacherByName(conn, "Sarah M."); err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	jamesID, err := GetOrCreateTeacherByName(conn, "James K.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 
 	err = RenameTeacher(conn, jamesID, "Sarah M.")
 	if err == nil || err.Error() != "já existe um professor com esse nome" {
-		t.Errorf("RenameTeacher() colidindo = %v, esperado \"já existe um professor com esse nome\"", err)
+		t.Errorf("RenameTeacher() colliding = %v, expected \"já existe um professor com esse nome\"", err)
 	}
 }
 ```
@@ -242,17 +242,16 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// Teacher é uma linha de teachers — a entidade que substitui a antiga
-// coluna livre lessons.tutor (ver História 9). Nome é único: renomear é um
-// UPDATE de uma linha só, refletido em todas as aulas via JOIN.
+// Teacher is a row from teachers — the entity that replaces the old
+// free-text lessons.tutor column (see Story 9). Name is unique: renaming is
+// a single-row UPDATE, reflected across every lesson via JOIN.
 type Teacher struct {
 	ID   int64
 	Name string
 }
 
-// ListTeachers lista os professores cadastrados em ordem alfabética —
-// alimenta tanto o combobox de importação/edição quanto o painel
-// "Professores" de Configurações.
+// ListTeachers lists the registered teachers in alphabetical order — feeds
+// both the import/edit combobox and the "Professores" panel in Settings.
 func ListTeachers(conn *sql.DB) ([]Teacher, error) {
 	rows, err := conn.Query(`SELECT id, name FROM teachers ORDER BY name ASC`)
 	if err != nil {
@@ -274,18 +273,18 @@ func ListTeachers(conn *sql.DB) ([]Teacher, error) {
 	return out, nil
 }
 
-// execer é satisfeito tanto por *sql.DB quanto por *sql.Tx — permite
-// getOrCreateTeacherByName rodar tanto solto (GetOrCreateTeacherByName)
-// quanto dentro de uma transação já aberta (ConfirmPendingImport, que
-// precisa que a criação do professor, se for novo, faça parte da mesma
-// transação da lesson). Mesmo padrão de rowScanner em lesson_status.go.
+// execer is satisfied by both *sql.DB and *sql.Tx — lets
+// getOrCreateTeacherByName run either standalone (GetOrCreateTeacherByName)
+// or inside an already-open transaction (ConfirmPendingImport, which needs
+// the teacher's creation, if it's new, to be part of the same transaction
+// as the lesson). Same pattern as rowScanner in lesson_status.go.
 type execer interface {
 	QueryRow(query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
 }
 
-// getOrCreateTeacherByName é a implementação compartilhada por
-// GetOrCreateTeacherByName e por ConfirmPendingImport (via tx).
+// getOrCreateTeacherByName is the implementation shared by
+// GetOrCreateTeacherByName and by ConfirmPendingImport (via tx).
 func getOrCreateTeacherByName(q execer, name string) (int64, error) {
 	var id int64
 	err := q.QueryRow(`SELECT id FROM teachers WHERE name = ?`, name).Scan(&id)
@@ -311,17 +310,17 @@ func getOrCreateTeacherByName(q execer, name string) (int64, error) {
 	return id, nil
 }
 
-// GetOrCreateTeacherByName resolve o nome livre digitado no combobox
-// (importação ou edição de aula) para um teacher_id: retorna o id
-// existente se o nome já está cadastrado, senão cria um professor novo.
+// GetOrCreateTeacherByName resolves the free-text name typed into the
+// combobox (import or lesson editing) to a teacher_id: returns the existing
+// id if the name is already registered, otherwise creates a new teacher.
 func GetOrCreateTeacherByName(conn *sql.DB, name string) (int64, error) {
 	return getOrCreateTeacherByName(conn, name)
 }
 
-// RenameTeacher renomeia o professor id — reflete em todas as aulas dele
-// automaticamente (JOIN, não há cópia do nome em lessons). Colisão com um
-// nome já usado por outro professor (UNIQUE) vira um erro legível, sem
-// mesclar registros (fora de escopo da História 9).
+// RenameTeacher renames teacher id — automatically reflected across all of
+// their lessons (JOIN, the name isn't copied into lessons). Colliding with
+// a name already used by another teacher (UNIQUE) turns into a readable
+// error, without merging records (out of scope for Story 9).
 func RenameTeacher(conn *sql.DB, id int64, newName string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := conn.Exec(`UPDATE teachers SET name = ?, updated_at = ? WHERE id = ?`, newName, now, id)
@@ -334,10 +333,10 @@ func RenameTeacher(conn *sql.DB, id int64, newName string) error {
 	return nil
 }
 
-// isUniqueConstraintError detecta violação de UNIQUE do driver SQLite —
-// isolado aqui (única dependência de driver específico na camada de
-// repositório, CLAUDE.md) pra RenameTeacher poder devolver uma mensagem
-// legível em vez do erro cru do SQLite.
+// isUniqueConstraintError detects a UNIQUE violation from the SQLite
+// driver — isolated here (the one driver-specific dependency in the
+// repository layer, CLAUDE.md) so RenameTeacher can return a readable
+// message instead of the raw SQLite error.
 func isUniqueConstraintError(err error) bool {
 	var sqliteErr *sqlite.Error
 	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
@@ -357,14 +356,13 @@ import (
 	"time"
 )
 
-// Lesson é uma linha de lessons. Além dos dados visíveis ao usuário
-// (LessonDate, TeacherName, DurationSeconds), carrega a identidade (path,
-// hash) e o stat-cache (tamanho/mtime) usados pela varredura da História 3
-// para decidir se o conteúdo precisa ser rehasheado. TeacherID é a FK
-// gravável (INSERT/UPDATE); TeacherName vem de um JOIN com teachers, só
-// leitura. DurationSeconds é nil até a História 5 gravá-lo (best-effort,
-// via ffprobe, na confirmação da importação) — nunca bloqueia nada por ser
-// nil.
+// Lesson is a row from lessons. Besides the user-visible data (LessonDate,
+// TeacherName, DurationSeconds), it carries identity (path, hash) and the
+// stat cache (size/mtime) used by Story 3's scan to decide whether the
+// content needs rehashing. TeacherID is the writable FK (INSERT/UPDATE);
+// TeacherName comes from a JOIN with teachers, read-only. DurationSeconds
+// is nil until Story 5 writes it (best-effort, via ffprobe, on import
+// confirmation) — it never blocks anything by being nil.
 type Lesson struct {
 	ID                  int64
 	LessonDate          string
@@ -378,16 +376,16 @@ type Lesson struct {
 	StudentSpeakerLabel *string
 }
 
-// lessonColumns é a lista de colunas (nesta ordem) que scanLessonRow espera
-// — compartilhada por FindLessonByPath/ByHash/ByID pra manter as três
-// consultas idênticas na forma como leem duration_seconds nullable.
+// lessonColumns is the list of columns (in this order) that scanLessonRow
+// expects — shared by FindLessonByPath/ByHash/ByID to keep the three
+// queries identical in how they read nullable duration_seconds.
 const lessonColumns = `l.id, l.lesson_date, l.teacher_id, t.name, l.video_path, COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''), l.duration_seconds, l.student_speaker_label`
 
 const lessonFromJoin = ` FROM lessons l JOIN teachers t ON t.id = l.teacher_id`
 
-// scanLessonRow faz o scan de uma linha selecionada com lessonColumns.
-// Retorna (nil, nil) se a linha não existir (sql.ErrNoRows) — path/hash/id
-// não encontrado é o caso comum, não um erro, pros chamadores.
+// scanLessonRow scans a row selected with lessonColumns. Returns (nil, nil)
+// if the row doesn't exist (sql.ErrNoRows) — path/hash/id not found is the
+// common case for callers, not an error.
 func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	var l Lesson
 	var duration sql.NullInt64
@@ -410,9 +408,9 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	return &l, nil
 }
 
-// FindLessonByPath busca a lesson cujo video_path é exatamente path. Retorna
-// (nil, nil) se não houver nenhuma — path já registrado é o caso comum, não
-// um erro.
+// FindLessonByPath looks up the lesson whose video_path is exactly path.
+// Returns (nil, nil) if there is none — an already-registered path is the
+// common case, not an error.
 func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_path = ?`, path)
 	l, err := scanLessonRow(row)
@@ -422,8 +420,8 @@ func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	return l, nil
 }
 
-// FindLessonByHash busca a lesson cujo video_hash é exatamente hash. Retorna
-// (nil, nil) se não houver nenhuma.
+// FindLessonByHash looks up the lesson whose video_hash is exactly hash.
+// Returns (nil, nil) if there is none.
 func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_hash = ?`, hash)
 	l, err := scanLessonRow(row)
@@ -433,7 +431,8 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	return l, nil
 }
 
-// FindLessonByID busca a lesson por id. Retorna (nil, nil) se não houver.
+// FindLessonByID looks up the lesson by id. Returns (nil, nil) if there is
+// none.
 func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.id = ?`, id)
 	l, err := scanLessonRow(row)
@@ -443,11 +442,11 @@ func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	return l, nil
 }
 
-// UpdateLessonPath atualiza video_path/file_size/file_mtime de uma lesson já
-// registrada — usado quando a varredura encontra o mesmo hash num path
-// diferente (o arquivo só foi movido/renomeado, não é uma aula nova).
-// file_mtime é o mtime do arquivo no disco; updated_at (a marca de quando a
-// linha do banco mudou) é sempre "agora", nunca o mtime do arquivo.
+// UpdateLessonPath updates video_path/file_size/file_mtime of an
+// already-registered lesson — used when the scan finds the same hash at a
+// different path (the file was just moved/renamed, not a new lesson).
+// file_mtime is the file's mtime on disk; updated_at (the mark of when the
+// database row changed) is always "now", never the file's mtime.
 func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fileMTime string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET video_path = ?, file_size = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
@@ -459,9 +458,9 @@ func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fil
 	return nil
 }
 
-// SetLessonDuration grava a duração do vídeo (calculada via ffprobe na
-// confirmação da importação, best-effort — ver ImportService.ConfirmImport)
-// — só é chamado quando o probe teve sucesso.
+// SetLessonDuration writes the video duration (computed via ffprobe on
+// import confirmation, best-effort — see ImportService.ConfirmImport) —
+// only called when the probe succeeded.
 func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET duration_seconds = ?, updated_at = ? WHERE id = ?`,
@@ -473,9 +472,9 @@ func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	return nil
 }
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — escolha feita pelo toggle do Detalhe (História 6).
-// Sobrescreve qualquer valor anterior, permitindo o usuário corrigir.
+// SetStudentSpeaker writes which raw speaker (e.g. "speaker_0") is the
+// student in this lesson — chosen via the Detail screen's toggle (Story 6).
+// Overwrites any previous value, letting the user correct it.
 func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET student_speaker_label = ?, updated_at = ? WHERE id = ?`,
@@ -487,10 +486,10 @@ func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error 
 	return nil
 }
 
-// UpdateLesson grava data/horário e professor de uma lesson já confirmada —
-// edição pós-importação (História 9). teacherID já deve existir (resolvido
-// pelo chamador via GetOrCreateTeacherByName a partir do nome livre do
-// combobox).
+// UpdateLesson writes the date/time and teacher of an already-confirmed
+// lesson — post-import editing (Story 9). teacherID must already exist
+// (resolved by the caller via GetOrCreateTeacherByName from the combobox's
+// free-text name).
 func UpdateLesson(conn *sql.DB, lessonID int64, lessonDate string, teacherID int64) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET lesson_date = ?, teacher_id = ?, updated_at = ? WHERE id = ?`,
@@ -518,28 +517,28 @@ import (
 	"fmt"
 )
 
-// LessonFilter filtra ListLessonsWithStatus — todos os campos são opcionais
-// (zero value = sem filtro), usado pelo filtro por professor/período da
-// Biblioteca (História 5, TeacherID desde a História 9).
+// LessonFilter filters ListLessonsWithStatus — all fields are optional
+// (zero value = no filter), used by the Library's teacher/period filter
+// (Story 5, TeacherID since Story 9).
 type LessonFilter struct {
 	TeacherID int64
-	DateFrom  string // AAAA-MM-DD, inclusive
-	DateTo    string // AAAA-MM-DD, inclusive
+	DateFrom  string // YYYY-MM-DD, inclusive
+	DateTo    string // YYYY-MM-DD, inclusive
 }
 
-// LessonWithStatus é uma lesson com o status derivado dos jobs
-// extract_audio/transcribe. Status é sempre um de "processando", "pronta",
-// "erro"; ErrorMessage só é preenchido quando Status == "erro" — ver as
-// regras de derivação em deriveStatus.
+// LessonWithStatus is a lesson with the status derived from the
+// extract_audio/transcribe jobs. Status is always one of "processando",
+// "pronta", "erro"; ErrorMessage is only filled in when Status == "erro" —
+// see the derivation rules in deriveStatus.
 type LessonWithStatus struct {
 	Lesson
 	Status       string
 	ErrorMessage string
 }
 
-// lessonWithStatusColumns e lessonWithStatusFromJoin são compartilhados por
-// ListLessonsWithStatus (várias linhas) e FindLessonWithStatusByID (uma
-// linha, História 6) — mesma lista de colunas/JOIN, pra não divergirem.
+// lessonWithStatusColumns and lessonWithStatusFromJoin are shared by
+// ListLessonsWithStatus (multiple rows) and FindLessonWithStatusByID (one
+// row, Story 6) — same column list/JOIN, so they don't diverge.
 const lessonWithStatusColumns = `
 		l.id, l.lesson_date, l.teacher_id, t.name, l.video_path,
 		COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''),
@@ -553,9 +552,9 @@ const lessonWithStatusFromJoin = `
 	LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
 	LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'`
 
-// rowScanner é satisfeito tanto por *sql.Row (uma linha) quanto por *sql.Rows
-// (várias linhas) — permite compartilhar o scan entre
-// ListLessonsWithStatus e FindLessonWithStatusByID.
+// rowScanner is satisfied by both *sql.Row (one row) and *sql.Rows (many
+// rows) — lets the scan be shared between ListLessonsWithStatus and
+// FindLessonWithStatusByID.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -587,11 +586,12 @@ func scanLessonWithStatusRow(s rowScanner) (LessonWithStatus, error) {
 	return lws, nil
 }
 
-// ListLessonsWithStatus lista as lessons confirmadas com o status derivado
-// dos jobs, mais recentes primeiro, aplicando filter (campos zero são
-// ignorados). O filtro de data compara só a parte AAAA-MM-DD de
-// lesson_date (que pode ter horário, formato de <input type="datetime-local">),
-// pra incluir aulas com horário registrado no dia inteiro do intervalo.
+// ListLessonsWithStatus lists confirmed lessons with the status derived
+// from their jobs, most recent first, applying filter (zero fields are
+// ignored). The date filter only compares the YYYY-MM-DD part of
+// lesson_date (which may include a time, in the <input type="datetime-local">
+// format), so it includes lessons with a recorded time across the whole day
+// in the range.
 func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error) {
 	query := `SELECT` + lessonWithStatusColumns + lessonWithStatusFromJoin + ` WHERE 1=1`
 	var args []any
@@ -629,11 +629,11 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 	return out, nil
 }
 
-// FindLessonWithStatusByID busca uma lesson por id já com o status
-// derivado dos jobs (mesmas regras de ListLessonsWithStatus) — usada pelo
-// Detalhe (História 6), que agora abre em qualquer status, não só
-// "pronta" (ver services.LibraryService.GetLesson). Retorna (nil, nil) se
-// a lesson não existir.
+// FindLessonWithStatusByID looks up a lesson by id already with the status
+// derived from its jobs (same rules as ListLessonsWithStatus) — used by
+// the Detail screen (Story 6), which now opens regardless of status, not
+// only "pronta" (see services.LibraryService.GetLesson). Returns (nil,
+// nil) if the lesson doesn't exist.
 func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error) {
 	row := conn.QueryRow(`SELECT`+lessonWithStatusColumns+lessonWithStatusFromJoin+` WHERE l.id = ?`, id)
 	lws, err := scanLessonWithStatusRow(row)
@@ -646,11 +646,11 @@ func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error)
 	return &lws, nil
 }
 
-// deriveStatus aplica as regras de status da Biblioteca (História 5): erro
-// do extract_audio é a causa raiz e tem prioridade sobre o erro do
-// transcribe (que fica bloqueado quando o extract_audio dele falha — ver
-// claimNextEligibleJob em internal/jobs/worker.go); "pronta" exige o
-// transcribe concluído, não só o extract_audio.
+// deriveStatus applies the Library's status rules (Story 5): an
+// extract_audio error is the root cause and takes priority over a
+// transcribe error (which stays blocked while its extract_audio fails —
+// see claimNextEligibleJob in internal/jobs/worker.go); "pronta" requires
+// transcribe to be done, not just extract_audio.
 func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError string) (status string, message string) {
 	if extractStatus == "error" {
 		return "erro", extractError
@@ -679,35 +679,37 @@ import (
 	"sort"
 )
 
-// QueueEntry é uma aula com pipeline ativo (pending/running) ou em erro,
-// no formato que a Fila (História 7) precisa: qual job está "atual" agora,
-// não só o status colapsado que LessonWithStatus usa pra Biblioteca.
+// QueueEntry is a lesson with an active pipeline (pending/running) or in
+// error, in the shape the Queue screen (Story 7) needs: which job is
+// "current" right now, not just the collapsed status LessonWithStatus uses
+// for the Library.
 type QueueEntry struct {
 	LessonID    int64
 	LessonDate  string
 	TeacherName string
-	Kind        string // "extract_audio" ou "transcribe"
-	Status      string // "pending", "running" ou "error"
+	Kind        string // "extract_audio" or "transcribe"
+	Status      string // "pending", "running" or "error"
 	Attempts    int
 	LastError   string
 	UpdatedAt   string
 }
 
-// ListQueueEntries lista as aulas com pipeline ativo ou em erro, uma linha
-// por aula (nunca duas), com o job "atual" de cada uma. Aulas prontas
-// (transcribe done) não entram na lista — isso já é visível na Biblioteca.
+// ListQueueEntries lists lessons with an active pipeline or in error, one
+// row per lesson (never two), with each one's "current" job. Ready lessons
+// (transcribe done) don't appear in the list — that's already visible in
+// the Library.
 //
-// Prioridade pra decidir o job atual (extract_audio checado antes de
-// transcribe): o job transcribe fica com status "pending" no banco durante
-// todo o tempo em que está bloqueado esperando extract_audio terminar — o
-// Worker só pula ele em memória (claimNextEligibleJob em
-// internal/jobs/worker.go), sem mudar esse status. Checar transcribe antes
-// de extract_audio mostraria "Transcrição — aguardando" pra uma aula que na
-// verdade ainda está extraindo áudio.
+// Priority for deciding the current job (extract_audio checked before
+// transcribe): the transcribe job stays with status "pending" in the
+// database the whole time it's blocked waiting for extract_audio to
+// finish — the Worker only skips it in memory (claimNextEligibleJob in
+// internal/jobs/worker.go), without changing that status. Checking
+// transcribe before extract_audio would show "Transcrição — aguardando"
+// for a lesson that's actually still extracting audio.
 //
-// Ordenação: erro primeiro (precisa de ação do usuário), depois por
-// UpdatedAt do job atual, mais antigo primeiro (mesma ordem FIFO que o
-// Worker usa em ListPendingJobs).
+// Ordering: error first (needs user action), then by the current job's
+// UpdatedAt, oldest first (same FIFO order the Worker uses in
+// ListPendingJobs).
 func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	rows, err := conn.Query(`
 		SELECT
@@ -755,9 +757,9 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 			entry.Kind, entry.Status = "transcribe", transcribeStatus
 			entry.Attempts, entry.LastError, entry.UpdatedAt = transcribeAttempts, transcribeError, transcribeUpdatedAt
 		default:
-			// transcribe done (ou nenhum job — não deve acontecer, os dois
-			// jobs são sempre criados juntos na confirmação de import):
-			// aula pronta, não entra na fila.
+			// transcribe done (or no job — shouldn't happen, both jobs are
+			// always created together on import confirmation): lesson
+			// ready, doesn't enter the queue.
 			continue
 		}
 		out = append(out, entry)
@@ -770,9 +772,8 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	return out, nil
 }
 
-// sortQueueEntries ordena in-place: status "error" primeiro, depois por
-// UpdatedAt ascendente (FIFO) — ver regra de ordenação no comentário de
-// ListQueueEntries.
+// sortQueueEntries sorts in place: "error" status first, then by ascending
+// UpdatedAt (FIFO) — see the ordering rule in ListQueueEntries's comment.
 func sortQueueEntries(entries []QueueEntry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		iErr, jErr := entries[i].Status == "error", entries[j].Status == "error"
@@ -862,28 +863,28 @@ func TestOpen_LessonRoundTrip(t *testing.T) {
 
 	conn, err := Open(path)
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	_, err = conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		"2026-07-21", teacherID, "aulas/2026/x.mp4", "2026-07-21T10:00:00Z", "2026-07-21T10:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("insert em lessons falhou: %v", err)
+		t.Fatalf("insert into lessons failed: %v", err)
 	}
 
 	lesson, err := FindLessonByPath(conn, "aulas/2026/x.mp4")
 	if err != nil {
-		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByPath() unexpected error: %v", err)
 	}
 	if lesson == nil || lesson.TeacherName != "Fulano" {
-		t.Errorf("TeacherName = %+v, esperado \"Fulano\"", lesson)
+		t.Errorf("TeacherName = %+v, expected \"Fulano\"", lesson)
 	}
 }
 ```
@@ -904,36 +905,36 @@ Example of the pattern for `TestFindLessonByPathAndByHash_FindExistingRow`:
 func TestFindLessonByPathAndByHash_FindExistingRow(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	teacherID, err := GetOrCreateTeacherByName(conn, "Sarah")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	_, err = conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, video_hash, file_size, file_mtime, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"2026-07-15", teacherID, "aula-01.mp4", "hash-abc", 12345, "2026-07-15T10:00:00Z", "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("insert de fixture falhou: %v", err)
+		t.Fatalf("fixture insert failed: %v", err)
 	}
 
 	byPath, err := FindLessonByPath(conn, "aula-01.mp4")
 	if err != nil {
-		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByPath() unexpected error: %v", err)
 	}
 	if byPath == nil || byPath.VideoHash != "hash-abc" || byPath.FileSize != 12345 {
-		t.Errorf("FindLessonByPath() = %+v, esperado hash hash-abc e file_size 12345", byPath)
+		t.Errorf("FindLessonByPath() = %+v, expected hash hash-abc and file_size 12345", byPath)
 	}
 
 	byHash, err := FindLessonByHash(conn, "hash-abc")
 	if err != nil {
-		t.Fatalf("FindLessonByHash() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByHash() unexpected error: %v", err)
 	}
 	if byHash == nil || byHash.VideoPath != "aula-01.mp4" {
-		t.Errorf("FindLessonByHash() = %+v, esperado video_path aula-01.mp4", byHash)
+		t.Errorf("FindLessonByHash() = %+v, expected video_path aula-01.mp4", byHash)
 	}
 }
 ```
@@ -947,18 +948,18 @@ func mustInsertLessonForJobs(t *testing.T, conn *sql.DB, videoPath string) int64
 	t.Helper()
 	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+		t.Fatalf("fixture GetOrCreateTeacherByName() failed: %v", err)
 	}
 	res, err := conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		"2026-07-22", teacherID, videoPath, "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("inserir lesson de fixture falhou: %v", err)
+		t.Fatalf("insert fixture lesson failed: %v", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		t.Fatalf("obter id da lesson de fixture falhou: %v", err)
+		t.Fatalf("get fixture lesson id failed: %v", err)
 	}
 	return id
 }
@@ -970,42 +971,42 @@ In `internal/db/lesson_status_test.go`, `TestListLessonsWithStatus_FiltraPorTuto
 func TestListLessonsWithStatus_FiltraPorProfessorEPeriodo(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("Open() erro inesperado: %v", err)
+		t.Fatalf("Open() unexpected error: %v", err)
 	}
 	defer conn.Close()
 
 	sarah := mustInsertLessonForJobs(t, conn, "sarah.mp4")
 	if _, err := conn.Exec(`UPDATE lessons SET lesson_date = ? WHERE id = ?`, "2026-07-10", sarah); err != nil {
-		t.Fatalf("ajustar fixture sarah falhou: %v", err)
+		t.Fatalf("adjusting sarah fixture failed: %v", err)
 	}
 	mustInsertJob(t, conn, sarah, "extract_audio", "done", 0, "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z")
 	mustInsertJob(t, conn, sarah, "transcribe", "done", 0, "2026-07-10T10:00:00Z", "2026-07-10T10:00:00Z")
 
 	jamesTeacherID, err := GetOrCreateTeacherByName(conn, "James K.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	james := mustInsertLessonForJobs(t, conn, "james.mp4")
 	if _, err := conn.Exec(`UPDATE lessons SET teacher_id = ?, lesson_date = ? WHERE id = ?`, jamesTeacherID, "2026-07-20T14:00", james); err != nil {
-		t.Fatalf("ajustar fixture james falhou: %v", err)
+		t.Fatalf("adjusting james fixture failed: %v", err)
 	}
 	mustInsertJob(t, conn, james, "extract_audio", "done", 0, "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z")
 	mustInsertJob(t, conn, james, "transcribe", "done", 0, "2026-07-20T10:00:00Z", "2026-07-20T10:00:00Z")
 
 	byTeacher, err := ListLessonsWithStatus(conn, LessonFilter{TeacherID: jamesTeacherID})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(TeacherID) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(TeacherID) unexpected error: %v", err)
 	}
 	if len(byTeacher) != 1 || byTeacher[0].TeacherName != "James K." {
-		t.Errorf("ListLessonsWithStatus(TeacherID=james) = %+v, esperado só a aula de James K.", byTeacher)
+		t.Errorf("ListLessonsWithStatus(TeacherID=james) = %+v, expected only James K.'s lesson", byTeacher)
 	}
 
 	byDate, err := ListLessonsWithStatus(conn, LessonFilter{DateFrom: "2026-07-15", DateTo: "2026-07-31"})
 	if err != nil {
-		t.Fatalf("ListLessonsWithStatus(DateFrom/DateTo) erro inesperado: %v", err)
+		t.Fatalf("ListLessonsWithStatus(DateFrom/DateTo) unexpected error: %v", err)
 	}
 	if len(byDate) != 1 || byDate[0].TeacherName != "James K." {
-		t.Errorf("ListLessonsWithStatus(2026-07-15..2026-07-31) = %+v, esperado só a aula de 20/07 (inclui horário, filtra só pela data)", byDate)
+		t.Errorf("ListLessonsWithStatus(2026-07-15..2026-07-31) = %+v, expected only the 07/20 lesson (includes time, filters by date only)", byDate)
 	}
 }
 ```
@@ -1015,10 +1016,10 @@ In `internal/db/pending_imports_test.go`, `TestConfirmPendingImport_CreatesLesso
 ```go
 	var teacherName string
 	if err := conn.QueryRow(`SELECT t.name FROM lessons l JOIN teachers t ON t.id = l.teacher_id WHERE l.id = ?`, lessonID).Scan(&teacherName); err != nil {
-		t.Fatalf("select do professor falhou: %v", err)
+		t.Fatalf("select of teacher failed: %v", err)
 	}
 	if teacherName != "Sarah M." {
-		t.Errorf("teacherName = %q, esperado \"Sarah M.\"", teacherName)
+		t.Errorf("teacherName = %q, expected \"Sarah M.\"", teacherName)
 	}
 ```
 
@@ -1033,14 +1034,14 @@ func insertLessonFixture(t *testing.T, conn *sql.DB) int64 {
 	t.Helper()
 	teacherID, err := GetOrCreateTeacherByName(conn, "Fulano")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+		t.Fatalf("fixture GetOrCreateTeacherByName() failed: %v", err)
 	}
 	res, err := conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		"2026-07-29", teacherID, "aula.mp4", "2026-07-29T09:00:00Z", "2026-07-29T09:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("inserir lesson de fixture falhou: %v", err)
+		t.Fatalf("insert fixture lesson failed: %v", err)
 	}
 	id, _ := res.LastInsertId()
 	return id
@@ -1059,7 +1060,7 @@ Expected: clean.
 
 ```bash
 git add internal/db
-git commit -m "feat: substitui a coluna tutor por uma entidade teachers"
+git commit -m "feat: replace the tutor column with a teachers entity"
 ```
 
 ---
@@ -1104,46 +1105,46 @@ import (
 func TestTeacherService_ListTeachers_ReturnsAlphabeticalOrder(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
 	if _, err := db.GetOrCreateTeacherByName(conn, "Sarah M."); err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	if _, err := db.GetOrCreateTeacherByName(conn, "James K."); err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 
 	svc := NewTeacherService(conn)
 	teachers, err := svc.ListTeachers()
 	if err != nil {
-		t.Fatalf("ListTeachers() erro inesperado: %v", err)
+		t.Fatalf("ListTeachers() unexpected error: %v", err)
 	}
 	if len(teachers) != 2 || teachers[0].Name != "James K." || teachers[1].Name != "Sarah M." {
-		t.Errorf("ListTeachers() = %+v, esperado [James K. Sarah M.]", teachers)
+		t.Errorf("ListTeachers() = %+v, expected [James K. Sarah M.]", teachers)
 	}
 }
 
 func TestTeacherService_RenameTeacher_RejectsCollidingName(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
 	if _, err := db.GetOrCreateTeacherByName(conn, "Sarah M."); err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 	jamesID, err := db.GetOrCreateTeacherByName(conn, "James K.")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
 	}
 
 	svc := NewTeacherService(conn)
 	err = svc.RenameTeacher(jamesID, "Sarah M.")
 	if err == nil || err.Error() != "já existe um professor com esse nome" {
-		t.Errorf("RenameTeacher() colidindo = %v, esperado erro de nome já existente", err)
+		t.Errorf("RenameTeacher() colliding = %v, expected name-already-exists error", err)
 	}
 }
 ```
@@ -1165,10 +1166,10 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// TeacherService cobre a gestão de professores como entidade (História 9):
-// listar pro combobox de importação/edição e pro painel de Configurações, e
-// renomear um professor — reflete em todas as aulas dele via JOIN, sem
-// tocar em cada lesson individualmente.
+// TeacherService covers teacher management as an entity (Story 9): listing
+// for the import/edit combobox and the Settings panel, and renaming a
+// teacher — reflected across all of their lessons via JOIN, without
+// touching each lesson individually.
 type TeacherService struct {
 	conn *sql.DB
 }
@@ -1177,13 +1178,13 @@ func NewTeacherService(conn *sql.DB) *TeacherService {
 	return &TeacherService{conn: conn}
 }
 
-// Teacher é um professor cadastrado, no formato exposto ao frontend.
+// Teacher is a registered teacher, in the shape exposed to the frontend.
 type Teacher struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 }
 
-// ListTeachers lista os professores cadastrados em ordem alfabética.
+// ListTeachers lists the registered teachers in alphabetical order.
 func (s *TeacherService) ListTeachers() ([]Teacher, error) {
 	rows, err := db.ListTeachers(s.conn)
 	if err != nil {
@@ -1196,9 +1197,9 @@ func (s *TeacherService) ListTeachers() ([]Teacher, error) {
 	return out, nil
 }
 
-// RenameTeacher renomeia o professor id. Colisão com um nome já cadastrado
-// (UNIQUE em teachers.name) volta como erro legível — sem merge automático
-// de professores, decisão da História 9.
+// RenameTeacher renames teacher id. Colliding with an already-registered
+// name (UNIQUE on teachers.name) comes back as a readable error — no
+// automatic teacher merging, a decision made in Story 9.
 func (s *TeacherService) RenameTeacher(id int64, newName string) error {
 	return db.RenameTeacher(s.conn, id, newName)
 }
@@ -1217,7 +1218,7 @@ Add to `services/library_test.go` (after `TestLibraryService_GetLesson_VideoMiss
 func TestLibraryService_UpdateLesson_ChangesDateAndTeacher(t *testing.T) {
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -1225,27 +1226,27 @@ func TestLibraryService_UpdateLesson_ChangesDateAndTeacher(t *testing.T) {
 
 	svc := NewLibraryService(conn, testStorageRoot(t))
 	if err := svc.UpdateLesson(lessonID, "2026-07-25T10:00", "James K."); err != nil {
-		t.Fatalf("UpdateLesson() erro inesperado: %v", err)
+		t.Fatalf("UpdateLesson() unexpected error: %v", err)
 	}
 
 	lesson, err := svc.GetLesson(lessonID)
 	if err != nil {
-		t.Fatalf("GetLesson() erro inesperado: %v", err)
+		t.Fatalf("GetLesson() unexpected error: %v", err)
 	}
 	if lesson.LessonDate != "2026-07-25T10:00" || lesson.TeacherName != "James K." {
-		t.Errorf("GetLesson() após UpdateLesson = %+v, esperado data/professor atualizados", lesson)
+		t.Errorf("GetLesson() after UpdateLesson = %+v, expected updated date/teacher", lesson)
 	}
 }
 
 func TestLibraryService_UpdateLesson_RenamesVideoToNewStandardFilename(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "2026-07-20_10H00_sarah-m.mp4"), []byte("conteudo"), 0o644); err != nil {
-		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+		t.Fatalf("preparing fixture video failed: %v", err)
 	}
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -1253,31 +1254,31 @@ func TestLibraryService_UpdateLesson_RenamesVideoToNewStandardFilename(t *testin
 
 	svc := NewLibraryService(conn, func() (string, error) { return root, nil })
 	if err := svc.UpdateLesson(lessonID, "2026-07-25T14:30", "James K."); err != nil {
-		t.Fatalf("UpdateLesson() erro inesperado: %v", err)
+		t.Fatalf("UpdateLesson() unexpected error: %v", err)
 	}
 
 	wantPath := "2026-07-25_14H30_james-k.mp4"
 	lesson, err := db.FindLessonByPath(conn, wantPath)
 	if err != nil {
-		t.Fatalf("FindLessonByPath() erro inesperado: %v", err)
+		t.Fatalf("FindLessonByPath() unexpected error: %v", err)
 	}
 	if lesson == nil {
-		t.Fatalf("lesson não encontrada no path renomeado %q", wantPath)
+		t.Fatalf("lesson not found at renamed path %q", wantPath)
 	}
 	if _, err := os.Stat(filepath.Join(root, wantPath)); err != nil {
-		t.Errorf("arquivo renomeado não existe no disco em %q: %v", wantPath, err)
+		t.Errorf("renamed file does not exist on disk at %q: %v", wantPath, err)
 	}
 }
 
 func TestLibraryService_UpdateLesson_SucceedsEvenWhenRenameFails(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
-		t.Fatalf("preparar vídeo de fixture falhou: %v", err)
+		t.Fatalf("preparing fixture video failed: %v", err)
 	}
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
-		t.Fatalf("db.Open() falhou: %v", err)
+		t.Fatalf("db.Open() failed: %v", err)
 	}
 	defer conn.Close()
 
@@ -1287,18 +1288,18 @@ func TestLibraryService_UpdateLesson_SucceedsEvenWhenRenameFails(t *testing.T) {
 	svc.moveFile = func(_, _ string) error { return errors.New("falha injetada") }
 
 	if err := svc.UpdateLesson(lessonID, "2026-07-25T14:30", "James K."); err != nil {
-		t.Fatalf("UpdateLesson() não deveria falhar mesmo com rename impossível: %v", err)
+		t.Fatalf("UpdateLesson() should not fail even with an impossible rename: %v", err)
 	}
 
 	lesson, err := svc.GetLesson(lessonID)
 	if err != nil {
-		t.Fatalf("GetLesson() erro inesperado: %v", err)
+		t.Fatalf("GetLesson() unexpected error: %v", err)
 	}
 	if lesson.LessonDate != "2026-07-25T14:30" || lesson.TeacherName != "James K." {
-		t.Errorf("GetLesson() = %+v, esperado data/professor atualizados mesmo com rename falho", lesson)
+		t.Errorf("GetLesson() = %+v, expected updated date/teacher even with a failed rename", lesson)
 	}
 	if lesson.VideoPath != "aula.mp4" {
-		t.Errorf("VideoPath = %q, esperado inalterado (aula.mp4) já que o rename falhou", lesson.VideoPath)
+		t.Errorf("VideoPath = %q, expected unchanged (aula.mp4) since the rename failed", lesson.VideoPath)
 	}
 }
 ```
@@ -1316,10 +1317,10 @@ In `services/import.go`:
 1. Change the `renameVideoBestEffort` method to a plain function (drop the `(s *ImportService)` receiver, add explicit params):
 
 ```go
-// renameVideoBestEffort renomeia o vídeo de uma lesson pro nome padronizado
-// atual (data/professor), sempre na mesma pasta. Falhas são logadas e não
-// invalidam quem chamou — reaproveitado tanto por ImportService.ConfirmImport
-// quanto por LibraryService.UpdateLesson (História 9).
+// renameVideoBestEffort renames a lesson's video to the current standard
+// filename (date/teacher), always within the same folder. Failures are
+// logged and don't invalidate the caller — reused by both
+// ImportService.ConfirmImport and LibraryService.UpdateLesson (Story 9).
 func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, lessonID int64) {
 	lesson, err := db.FindLessonByID(conn, lessonID)
 	if err != nil {
@@ -1419,12 +1420,13 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// LibraryService expõe as aulas já confirmadas para a Biblioteca —
-// listagem com status derivado dos jobs e duração (História 5), filtro por
-// professor/período, reprocessamento de aulas com erro, busca de uma aula
-// pro Detalhe e sua transcrição sincronizada (História 6), checagem de
-// presença do arquivo de vídeo na storage_root atual (História 8), e
-// edição de data/horário/professor de uma aula já confirmada (História 9).
+// LibraryService exposes already-confirmed lessons to the Library —
+// listing with status derived from jobs and duration (Story 5),
+// teacher/period filtering, reprocessing lessons in error, looking up a
+// lesson for the Detail screen and its synced transcript (Story 6),
+// checking whether the video file is present in the current storage_root
+// (Story 8), and editing the date/time/teacher of an already-confirmed
+// lesson (Story 9).
 type LibraryService struct {
 	conn        *sql.DB
 	storageRoot func() (string, error)
@@ -1435,16 +1437,16 @@ func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *Librar
 	return &LibraryService{conn: conn, storageRoot: storageRoot, moveFile: moveFileNoReplace}
 }
 
-// Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
-// sempre um de "processando", "pronta", "erro" (ver db.LessonWithStatus);
-// ErrorMessage só é preenchido quando Status == "erro". DurationSeconds é
-// nil até o probe de duração (melhor esforço, na confirmação da
-// importação) ter sucesso. StudentSpeakerLabel é nil até o usuário marcar
-// quem é o aluno no toggle do Detalhe (História 6). VideoMissing é
-// recalculado a cada leitura (nunca gravado no banco) — true quando o
-// arquivo de video_path não é encontrado na storage_root atual (História 8:
-// pasta trocada sem o vídeo reaparecer, ou arquivo apagado/movido por fora
-// do app).
+// Lesson is a confirmed lesson, in the shape exposed to the frontend.
+// Status is always one of "processando", "pronta", "erro" (see
+// db.LessonWithStatus); ErrorMessage is only filled in when Status ==
+// "erro". DurationSeconds is nil until the duration probe (best-effort, on
+// import confirmation) succeeds. StudentSpeakerLabel is nil until the user
+// marks who the student is via the Detail screen's toggle (Story 6).
+// VideoMissing is recomputed on every read (never stored in the database)
+// — true when the video_path file isn't found in the current storage_root
+// (Story 8: folder changed without the video reappearing, or the file was
+// deleted/moved outside the app).
 type Lesson struct {
 	ID                  int64   `json:"id"`
 	LessonDate          string  `json:"lessonDate"`
@@ -1457,23 +1459,23 @@ type Lesson struct {
 	VideoMissing        bool    `json:"videoMissing"`
 }
 
-// LessonFilter filtra ListLessons — campos zero são ignorados (sem filtro
-// naquele critério).
+// LessonFilter filters ListLessons — zero fields are ignored (no filter on
+// that criterion).
 type LessonFilter struct {
 	TeacherID int64  `json:"teacherId"`
 	DateFrom  string `json:"dateFrom"`
 	DateTo    string `json:"dateTo"`
 }
 
-// Transcript é a transcrição de uma lesson, no formato exposto ao Detalhe
-// (História 6).
+// Transcript is a lesson's transcript, in the shape exposed to the Detail
+// screen (Story 6).
 type Transcript struct {
 	Utterances []Utterance `json:"utterances"`
 }
 
-// Utterance é uma fala da transcrição. Timestamps em segundos — mesma
-// unidade de HTMLVideoElement.currentTime no frontend, convertida aqui na
-// borda do serviço (o banco guarda time.Duration).
+// Utterance is one utterance in the transcript. Timestamps in seconds —
+// the same unit as HTMLVideoElement.currentTime on the frontend, converted
+// here at the service boundary (the database stores time.Duration).
 type Utterance struct {
 	Speaker      string  `json:"speaker"`
 	Text         string  `json:"text"`
@@ -1481,8 +1483,8 @@ type Utterance struct {
 	EndSeconds   float64 `json:"endSeconds"`
 }
 
-// ListLessons lista as aulas confirmadas com status/duração, mais recentes
-// primeiro, aplicando filter.
+// ListLessons lists confirmed lessons with status/duration, most recent
+// first, applying filter.
 func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	rows, err := db.ListLessonsWithStatus(s.conn, db.LessonFilter{
 		TeacherID: filter.TeacherID,
@@ -1509,19 +1511,20 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	return out, nil
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — o worker de
-// jobs (internal/jobs) retoma o pipeline sozinho no próximo poll (~5s), sem
-// precisar acordá-lo explicitamente (mesma decisão da História 4). Não é
-// erro se a lesson não tiver nenhum job em erro no momento.
+// RetryLesson resets the lesson's errored jobs back to "pending" — the
+// jobs worker (internal/jobs) resumes the pipeline on its own on the next
+// poll (~5s), with no need to wake it up explicitly (same decision as
+// Story 4). It is not an error if the lesson has no job currently in
+// error.
 func (s *LibraryService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err
 }
 
-// GetLesson busca uma aula por id, com status/erro derivados dos jobs, pro
-// Detalhe (História 6) — que agora abre em qualquer status: "processando"
-// e "erro" mostram o vídeo sem transcrição (ver LessonDetail.svelte),
-// "pronta" habilita GetTranscript.
+// GetLesson looks up a lesson by id, with status/error derived from its
+// jobs, for the Detail screen (Story 6) — which now opens regardless of
+// status: "processando" and "erro" show the video without a transcript
+// (see LessonDetail.svelte), "pronta" enables GetTranscript.
 func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	lws, err := db.FindLessonWithStatusByID(s.conn, id)
 	if err != nil {
@@ -1543,10 +1546,11 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	}, nil
 }
 
-// GetTranscript busca a transcrição de uma lesson pro Detalhe (História 6).
-// Só deve ser chamado quando GetLesson já retornou Status == "pronta" — o
-// Detalhe não chama isso pra aulas processando/erro, que mostram o status
-// no lugar do painel de transcrição.
+// GetTranscript looks up a lesson's transcript for the Detail screen
+// (Story 6). Should only be called after GetLesson has already returned
+// Status == "pronta" — the Detail screen doesn't call this for lessons
+// that are processing/in error, which show the status instead of the
+// transcript panel.
 func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	t, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
@@ -1567,18 +1571,18 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	return out, nil
 }
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — toggle do Detalhe (História 6).
+// SetStudentSpeaker writes which raw speaker (e.g. "speaker_0") is the
+// student in this lesson — Detail screen's toggle (Story 6).
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
 }
 
-// UpdateLesson grava data/horário e professor de uma aula já confirmada
-// (História 9) — o professor pode ser um nome já cadastrado ou um nome
-// novo (mesmo combobox do formulário de importação). Depois de gravar,
-// tenta renomear o vídeo pro nome padronizado atual (melhor esforço — não
-// falha a edição se o rename não for possível, mesmo princípio da
-// confirmação de importação).
+// UpdateLesson writes the date/time and teacher of an already-confirmed
+// lesson (Story 9) — the teacher can be an already-registered name or a
+// new one (same combobox as the import form). After writing, it tries to
+// rename the video to the current standard filename (best-effort —
+// doesn't fail the edit if the rename isn't possible, same principle as
+// import confirmation).
 func (s *LibraryService) UpdateLesson(lessonID int64, lessonDate string, teacherName string) error {
 	if lessonDate == "" {
 		return fmt.Errorf("data da aula não pode ser vazia")
@@ -1606,11 +1610,11 @@ func (s *LibraryService) UpdateLesson(lessonID int64, lessonDate string, teacher
 	return nil
 }
 
-// videoMissing indica se o arquivo de vídeo de uma lesson não é encontrado
-// na storage_root atual. Qualquer erro de os.Stat (não só "não existe") é
-// tratado como ausente — resiliência: nunca deixa a Biblioteca quebrar por
-// causa disso, e não vale a pena diferenciar "ausente" de "sem permissão"
-// nesta fatia (História 8).
+// videoMissing reports whether a lesson's video file isn't found in the
+// current storage_root. Any os.Stat error (not just "doesn't exist") is
+// treated as missing — resilience: this should never crash the Library,
+// and it isn't worth distinguishing "missing" from "no permission" in
+// this slice (Story 8).
 func (s *LibraryService) videoMissing(videoPath string) bool {
 	root, err := s.storageRoot()
 	if err != nil {
@@ -1626,7 +1630,7 @@ Note `Lesson.TeacherName` keeps the JSON tag `"tutor"` — the frontend's existi
 - [ ] **Step 8: Update `services/queue.go`**
 
 ```go
-// QueueItem é uma entrada da fila, no formato exposto ao frontend.
+// QueueItem is a queue entry, in the shape exposed to the frontend.
 type QueueItem struct {
 	LessonID    int64  `json:"lessonId"`
 	LessonDate  string `json:"lessonDate"`
@@ -1649,18 +1653,18 @@ func mustInsertLesson(t *testing.T, conn *sql.DB, date, teacherName, videoPath s
 	t.Helper()
 	teacherID, err := db.GetOrCreateTeacherByName(conn, teacherName)
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+		t.Fatalf("fixture GetOrCreateTeacherByName() failed: %v", err)
 	}
 	res, err := conn.Exec(
 		`INSERT INTO lessons (lesson_date, teacher_id, video_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		date, teacherID, videoPath, "2026-07-22T09:00:00Z", "2026-07-22T09:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("inserir lesson de fixture falhou: %v", err)
+		t.Fatalf("insert fixture lesson failed: %v", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		t.Fatalf("obter id da lesson de fixture falhou: %v", err)
+		t.Fatalf("get fixture lesson id failed: %v", err)
 	}
 	return id
 }
@@ -1675,7 +1679,7 @@ Then, in `services/library_test.go`:
   func TestLibraryService_ListLessons_FiltersByTeacher(t *testing.T) {
   	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
   	if err != nil {
-  		t.Fatalf("db.Open() falhou: %v", err)
+  		t.Fatalf("db.Open() failed: %v", err)
   	}
   	defer conn.Close()
 
@@ -1688,16 +1692,16 @@ Then, in `services/library_test.go`:
 
   	james, err := db.GetOrCreateTeacherByName(conn, "James K.")
   	if err != nil {
-  		t.Fatalf("GetOrCreateTeacherByName() erro inesperado: %v", err)
+  		t.Fatalf("GetOrCreateTeacherByName() unexpected error: %v", err)
   	}
 
   	svc := NewLibraryService(conn, testStorageRoot(t))
   	lessons, err := svc.ListLessons(LessonFilter{TeacherID: james})
   	if err != nil {
-  		t.Fatalf("ListLessons() erro inesperado: %v", err)
+  		t.Fatalf("ListLessons() unexpected error: %v", err)
   	}
   	if len(lessons) != 1 || lessons[0].TeacherName != "James K." {
-  		t.Errorf("ListLessons(TeacherID=James K.) = %+v, esperado só a aula de James K.", lessons)
+  		t.Errorf("ListLessons(TeacherID=James K.) = %+v, expected only James K.'s lesson", lessons)
   	}
   }
   ```
@@ -1716,10 +1720,10 @@ In `TestImportService_ScanFolderThenListThenConfirm`, replace the raw tutor coun
 		`SELECT COUNT(*) FROM lessons l JOIN teachers t ON t.id = l.teacher_id WHERE t.name = ?`,
 		"Sarah M.",
 	).Scan(&count); err != nil {
-		t.Fatalf("count de lessons falhou: %v", err)
+		t.Fatalf("lessons count failed: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("lessons com professor Sarah M. = %d, esperado 1", count)
+		t.Errorf("lessons with teacher Sarah M. = %d, expected 1", count)
 	}
 ```
 
@@ -1737,7 +1741,7 @@ Expected: clean.
 
 ```bash
 git add services
-git commit -m "feat: adiciona TeacherService e LibraryService.UpdateLesson"
+git commit -m "feat: add TeacherService and LibraryService.UpdateLesson"
 ```
 
 ---
@@ -1758,7 +1762,7 @@ func insertLesson(t *testing.T, conn *sql.DB, videoPath string) int64 {
 	t.Helper()
 	teacherID, err := db.GetOrCreateTeacherByName(conn, "Fulano")
 	if err != nil {
-		t.Fatalf("GetOrCreateTeacherByName() de fixture falhou: %v", err)
+		t.Fatalf("fixture GetOrCreateTeacherByName() failed: %v", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := conn.Exec(
@@ -1766,11 +1770,11 @@ func insertLesson(t *testing.T, conn *sql.DB, videoPath string) int64 {
 		"2026-07-22", teacherID, videoPath, now, now,
 	)
 	if err != nil {
-		t.Fatalf("inserir lesson de fixture falhou: %v", err)
+		t.Fatalf("insert fixture lesson failed: %v", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		t.Fatalf("obter id da lesson de fixture falhou: %v", err)
+		t.Fatalf("get fixture lesson id failed: %v", err)
 	}
 	return id
 }
@@ -1805,7 +1809,7 @@ Expected: all PASS, clean build.
 
 ```bash
 git add internal/jobs/worker_test.go main.go
-git commit -m "feat: registra TeacherService no app e corrige fixture do worker"
+git commit -m "feat: register TeacherService in the app and fix the worker fixture"
 ```
 
 ---
@@ -1841,7 +1845,7 @@ Expected: PASS (existing `.svelte` files reference `Lesson`/`LessonFilter`/`Queu
 
 ```bash
 git add frontend/bindings
-git commit -m "chore: regenera bindings do Wails para TeacherService e UpdateLesson"
+git commit -m "chore: regenerate Wails bindings for TeacherService and UpdateLesson"
 ```
 
 ---
@@ -1907,7 +1911,7 @@ Expected: PASS.
 
 ```bash
 git add frontend/src/lib/TeacherCombobox.svelte frontend/src/lib/ImportConfirmModal.svelte
-git commit -m "feat: adiciona combobox de professores no formulário de importação"
+git commit -m "feat: add teacher combobox to the import form"
 ```
 
 ---
@@ -2107,7 +2111,7 @@ Expected: PASS.
 
 ```bash
 git add frontend/src/lib/EditLessonModal.svelte frontend/src/lib/screens/LessonDetail.svelte
-git commit -m "feat: adiciona edição de data/horário/professor no Detalhe da aula"
+git commit -m "feat: add date/time/teacher editing in the lesson Detail"
 ```
 
 ---
@@ -2242,7 +2246,7 @@ Expected: PASS.
 
 ```bash
 git add frontend/src/lib/screens/Settings.svelte
-git commit -m "feat: adiciona painel de professores em Configurações"
+git commit -m "feat: add teachers panel in Settings"
 ```
 
 ---
@@ -2315,46 +2319,46 @@ Expected: PASS.
 
 - [ ] **Step 4: Update `docs/fase-1-mvp.md`**
 
-Add a new section right after História 8's `---` separator and before `## Marcos`:
+Add a new section right after Story 8's `---` separator and before `## Marcos`:
 
 ```markdown
-## História 9 — Gestão de professores e edição de aula
+## Story 9 — Teacher Management and Lesson Editing
 
-**Como** usuário, **quero** escolher o professor de uma lista já cadastrada (ou digitar um nome
-novo), renomear um professor como entidade, e editar data/horário/professor de uma aula já
-confirmada, **para** manter os dados corretos sem retipar nomes e sem depender de acertar tudo na
-confirmação da importação.
+**As a** user, **I want** to pick the teacher from an already-registered list (or type a new
+name), rename a teacher as an entity, and edit the date/time/teacher of an already-confirmed
+lesson, **so that** I can keep the data correct without retyping names and without depending on
+getting everything right at import confirmation.
 
-### Critérios de aceite
-- [x] Professor vira entidade (`teachers`), não mais coluna livre em `lessons` — renomear reflete em
-  todas as aulas do professor automaticamente; nome é único (colisão ao renomear vira erro
-  legível).
-- [x] Formulário de importação (Histórias 3 e 3b) mostra professores já cadastrados num combobox
-  (`<input list>`/`<datalist>`), com opção de digitar um nome novo.
-- [x] Painel "Professores" em Configurações lista os professores cadastrados com ação de renomear.
-- [x] Botão "Editar" no Detalhe da aula abre um formulário de data/horário/professor; salvar
-  também tenta renomear o vídeo pro nome padronizado atual (melhor esforço, mesma lógica da
-  História 3 — falha no rename não impede salvar a edição).
+### Acceptance criteria
+- [x] Teacher becomes an entity (`teachers`), no longer a free-text column on `lessons` —
+  renaming automatically reflects across all of that teacher's lessons; the name is unique (a
+  collision while renaming becomes a readable error).
+- [x] The import form (Stories 3 and 3b) shows already-registered teachers in a combobox
+  (`<input list>`/`<datalist>`), with the option to type a new name.
+- [x] The "Professores" panel in Settings lists registered teachers with a rename action.
+- [x] The "Editar" button on the lesson Detail screen opens a date/time/teacher form; saving
+  also tries to rename the video to the current standard filename (best-effort, same logic as
+  Story 3 — a failed rename doesn't block saving the edit).
 
-### Dependências
-História 3 (única consumidora da antiga coluna `tutor`).
+### Dependencies
+Story 3 (the only consumer of the old `tutor` column).
 ```
 
-Also add a line to the "Registro de progresso" table at the end of the file:
+Also add a line to the "Progress log" table at the end of the file:
 
 ```markdown
-| 30/07/2026 | História 9 implementada: professor vira entidade `teachers` (migration com backfill da coluna `tutor`), combobox de professores no formulário de importação, painel "Professores" em Configurações (renomear reflete em todas as aulas via JOIN), edição de data/horário/professor no Detalhe da aula (renomeia o vídeo in-place, melhor esforço) | `go test ./...`, `go vet ./...`, `pnpm run check`/`pnpm run build` confirmados limpos; verificação visual real (combobox, renomear professor, editar aula numa janela de verdade) segue pendente em Windows/Linux, mesmo padrão das histórias anteriores |
+| 30/07/2026 | Story 9 implemented: teacher becomes a `teachers` entity (migration with backfill from the `tutor` column), teacher combobox on the import form, "Professores" panel in Settings (renaming reflects across all lessons via JOIN), date/time/teacher editing on the lesson Detail screen (renames the video in place, best-effort) | `go test ./...`, `go vet ./...`, `pnpm run check`/`pnpm run build` confirmed clean; real visual verification (combobox, renaming a teacher, editing a lesson in an actual window) is still pending on Windows/Linux, same standing gap as previous stories |
 ```
 
 - [ ] **Step 5: Remove the now-implemented backlog item**
 
-In `docs/backlog.md`, delete the "**Tutores já cadastrados no formulário:**" bullet under "## UX — Importação" (implemented by this História) — if that leaves the "## UX — Importação" section empty, remove the now-empty section heading too.
+In `docs/backlog.md`, delete the "**Tutores já cadastrados no formulário:**" bullet under "## UX — Importação" (implemented by this Story) — if that leaves the "## UX — Importação" section empty, remove the now-empty section heading too.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add frontend/src/lib/screens/Library.svelte docs/fase-1-mvp.md docs/backlog.md
-git commit -m "docs: registra a História 9 e atualiza o filtro de professor na Biblioteca"
+git commit -m "docs: record Story 9 and update the teacher filter in the Library"
 ```
 
 ---
@@ -2365,4 +2369,4 @@ After Task 8, the full verification sweep (Step 3) must be green:
 - `go build ./...`, `go vet ./...`, `go test ./...`
 - `pnpm run check`, `pnpm run build` (inside `frontend/`)
 
-Visual verification in a real window (clicking the combobox, renaming a teacher in Settings, editing a lesson in the Detail screen) is out of scope for this sandbox (no display) — same standing gap already tracked for every prior História in `docs/fase-1-mvp.md`'s progress log.
+Visual verification in a real window (clicking the combobox, renaming a teacher in Settings, editing a lesson in the Detail screen) is out of scope for this sandbox (no display) — same standing gap already tracked for every prior Story in `docs/fase-1-mvp.md`'s progress log.

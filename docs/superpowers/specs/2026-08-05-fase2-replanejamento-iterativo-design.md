@@ -1,137 +1,137 @@
-# Fase 2 — Replanejamento para abordagem iterativa: design
+# Phase 2 — Replanning for an Iterative Approach: Design
 
-> Não é uma história de implementação — é um replanejamento do próprio `docs/fase-2-analise-llm.md`.
-> Define a nova estrutura da fase (Histórias 1 e 2 revisadas, tarefas candidatas, critério de
-> promoção a job em background, marcos) e como os docs existentes mudam. O design técnico detalhado
-> da História 2 revisada (Piloto — Correções do aluno) é responsabilidade de um plano de
-> implementação separado, escrito depois que esta spec for aprovada.
+> This is not an implementation story — it's a replanning of `docs/fase-2-analise-llm.md` itself.
+> It defines the new structure of the phase (revised Stories 1 and 2, candidate tasks, the
+> criterion for promotion to a background job, milestones) and how the existing docs change. The
+> detailed technical design of the revised Story 2 (Pilot — Student corrections) is the
+> responsibility of a separate implementation plan, written after this spec is approved.
 
-## Contexto e motivação
+## Context and motivation
 
-A Fase 2, História 1 (infraestrutura: prompts versionados, `Provider` agnóstico de tarefa,
-persistência `analysis_results`/`lesson_topics`) foi implementada em 30/07/2026 (ver
-`docs/superpowers/specs/2026-07-30-fase2-historia-1-prompts-persistencia-design.md`), mas o
-trabalho foi pausado antes do último critério de aceite — validar as 7 tarefas contra uma aula real
-via `cmd/validate-analysis` e registrar os achados em `docs/notas-analise-llm.md` — pra fechar a
-História 9 da Fase 1 (gestão de professores), que estava em aberto.
+Phase 2, Story 1 (infrastructure: versioned prompts, task-agnostic `Provider`,
+`analysis_results`/`lesson_topics` persistence) was implemented on 30/07/2026 (see
+`docs/superpowers/specs/2026-07-30-fase2-historia-1-prompts-persistencia-design.md`), but the work
+was paused before the last acceptance criterion — validating the 7 tasks against a real lesson via
+`cmd/validate-analysis` and recording the findings in `docs/notas-analise-llm.md` — in order to
+close Phase 1's Story 9 (teacher management), which was still open.
 
-Ao retomar, o plano original (Histórias 2-5: automatizar as 7 tarefas em jobs de background, depois
-construir toda a UI de consumo — correções inline, aba de Análise completa, tópicos na Biblioteca)
-deixou de refletir o que o dev quer fazer agora: implementar as análises **visualmente dentro do
-app, uma de cada vez**, avaliando na prática se cada uma vale a pena manter, e refinando conforme é
-adicionada — em vez de comprometer automação e UI pras 7 tarefas de uma vez só. Há uma suspeita
-explícita de que nem todas as 7 tarefas planejadas devem sobreviver.
+Upon resuming, the original plan (Stories 2-5: automate the 7 tasks as background jobs, then build
+the entire consumption UI — inline corrections, a full Analysis tab, topics in the Library) no
+longer reflected what the dev wants to do now: implement the analyses **visually inside the app,
+one at a time**, evaluating in practice whether each one is worth keeping, and refining as each is
+added — instead of committing to automation and UI for all 7 tasks at once. There is an explicit
+suspicion that not all 7 planned tasks should survive.
 
-## Decisões de escopo
+## Scope decisions
 
-- **Infraestrutura da História 1 é reaproveitada, não redesenhada agora** — mas com a expectativa
-  explícita de simplificar o framework de tarefas (`TaskDef`, `task[T]`) mais adiante, conforme
-  ficar claro quais das 7 tarefas realmente ficam. Nenhuma simplificação acontece nesta spec.
-- **Validação passa a ser por tarefa, visualmente na UI — não em lote via CLI.** O último critério
-  da História 1 (rodar as 7 tarefas via `cmd/validate-analysis` e registrar tudo de uma vez em
-  `docs/notas-analise-llm.md`) é substituído: cada tarefa é validada quando ganha sua própria UI.
-  `cmd/validate-analysis` é removido do repositório **sem ter rodado** — sua função é assumida pela
-  própria implementação visual da primeira tarefa.
-- **Primeira tarefa a implementar: `analyze_corrections` (Correções do aluno).** Escolhida apesar de
-  ser a mais complexa de exibir (precisa ancorar na fala exata via `utterance_index`, UI inline na
-  transcrição) porque é a mais valiosa pro aprendizado — critério de prioridade é valor, não
-  facilidade de implementação.
-- **Sob demanda antes de automação.** Cada tarefa nova entra primeiro como ação manual (botão na
-  aula), nunca como job de background. Job automático só é escrito quando a tarefa for confirmada
-  como valiosa — evita gastar chamadas de API (e trabalho de automação) em tarefas que podem ser
-  descartadas.
-- **Ordem das 6 tarefas restantes não é comprometida agora.** Ficam listadas como candidatas no doc
-  da fase, sem história detalhada, sem ordem fixa — cada uma vira uma história de verdade só quando
-  for a vez dela. `analyze_vocabulary` e `analyze_tutor_expressions` têm sinal positivo da validação
-  da Fase 0 (prompt único), o que as torna candidatas naturais a vir logo depois de Correções, mas
-  isso é registrado como observação, não como compromisso de ordem.
-- **Localização na UI (inline vs. aba própria) é decidida tarefa a tarefa**, não pré-desenhada em
-  bloco como a antiga História 4 (aba de Análise com todas as seções).
-- **Promoção a job em background é um critério à parte**, não uma história pré-escrita. Escrita
-  (como história pequena) só quando uma tarefa específica for confirmada — reaproveita o padrão já
-  existente do `Worker` (job kind novo, dependente só de `transcribe` concluído, idempotente por
-  `(lesson_id, task)`, Reprocessar por tarefa), aplicado por tarefa confirmada em vez de em bloco
-  pras 7 de uma vez (como estava na antiga História 2).
+- **Story 1's infrastructure is reused, not redesigned now** — but with the explicit expectation
+  of simplifying the task framework (`TaskDef`, `task[T]`) later on, once it becomes clear which
+  of the 7 tasks actually stick. No simplification happens in this spec.
+- **Validation now happens per task, visually in the UI — not in bulk via CLI.** Story 1's last
+  criterion (running the 7 tasks via `cmd/validate-analysis` and recording everything at once in
+  `docs/notas-analise-llm.md`) is replaced: each task is validated once it gets its own UI.
+  `cmd/validate-analysis` is removed from the repository **without ever having run** — its
+  function is taken over by the visual implementation of the first task itself.
+- **First task to implement: `analyze_corrections` (Student corrections).** Chosen despite being
+  the most complex to display (needs to anchor to the exact utterance via `utterance_index`,
+  inline UI in the transcript) because it's the most valuable for learning — the priority
+  criterion is value, not ease of implementation.
+- **On demand before automation.** Every new task first goes in as a manual action (a button on
+  the lesson), never as a background job. An automatic job is only written once the task is
+  confirmed as valuable — this avoids spending API calls (and automation effort) on tasks that
+  might be discarded.
+- **The order of the 6 remaining tasks is not committed now.** They're listed as candidates in the
+  phase doc, with no detailed story, no fixed order — each one becomes a real story only when its
+  turn comes. `analyze_vocabulary` and `analyze_tutor_expressions` have a positive signal from
+  Phase 0's validation (single prompt), which makes them natural candidates to come right after
+  Corrections, but this is recorded as an observation, not a commitment to order.
+- **UI placement (inline vs. its own tab) is decided task by task**, not pre-designed in bulk like
+  the old Story 4 (an Analysis tab with all sections).
+- **Promotion to a background job is a separate criterion**, not a pre-written story. It's written
+  (as a small story) only when a specific task is confirmed — reusing the `Worker`'s existing
+  pattern (new job kind, dependent only on `transcribe` having completed, idempotent by
+  `(lesson_id, task)`, with Reprocess per task reusing `ResetErrorJobsForLesson`), applied per
+  confirmed task instead of in bulk for all 7 at once (as in the old Story 2).
 
-## Estrutura revisada da Fase 2
+## Revised structure of Phase 2
 
-### História 1 — fecha, com um critério reescrito
+### Story 1 — closes, with one criterion rewritten
 
-Critérios 1-5 (prompts, `FormatTranscript`, `Provider` agnóstico, migration, tratamento de
-`utterance_index` inválido) continuam concluídos como já estavam. O critério 6 muda de "validar as
-7 tarefas em bloco via CLI" para "validação acontece tarefa por tarefa, à medida que cada uma ganha
-UI (a partir da História 2)" — com isso a História 1 fecha nesta spec, sem executar
+Criteria 1-5 (prompts, `FormatTranscript`, task-agnostic `Provider`, migration, handling of an
+invalid `utterance_index`) remain completed as they already were. Criterion 6 changes from
+"validate the 7 tasks in bulk via CLI" to "validation happens task by task, as each one gets its
+UI (starting with Story 2)" — with this, Story 1 closes in this spec, without running
 `cmd/validate-analysis`.
 
-### História 2 (revisada) — Piloto: Correções do aluno
+### Story 2 (revised) — Pilot: Student corrections
 
-Substitui a antiga História 2 ("jobs pras 7 tarefas na fila"). Critérios de aceite:
+Replaces the old Story 2 ("jobs for the 7 tasks in the queue"). Acceptance criteria:
 
-- Credencial do provedor de análise (DeepSeek) via `go-keyring` (`SaveAnalysisAPIKey`/
-  `GetAnalysisAPIKey`, mesmo padrão de `SaveSTTAPIKey`/`GetSTTAPIKey` já existente) + campo na tela
-  de Configurações, ao lado do campo STT — pré-requisito pra qualquer chamada funcionar (confirmado
-  que ainda não existe nenhum código relacionado a `AnalysisAPIKey` no repositório).
-- Ação manual na aula (ex.: botão "Analisar correções") dispara `analyze_corrections` sob demanda —
-  sem job em background nesta fatia.
-- Resultado salvo em `analysis_results` via `UpsertAnalysisResult` (já existente); idempotente — se
-  já existe `(lesson_id, analyze_corrections)`, mostra direto sem rechamar a API; reprocessar é ação
-  explícita que sobrescreve.
-- Falha (rede/API, parsing) não quebra a aula — mesmo princípio de resiliência já usado no pipeline
-  de transcrição (Fase 1); erro fica visível e recuperável, nunca impede assistir ao vídeo.
-- Correções exibidas inline na transcrição do Detalhe da aula: trecho original riscado + correção em
-  destaque (visual do protótipo: riscado em cinza, correção em âmbar) — reaproveita o desenho já
-  registrado na antiga História 3 do plano anterior.
-- Critério de decisão explícito que fecha a história: depois de observar o resultado em algumas
-  aulas reais, registrar em `docs/notas-analise-llm.md` se a tarefa vale manter como está, precisa
-  de refinamento de prompt, ou deve ser descartada. Não há número fixo de aulas — a decisão é o que
-  fecha a história, não uma contagem.
+- Analysis provider credential (DeepSeek) via `go-keyring` (`SaveAnalysisAPIKey`/
+  `GetAnalysisAPIKey`, the same pattern as the already-existing `SaveSTTAPIKey`/`GetSTTAPIKey`) + a
+  field on the Settings screen, next to the STT field — a prerequisite for any call to work
+  (confirmed that no code related to `AnalysisAPIKey` exists yet in the repository).
+- A manual action on the lesson (e.g., a button "Analisar correções") triggers `analyze_corrections`
+  on demand — no background job in this slice.
+- Result saved to `analysis_results` via `UpsertAnalysisResult` (already existing); idempotent — if
+  `(lesson_id, analyze_corrections)` already exists, it's shown directly without re-calling the
+  API; reprocessing is an explicit action that overwrites.
+- Failure (network/API, parsing) doesn't break the lesson — the same resilience principle already
+  used in the transcription pipeline (Phase 1); the error stays visible and recoverable, and never
+  prevents watching the video.
+- Corrections displayed inline in the lesson Detail's transcript: original passage struck through +
+  correction highlighted (prototype visual: strikethrough in gray, correction in amber) — reuses
+  the design already recorded in the old Story 3 of the previous plan.
+- Explicit decision criterion that closes the story: after observing the result in a few real
+  lessons, record in `docs/notas-analise-llm.md` whether the task is worth keeping as-is, needs
+  prompt refinement, or should be discarded. There's no fixed number of lessons — the decision is
+  what closes the story, not a count.
 
-O design técnico detalhado desta história (assinatura de bindings, componente Svelte, wiring do
-botão, etc.) fica para o plano de implementação, escrito separadamente depois que esta spec for
-aprovada.
+The detailed technical design of this story (binding signatures, Svelte component, button wiring,
+etc.) is left for the implementation plan, written separately after this spec is approved.
 
-### Tarefas candidatas (sem história detalhada)
+### Candidate tasks (no detailed story)
 
 `analyze_vocabulary`, `analyze_tutor_expressions`, `analyze_tutor_taught_terms`,
-`analyze_tutor_feedback`, `analyze_tutor_corrections`, `analyze_topics`. Cada uma vira uma "História
-N" de verdade, no mesmo formato da História 2 revisada (credencial já resolvida, sob demanda, UI
-mínima, critério de decisão explícito), escrita quando for a vez de implementá-la.
+`analyze_tutor_feedback`, `analyze_tutor_corrections`, `analyze_topics`. Each one becomes a real
+"Story N", in the same format as the revised Story 2 (credential already resolved, on demand,
+minimal UI, explicit decision criterion), written when its turn to be implemented comes.
 
-### Promoção a job em background (critério à parte)
+### Promotion to a background job (separate criterion)
 
-Quando uma tarefa é confirmada como valiosa (decisão registrada em `docs/notas-analise-llm.md`),
-uma história pequena de automação é escrita naquele momento: job kind novo no `Worker`, dependente
-só de `transcribe` concluído (não das outras tarefas de análise), idempotente por
-`(lesson_id, task)`, Reprocessar por tarefa reaproveitando `ResetErrorJobsForLesson` — mesmo desenho
-que estava na antiga História 2, aplicado por tarefa confirmada em vez de em bloco.
+When a task is confirmed as valuable (a decision recorded in `docs/notas-analise-llm.md`), a small
+automation story is written at that moment: a new job kind in the `Worker`, dependent only on
+`transcribe` having completed (not on the other analysis tasks), idempotent by
+`(lesson_id, task)`, with Reprocess per task reusing `ResetErrorJobsForLesson` — the same design
+that was in the old Story 2, applied per confirmed task instead of in bulk.
 
-## Marcos revisados
+## Revised milestones
 
-- **M1 — "Piloto validado":** Histórias 1-2. Infra fechada + Correções do aluno rodando sob demanda
-  na UI, com decisão registrada (manter/refinar/descartar).
-- Não há M2/M3 fixos para "análise completa". Cada tarefa confirmada e cada promoção a job em
-  background avança a fase incrementalmente. A fase não tem uma lista fechada de entregas — "termina"
-  quando não houver mais tarefas candidatas com valor claro pra perseguir.
+- **M1 — "Validated pilot":** Stories 1-2. Infrastructure closed + Student corrections running on
+  demand in the UI, with a decision recorded (keep/refine/discard).
+- There are no fixed M2/M3 for "complete analysis". Each confirmed task and each promotion to a
+  background job advances the phase incrementally. The phase doesn't have a closed list of
+  deliverables — it "ends" when there are no more candidate tasks with clear value left to pursue.
 
-## Impacto nos docs existentes
+## Impact on existing docs
 
-- **`docs/fase-2-analise-llm.md`** é reescrito para refletir esta estrutura: objetivo, riscos
-  técnicos (risco 1 deixa de ser "validar as 7 de uma vez" e vira "validar cada tarefa antes de
-  automatizar"; risco 2 fica registrado como já resolvido; risco 3 vira "medir custo real por tarefa
-  confirmada"), História 1 fechada com o critério reescrito, História 2 substituída pelo Piloto,
-  seção de tarefas candidatas, seção de promoção a job em background, marcos revisados, e uma linha
-  no registro de progresso datada de hoje.
-- **`docs/notas-analise-llm.md`** não muda nesta spec — passa a receber uma entrada por tarefa
-  confirmada/descartada conforme cada uma for validada na UI, começando pela de Correções do aluno
-  quando a História 2 revisada for implementada.
-- **`cmd/validate-analysis`** (remoção) é uma mudança de código, não de doc — registrada como item
-  do plano de implementação da História 2 revisada, não executada por esta spec.
+- **`docs/fase-2-analise-llm.md`** is rewritten to reflect this structure: goal, technical risks
+  (risk 1 stops being "validate all 7 at once" and becomes "validate each task before automating";
+  risk 2 is recorded as already resolved; risk 3 becomes "measure the real cost per confirmed
+  task"), Story 1 closed with the rewritten criterion, Story 2 replaced by the Pilot, a
+  candidate-tasks section, a promotion-to-background-job section, revised milestones, and a line
+  in the progress log dated today.
+- **`docs/notas-analise-llm.md`** doesn't change in this spec — it starts receiving one entry per
+  confirmed/discarded task as each one is validated in the UI, starting with Student Corrections
+  once the revised Story 2 is implemented.
+- **`cmd/validate-analysis`** (removal) is a code change, not a doc change — recorded as an item of
+  the revised Story 2's implementation plan, not carried out by this spec.
 
-## Fora de escopo desta spec
+## Out of scope for this spec
 
-- Design técnico detalhado da História 2 revisada (componentes Svelte, bindings Wails, schema de
-  chamadas) — plano de implementação separado.
-- Qualquer simplificação real do framework de tarefas (`TaskDef`/`task[T]`) da História 1 — fica
-  como expectativa registrada, não executada agora.
-- Escrever histórias detalhadas para as 6 tarefas candidatas — cada uma quando for a vez dela.
-- Remover `cmd/validate-analysis` do repositório — feito no plano de implementação, não aqui.
+- Detailed technical design of the revised Story 2 (Svelte components, Wails bindings, call
+  schema) — a separate implementation plan.
+- Any real simplification of Story 1's task framework (`TaskDef`/`task[T]`) — remains a recorded
+  expectation, not carried out now.
+- Writing detailed stories for the 6 candidate tasks — each one when its turn comes.
+- Removing `cmd/validate-analysis` from the repository — done in the implementation plan, not here.
