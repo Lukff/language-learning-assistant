@@ -70,7 +70,7 @@ func main() {
 			application.NewService(services.NewLibraryService(conn, storageRoot)),
 			application.NewService(services.NewQueueService(conn)),
 			application.NewService(services.NewSettingsService(conn, storageRoot)),
-			application.NewService(services.NewAnalysisService(conn, storageRoot, analysisProviderFactory)),
+			application.NewService(services.NewAnalysisService(conn, analysisProviderFactory)),
 			application.NewService(services.NewTeacherService(conn)),
 			application.NewService(services.NewTopicsService(conn)),
 			application.NewService(videoServer),

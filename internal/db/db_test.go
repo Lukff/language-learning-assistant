@@ -64,8 +64,8 @@ func TestOpen_ForeignKeysEnforced(t *testing.T) {
 	defer conn.Close()
 
 	_, err = conn.Exec(
-		`INSERT INTO transcripts (lesson_id, raw_json_path, utterances, created_at) VALUES (?, ?, ?, ?)`,
-		999999, "x.json", "[]", "2026-07-21T10:00:00Z",
+		`INSERT INTO transcripts (lesson_id, utterances, created_at) VALUES (?, ?, ?)`,
+		999999, "[]", "2026-07-21T10:00:00Z",
 	)
 	if err == nil {
 		t.Error("esperava erro de foreign key ao inserir transcript com lesson_id inexistente, veio nil")

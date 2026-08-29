@@ -63,8 +63,11 @@ type, **so that** analysis tasks can run and reliably store their results.
   (json.RawMessage, error)` — it no longer knows about `Correction`/`VocabularyItem`/etc. Each task
   defines its own output type and parses it from the raw JSON, reusing common generic validation.
 - [x] New migration: an `analysis_results` table (one row per `lesson_id` + `task`, with
-  `prompt_id`, `model`, `result_json`, `raw_response_path`, `UNIQUE(lesson_id, task)`) and
-  `lesson_topics` (`lesson_id`, `topic`) for use by candidate tasks that need it.
+  `prompt_id`, `model`, `result_json`, `UNIQUE(lesson_id, task)`) and `lesson_topics`
+  (`lesson_id`, `topic`) for use by candidate tasks that need it. (The raw provider response was
+  originally also persisted to a `raw_response_path` file alongside the video, mirroring
+  `transcripts.raw_json_path`; both were dropped in migration `00007` after turning out to be
+  write-only — nothing ever read them back.)
 - [x] Behavior defined and tested for an out-of-range or missing `utterance_index` (risk 2):
   a negative index (JSON missing the field) or one outside `[0, utteranceCount)` silently discards
   the item (with `slog.Warn`), never breaking the whole task — the same handling in the 3 tasks

@@ -37,7 +37,7 @@ func TestHasTranscript_FalseThenTrueAfterInsert(t *testing.T) {
 		t.Error("HasTranscript() = true antes de inserir, esperado false")
 	}
 
-	if err := InsertTranscript(conn, lessonID, "aula.transcript.json", `[{"speaker":"speaker_0","text":"hi"}]`); err != nil {
+	if err := InsertTranscript(conn, lessonID, `[{"speaker":"speaker_0","text":"hi"}]`); err != nil {
 		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
 	}
 
@@ -50,7 +50,7 @@ func TestHasTranscript_FalseThenTrueAfterInsert(t *testing.T) {
 	}
 }
 
-func TestInsertTranscript_PersistsRawPathAndUtterances(t *testing.T) {
+func TestInsertTranscript_PersistsUtterances(t *testing.T) {
 	conn, err := Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("Open() erro inesperado: %v", err)
@@ -70,17 +70,14 @@ func TestInsertTranscript_PersistsRawPathAndUtterances(t *testing.T) {
 	}
 	lessonID, _ := res.LastInsertId()
 
-	if err := InsertTranscript(conn, lessonID, "aula.transcript.json", `[{"speaker":"speaker_0","text":"hi"}]`); err != nil {
+	if err := InsertTranscript(conn, lessonID, `[{"speaker":"speaker_0","text":"hi"}]`); err != nil {
 		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
 	}
 
-	var rawPath, utterances string
-	err = conn.QueryRow(`SELECT raw_json_path, utterances FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&rawPath, &utterances)
+	var utterances string
+	err = conn.QueryRow(`SELECT utterances FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&utterances)
 	if err != nil {
 		t.Fatalf("select em transcripts falhou: %v", err)
-	}
-	if rawPath != "aula.transcript.json" {
-		t.Errorf("raw_json_path = %q, esperado aula.transcript.json", rawPath)
 	}
 	if utterances != `[{"speaker":"speaker_0","text":"hi"}]` {
 		t.Errorf("utterances = %q, não bate com o que foi inserido", utterances)
@@ -144,7 +141,7 @@ func TestFindTranscriptByLessonID_UnmarshalsUtterances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal() de fixture falhou: %v", err)
 	}
-	if err := InsertTranscript(conn, lessonID, "aula.transcript.json", string(raw)); err != nil {
+	if err := InsertTranscript(conn, lessonID, string(raw)); err != nil {
 		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
 	}
 
@@ -154,9 +151,6 @@ func TestFindTranscriptByLessonID_UnmarshalsUtterances(t *testing.T) {
 	}
 	if tr == nil {
 		t.Fatal("FindTranscriptByLessonID() = nil, esperado transcript encontrado")
-	}
-	if tr.RawJSONPath != "aula.transcript.json" {
-		t.Errorf("RawJSONPath = %q, esperado aula.transcript.json", tr.RawJSONPath)
 	}
 	if len(tr.Utterances) != 2 {
 		t.Fatalf("Utterances = %+v, esperado 2 falas", tr.Utterances)

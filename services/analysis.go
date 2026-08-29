@@ -7,10 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
-	"os"
-	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/zalando/go-keyring"
@@ -28,12 +24,11 @@ import (
 // tela de Configurações depois que o app já iniciou.
 type AnalysisService struct {
 	conn            *sql.DB
-	storageRoot     func() (string, error)
 	providerFactory func() (analysis.Provider, error)
 }
 
-func NewAnalysisService(conn *sql.DB, storageRoot func() (string, error), providerFactory func() (analysis.Provider, error)) *AnalysisService {
-	return &AnalysisService{conn: conn, storageRoot: storageRoot, providerFactory: providerFactory}
+func NewAnalysisService(conn *sql.DB, providerFactory func() (analysis.Provider, error)) *AnalysisService {
+	return &AnalysisService{conn: conn, providerFactory: providerFactory}
 }
 
 const correctionsTaskName = "analyze_corrections"
@@ -177,12 +172,7 @@ func (s *AnalysisService) runCorrections(lessonID int64, overwrite bool) (Correc
 	}
 
 	task := analysis.NewCorrectionsTask()
-	resultJSON, raw, err := task.Execute(context.Background(), provider, formatted, len(transcript.Utterances))
-	if raw != nil {
-		if writeErr := s.writeRawResponse(lesson.VideoPath, task.Name(), raw); writeErr != nil {
-			slog.Warn("analysis: falha ao gravar resposta bruta em disco", "lesson_id", lessonID, "task", task.Name(), "erro", writeErr)
-		}
-	}
+	resultJSON, _, err := task.Execute(context.Background(), provider, formatted, len(transcript.Utterances))
 	if err != nil {
 		return CorrectionsResult{}, fmt.Errorf("analisar correções da lesson %d: %w", lessonID, err)
 	}
@@ -192,37 +182,11 @@ func (s *AnalysisService) runCorrections(lessonID int64, overwrite bool) (Correc
 		return CorrectionsResult{}, fmt.Errorf("registrar prompt %s: %w", task.Name(), err)
 	}
 
-	rawRelPath := analysisRawRelPath(lesson.VideoPath, task.Name())
-	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON), rawRelPath); err != nil {
+	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON)); err != nil {
 		return CorrectionsResult{}, fmt.Errorf("gravar resultado da análise: %w", err)
 	}
 
 	return s.buildResultFromTranscript(transcript.Utterances, string(resultJSON))
-}
-
-// analysisRawRelPath calcula o path (relativo à storage_root, sempre com
-// "/") da resposta bruta do provedor pra uma tarefa: mesmo diretório do
-// vídeo, nome "<basename-sem-extensão>.analysis.<task>.json" — mesmo
-// esquema de rawJSONRelPath (internal/jobs, transcrição), com o segmento
-// ".analysis." extra pra não colidir com o arquivo de transcrição
-// (<basename>.transcript.json) nem entre tarefas de análise diferentes.
-func analysisRawRelPath(videoRelPath, task string) string {
-	dir := path.Dir(videoRelPath)
-	base := strings.TrimSuffix(path.Base(videoRelPath), path.Ext(videoRelPath))
-	return path.Join(dir, base+".analysis."+task+".json")
-}
-
-func (s *AnalysisService) writeRawResponse(videoRelPath, task string, raw json.RawMessage) error {
-	root, err := s.storageRoot()
-	if err != nil {
-		return err
-	}
-	relPath := analysisRawRelPath(videoRelPath, task)
-	absPath := filepath.Join(root, filepath.FromSlash(relPath))
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(absPath, raw, 0o644)
 }
 
 const topicsTaskName = "analyze_topics"
@@ -331,12 +295,7 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 	}
 
 	task := analysis.NewTopicsTask()
-	resultJSON, raw, err := task.Execute(context.Background(), provider, input, len(transcript.Utterances))
-	if raw != nil {
-		if writeErr := s.writeRawResponse(lesson.VideoPath, task.Name(), raw); writeErr != nil {
-			slog.Warn("analysis: falha ao gravar resposta bruta em disco", "lesson_id", lessonID, "task", task.Name(), "erro", writeErr)
-		}
-	}
+	resultJSON, _, err := task.Execute(context.Background(), provider, input, len(transcript.Utterances))
 	if err != nil {
 		return TopicsResult{}, fmt.Errorf("analisar tópicos da lesson %d: %w", lessonID, err)
 	}
@@ -364,8 +323,7 @@ func (s *AnalysisService) runTopics(lessonID int64, overwrite bool) (TopicsResul
 	if err != nil {
 		return TopicsResult{}, fmt.Errorf("registrar prompt %s: %w", task.Name(), err)
 	}
-	rawRelPath := analysisRawRelPath(lesson.VideoPath, task.Name())
-	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON), rawRelPath); err != nil {
+	if err := db.UpsertAnalysisResult(s.conn, lessonID, task.Name(), promptID, provider.Model(), string(resultJSON)); err != nil {
 		return TopicsResult{}, fmt.Errorf("gravar resultado da análise: %w", err)
 	}
 

@@ -107,10 +107,10 @@ func TestUpsertAnalysisResult_InsertThenReplace(t *testing.T) {
 		t.Fatalf("UpsertPrompt() erro inesperado: %v", err)
 	}
 
-	if err := UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", `{"corrections":[]}`, "aula.corrections.json"); err != nil {
+	if err := UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", `{"corrections":[]}`); err != nil {
 		t.Fatalf("UpsertAnalysisResult() erro inesperado: %v", err)
 	}
-	if err := UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", `{"corrections":[{"original":"x"}]}`, "aula.corrections.v2.json"); err != nil {
+	if err := UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", `{"corrections":[{"original":"x"}]}`); err != nil {
 		t.Fatalf("segunda UpsertAnalysisResult() erro inesperado: %v", err)
 	}
 
@@ -123,9 +123,6 @@ func TestUpsertAnalysisResult_InsertThenReplace(t *testing.T) {
 	}
 	if r.ResultJSON != `{"corrections":[{"original":"x"}]}` {
 		t.Errorf("ResultJSON = %q, esperado a segunda gravação (substituída)", r.ResultJSON)
-	}
-	if r.RawResponsePath != "aula.corrections.v2.json" {
-		t.Errorf("RawResponsePath = %q, esperado atualizado", r.RawResponsePath)
 	}
 
 	var count int
@@ -205,13 +202,13 @@ func TestDeleteSpeakerDependentAnalysisResults_PreservesTopicsAndOtherLessons(t 
 	if err != nil {
 		t.Fatalf("UpsertPrompt() erro inesperado: %v", err)
 	}
-	if err := UpsertAnalysisResult(conn, lessonA, "analyze_corrections", promptID, "deepseek", "[]", "a.json"); err != nil {
+	if err := UpsertAnalysisResult(conn, lessonA, "analyze_corrections", promptID, "deepseek", "[]"); err != nil {
 		t.Fatalf("UpsertAnalysisResult() corrections lessonA erro: %v", err)
 	}
-	if err := UpsertAnalysisResult(conn, lessonA, "analyze_topics", promptID, "deepseek", "[]", "a.topics.json"); err != nil {
+	if err := UpsertAnalysisResult(conn, lessonA, "analyze_topics", promptID, "deepseek", "[]"); err != nil {
 		t.Fatalf("UpsertAnalysisResult() topics lessonA erro: %v", err)
 	}
-	if err := UpsertAnalysisResult(conn, lessonB, "analyze_corrections", promptID, "deepseek", "[]", "b.json"); err != nil {
+	if err := UpsertAnalysisResult(conn, lessonB, "analyze_corrections", promptID, "deepseek", "[]"); err != nil {
 		t.Fatalf("UpsertAnalysisResult() lessonB erro: %v", err)
 	}
 

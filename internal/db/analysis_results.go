@@ -40,17 +40,16 @@ func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64
 // UpsertAnalysisResult grava (ou substitui, se já existir) o resultado de
 // task para lessonID — reprocessar (História 2) sobrescreve a linha
 // existente.
-func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID int64, model, resultJSON, rawResponsePath string) error {
+func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID int64, model, resultJSON string) error {
 	_, err := conn.Exec(
-		`INSERT INTO analysis_results (lesson_id, task, prompt_id, model, result_json, raw_response_path, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO analysis_results (lesson_id, task, prompt_id, model, result_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(lesson_id, task) DO UPDATE SET
 		     prompt_id = excluded.prompt_id,
 		     model = excluded.model,
 		     result_json = excluded.result_json,
-		     raw_response_path = excluded.raw_response_path,
 		     created_at = excluded.created_at`,
-		lessonID, task, promptID, model, resultJSON, rawResponsePath, time.Now().UTC().Format(time.RFC3339),
+		lessonID, task, promptID, model, resultJSON, time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		return fmt.Errorf("gravar analysis_result da lesson %d, task %s: %w", lessonID, task, err)
@@ -60,12 +59,11 @@ func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID in
 
 // AnalysisResult é o resultado persistido de uma tarefa de análise para uma lesson.
 type AnalysisResult struct {
-	LessonID        int64
-	Task            string
-	PromptID        int64
-	Model           string
-	ResultJSON      string
-	RawResponsePath string
+	LessonID   int64
+	Task       string
+	PromptID   int64
+	Model      string
+	ResultJSON string
 }
 
 // FindAnalysisResult retorna (nil, nil) se a tarefa ainda não rodou pra
@@ -74,9 +72,9 @@ type AnalysisResult struct {
 func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisResult, error) {
 	r := AnalysisResult{LessonID: lessonID, Task: task}
 	err := conn.QueryRow(
-		`SELECT prompt_id, model, result_json, raw_response_path FROM analysis_results WHERE lesson_id = ? AND task = ?`,
+		`SELECT prompt_id, model, result_json FROM analysis_results WHERE lesson_id = ? AND task = ?`,
 		lessonID, task,
-	).Scan(&r.PromptID, &r.Model, &r.ResultJSON, &r.RawResponsePath)
+	).Scan(&r.PromptID, &r.Model, &r.ResultJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

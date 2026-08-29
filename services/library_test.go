@@ -274,7 +274,7 @@ func TestLibraryService_GetTranscript_ReturnsUtterancesInSeconds(t *testing.T) {
 	mustInsertJobWithStatus(t, conn, lessonID, "extract_audio", "done", "")
 	mustInsertJobWithStatus(t, conn, lessonID, "transcribe", "done", "")
 	utterancesJSON := `[{"Speaker":"speaker_0","Text":"Hello","Start":0,"End":2000000000},{"Speaker":"speaker_1","Text":"Hi","Start":2000000000,"End":3500000000}]`
-	if err := db.InsertTranscript(conn, lessonID, "aula.transcript.json", utterancesJSON); err != nil {
+	if err := db.InsertTranscript(conn, lessonID, utterancesJSON); err != nil {
 		t.Fatalf("InsertTranscript() erro inesperado: %v", err)
 	}
 
@@ -501,7 +501,7 @@ func TestLibraryService_SetStudentSpeaker_DeletesAnalysisResultsOnChange(t *test
 	if err != nil {
 		t.Fatalf("UpsertPrompt() falhou: %v", err)
 	}
-	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]", "aula.analysis.json"); err != nil {
+	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]"); err != nil {
 		t.Fatalf("UpsertAnalysisResult() falhou: %v", err)
 	}
 
@@ -531,7 +531,7 @@ func TestLibraryService_SetStudentSpeaker_FirstChoiceKeepsAnalysisResults(t *tes
 	if err != nil {
 		t.Fatalf("UpsertPrompt() falhou: %v", err)
 	}
-	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]", "aula.analysis.json"); err != nil {
+	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]"); err != nil {
 		t.Fatalf("UpsertAnalysisResult() falhou: %v", err)
 	}
 
@@ -564,7 +564,7 @@ func TestLibraryService_SetStudentSpeaker_SameLabelKeepsAnalysisResults(t *testi
 	if err != nil {
 		t.Fatalf("UpsertPrompt() falhou: %v", err)
 	}
-	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]", "aula.analysis.json"); err != nil {
+	if err := db.UpsertAnalysisResult(conn, lessonID, "analyze_corrections", promptID, "deepseek", "[]"); err != nil {
 		t.Fatalf("UpsertAnalysisResult() falhou: %v", err)
 	}
 

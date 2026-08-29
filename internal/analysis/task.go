@@ -21,9 +21,8 @@ type TaskDef interface {
 	// Execute chama provider.Complete, faz o parse e (quando a tarefa for
 	// ancorada) descarta itens com utterance_index inválido. Devolve o JSON
 	// já validado (pronto pra gravar em analysis_results.result_json) e o
-	// conteúdo bruto devolvido pelo provedor (pronto pra gravar em disco,
-	// raw_response_path). err != nil não impede o chamador de gravar raw em
-	// disco (mesmo princípio de runTranscribe: a chamada já custou dinheiro).
+	// conteúdo bruto devolvido pelo provedor, pro chamador decidir o que
+	// fazer com ele.
 	Execute(ctx context.Context, provider Provider, transcript string, utteranceCount int) (resultJSON json.RawMessage, raw json.RawMessage, err error)
 }
 

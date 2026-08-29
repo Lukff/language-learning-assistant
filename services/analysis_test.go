@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,7 +44,7 @@ func TestAnalysisService_GetCorrections_NotAnalyzedYet(t *testing.T) {
 	conn := openTestDB(t)
 	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
 
-	svc := NewAnalysisService(conn, testStorageRoot(t), nil)
+	svc := NewAnalysisService(conn, nil)
 	got, err := svc.GetCorrections(lessonID)
 	if err != nil {
 		t.Fatalf("GetCorrections() erro inesperado: %v", err)
@@ -58,13 +57,13 @@ func TestAnalysisService_GetCorrections_NotAnalyzedYet(t *testing.T) {
 	}
 }
 
-func insertTranscriptFixture(t *testing.T, conn *sql.DB, lessonID int64, rawPath string, utterances []map[string]any) {
+func insertTranscriptFixture(t *testing.T, conn *sql.DB, lessonID int64, utterances []map[string]any) {
 	t.Helper()
 	b, err := json.Marshal(utterances)
 	if err != nil {
 		t.Fatalf("marshal de utterances de fixture falhou: %v", err)
 	}
-	if err := db.InsertTranscript(conn, lessonID, rawPath, string(b)); err != nil {
+	if err := db.InsertTranscript(conn, lessonID, string(b)); err != nil {
 		t.Fatalf("InsertTranscript() de fixture falhou: %v", err)
 	}
 }
@@ -75,7 +74,7 @@ func TestAnalysisService_AnalyzeCorrections_PersistsAndReturnsCorrections(t *tes
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() de fixture falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aulas/2026/aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "I go to school yesterday", "Start": 0, "End": 2000000000},
 		{"Speaker": "speaker_1", "Text": "OK, tell me more", "Start": 2000000000, "End": 4000000000},
 	})
@@ -84,8 +83,7 @@ func TestAnalysisService_AnalyzeCorrections_PersistsAndReturnsCorrections(t *tes
 		model: "deepseek-v4-flash",
 		raw:   json.RawMessage(`{"corrections":[{"utterance_index":0,"original":"I go","correction":"I went to school yesterday","explanation":"Passado simples: went, não go."}]}`),
 	}
-	storageRoot := t.TempDir()
-	svc := NewAnalysisService(conn, func() (string, error) { return storageRoot, nil }, func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	got, err := svc.AnalyzeCorrections(lessonID)
 	if err != nil {
@@ -111,11 +109,6 @@ func TestAnalysisService_AnalyzeCorrections_PersistsAndReturnsCorrections(t *tes
 	if persisted.Model != "deepseek-v4-flash" {
 		t.Errorf("persisted.Model = %q, esperado %q", persisted.Model, "deepseek-v4-flash")
 	}
-
-	rawAbsPath := filepath.Join(storageRoot, "aulas", "2026", "aula.analysis.analyze_corrections.json")
-	if _, err := os.Stat(rawAbsPath); err != nil {
-		t.Errorf("raw response não foi gravado em %s: %v", rawAbsPath, err)
-	}
 }
 
 func TestAnalysisService_AnalyzeCorrections_IsIdempotent(t *testing.T) {
@@ -124,7 +117,7 @@ func TestAnalysisService_AnalyzeCorrections_IsIdempotent(t *testing.T) {
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() de fixture falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "I go yesterday", "Start": 0, "End": 1000000000},
 	})
 
@@ -132,7 +125,7 @@ func TestAnalysisService_AnalyzeCorrections_IsIdempotent(t *testing.T) {
 		model: "deepseek-v4-flash",
 		raw:   json.RawMessage(`{"corrections":[{"utterance_index":0,"original":"I go","correction":"I went","explanation":"a"}]}`),
 	}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeCorrections(lessonID); err != nil {
 		t.Fatalf("primeira AnalyzeCorrections() erro inesperado: %v", err)
@@ -155,7 +148,7 @@ func TestAnalysisService_ReprocessCorrections_AlwaysCallsProviderAndOverwrites(t
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() de fixture falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "I go yesterday", "Start": 0, "End": 1000000000},
 	})
 
@@ -163,7 +156,7 @@ func TestAnalysisService_ReprocessCorrections_AlwaysCallsProviderAndOverwrites(t
 		model: "deepseek-v4-flash",
 		raw:   json.RawMessage(`{"corrections":[{"utterance_index":0,"original":"I go","correction":"I went","explanation":"a"}]}`),
 	}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeCorrections(lessonID); err != nil {
 		t.Fatalf("AnalyzeCorrections() erro inesperado: %v", err)
@@ -185,11 +178,11 @@ func TestAnalysisService_ReprocessCorrections_AlwaysCallsProviderAndOverwrites(t
 func TestAnalysisService_AnalyzeCorrections_RequiresStudentSpeakerChosen(t *testing.T) {
 	conn := openTestDB(t)
 	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) {
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) {
 		t.Fatal("providerFactory não deveria ser chamado sem student_speaker_label definido")
 		return nil, nil
 	})
@@ -205,12 +198,12 @@ func TestAnalysisService_AnalyzeCorrections_ProviderErrorDoesNotPersist(t *testi
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() de fixture falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
 	fake := &fakeAnalysisProvider{err: fmt.Errorf("erro de rede simulado")}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeCorrections(lessonID); err == nil {
 		t.Fatal("AnalyzeCorrections() esperava erro do provider, veio nil")
@@ -229,7 +222,7 @@ func TestAnalysisService_GetTopics_NotAnalyzedYet(t *testing.T) {
 	conn := openTestDB(t)
 	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
 
-	svc := NewAnalysisService(conn, testStorageRoot(t), nil)
+	svc := NewAnalysisService(conn, nil)
 	got, err := svc.GetTopics(lessonID)
 	if err != nil {
 		t.Fatalf("GetTopics() erro inesperado: %v", err)
@@ -248,7 +241,7 @@ func TestAnalysisService_AnalyzeTopics_PersistsBothAndAppendsExisting(t *testing
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() de fixture falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aulas/2026/aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "I want to travel", "Start": 0, "End": 2000000000},
 		{"Speaker": "speaker_1", "Text": "Where to?", "Start": 2000000000, "End": 4000000000},
 	})
@@ -260,7 +253,7 @@ func TestAnalysisService_AnalyzeTopics_PersistsBothAndAppendsExisting(t *testing
 		model: "deepseek-v4-flash",
 		raw:   json.RawMessage(`{"topics":["viagens","trabalho remoto"]}`),
 	}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	got, err := svc.AnalyzeTopics(lessonID)
 	if err != nil {
@@ -298,12 +291,12 @@ func TestAnalysisService_AnalyzeTopics_IsIdempotent(t *testing.T) {
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
 	fake := &fakeAnalysisProvider{model: "deepseek-v4-flash", raw: json.RawMessage(`{"topics":["viagens"]}`)}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeTopics(lessonID); err != nil {
 		t.Fatalf("primeira AnalyzeTopics() erro: %v", err)
@@ -326,12 +319,12 @@ func TestAnalysisService_ReprocessTopics_Overwrites(t *testing.T) {
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
 	fake := &fakeAnalysisProvider{model: "deepseek-v4-flash", raw: json.RawMessage(`{"topics":["viagens"]}`)}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeTopics(lessonID); err != nil {
 		t.Fatalf("AnalyzeTopics() erro: %v", err)
@@ -362,7 +355,7 @@ func TestAnalysisService_AnalyzeTopics_SkipsEmptyAndWhitespaceNames(t *testing.T
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
@@ -370,7 +363,7 @@ func TestAnalysisService_AnalyzeTopics_SkipsEmptyAndWhitespaceNames(t *testing.T
 		model: "deepseek-v4-flash",
 		raw:   json.RawMessage(`{"topics":["viagens","","  ","trabalho remoto"]}`),
 	}
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	got, err := svc.AnalyzeTopics(lessonID)
 	if err != nil {
@@ -407,11 +400,11 @@ func TestAnalysisService_AnalyzeTopics_SkipsEmptyAndWhitespaceNames(t *testing.T
 func TestAnalysisService_AnalyzeTopics_RequiresStudentSpeakerChosen(t *testing.T) {
 	conn := openTestDB(t)
 	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aula.mp4")
-	insertTranscriptFixture(t, conn, lessonID, "aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
-	svc := NewAnalysisService(conn, testStorageRoot(t), func() (analysis.Provider, error) {
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) {
 		t.Fatal("providerFactory não deveria ser chamado sem student_speaker_label")
 		return nil, nil
 	})
@@ -422,12 +415,11 @@ func TestAnalysisService_AnalyzeTopics_RequiresStudentSpeakerChosen(t *testing.T
 
 func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T) {
 	conn := openTestDB(t)
-	storageRoot := t.TempDir()
 	lessonID := mustInsertLesson(t, conn, "2026-08-01", "Sarah M.", "aulas/2026/aula.mp4")
 	if err := db.SetStudentSpeaker(conn, lessonID, "speaker_0"); err != nil {
 		t.Fatalf("SetStudentSpeaker() falhou: %v", err)
 	}
-	insertTranscriptFixture(t, conn, lessonID, "aulas/2026/aula.transcript.json", []map[string]any{
+	insertTranscriptFixture(t, conn, lessonID, []map[string]any{
 		{"Speaker": "speaker_0", "Text": "Hello", "Start": 0, "End": 1000000000},
 	})
 
@@ -435,7 +427,7 @@ func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T)
 		raw: json.RawMessage(`{"topics":["viagens"]}`),
 		err: fmt.Errorf("erro de rede simulado"),
 	}
-	svc := NewAnalysisService(conn, func() (string, error) { return storageRoot, nil }, func() (analysis.Provider, error) { return fake, nil })
+	svc := NewAnalysisService(conn, func() (analysis.Provider, error) { return fake, nil })
 
 	if _, err := svc.AnalyzeTopics(lessonID); err == nil {
 		t.Fatal("AnalyzeTopics() esperava erro do provider, veio nil")
@@ -453,10 +445,5 @@ func TestAnalysisService_AnalyzeTopics_ProviderErrorDoesNotPersist(t *testing.T)
 	}
 	if len(topics) != 0 {
 		t.Errorf("lesson_topics = %+v, esperado vazio (não persistir em falha)", topics)
-	}
-
-	rawAbsPath := filepath.Join(storageRoot, "aulas", "2026", "aula.analysis.analyze_topics.json")
-	if _, err := os.Stat(rawAbsPath); err != nil {
-		t.Errorf("raw response não foi gravado em %s mesmo com erro do provider (auditoria): %v", rawAbsPath, err)
 	}
 }

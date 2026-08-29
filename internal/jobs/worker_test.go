@@ -237,7 +237,7 @@ func TestRunExtractAudio_CallsExtractorWhenNotCached(t *testing.T) {
 func TestRunTranscribe_SkipsWhenTranscriptAlreadyExists(t *testing.T) {
 	conn := newTestDB(t)
 	lessonID := insertLesson(t, conn, "aula.mp4")
-	if err := db.InsertTranscript(conn, lessonID, "aula.transcript.json", "[]"); err != nil {
+	if err := db.InsertTranscript(conn, lessonID, "[]"); err != nil {
 		t.Fatalf("InsertTranscript() de fixture falhou: %v", err)
 	}
 	job := db.Job{ID: insertJob(t, conn, lessonID, "transcribe", "running", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z"), LessonID: lessonID, Kind: "transcribe"}
@@ -263,14 +263,10 @@ func TestRunTranscribe_SkipsWhenTranscriptAlreadyExists(t *testing.T) {
 	}
 }
 
-func TestRunTranscribe_WritesRawJSONInsertsTranscriptAndCleansCache(t *testing.T) {
+func TestRunTranscribe_InsertsTranscriptAndCleansCache(t *testing.T) {
 	conn := newTestDB(t)
 	storageRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(storageRoot, "aulas", "2026"), 0o755); err != nil {
-		t.Fatalf("preparar subpasta de fixture falhou: %v", err)
-	}
-	videoRelPath := "aulas/2026/aula-01.mp4"
-	lessonID := insertLesson(t, conn, videoRelPath)
+	lessonID := insertLesson(t, conn, "aula.mp4")
 	job := db.Job{ID: insertJob(t, conn, lessonID, "transcribe", "running", 0, "2026-07-22T10:00:00Z", "2026-07-22T10:00:00Z"), LessonID: lessonID, Kind: "transcribe"}
 
 	audioCacheDir := t.TempDir()
@@ -297,15 +293,6 @@ func TestRunTranscribe_WritesRawJSONInsertsTranscriptAndCleansCache(t *testing.T
 		t.Fatalf("runTranscribe() erro inesperado: %v", err)
 	}
 
-	rawAbsPath := filepath.Join(storageRoot, "aulas", "2026", "aula-01.transcript.json")
-	rawContent, err := os.ReadFile(rawAbsPath)
-	if err != nil {
-		t.Fatalf("JSON bruto não foi gravado em %q: %v", rawAbsPath, err)
-	}
-	if string(rawContent) != `{"raw":true}` {
-		t.Errorf("conteúdo do JSON bruto = %q, esperado {\"raw\":true}", rawContent)
-	}
-
 	has, err := db.HasTranscript(conn, lessonID)
 	if err != nil {
 		t.Fatalf("HasTranscript() erro inesperado: %v", err)
@@ -314,12 +301,9 @@ func TestRunTranscribe_WritesRawJSONInsertsTranscriptAndCleansCache(t *testing.T
 		t.Error("HasTranscript() = false após runTranscribe, esperado true")
 	}
 
-	var rawPath, utterancesJSON string
-	if err := conn.QueryRow(`SELECT raw_json_path, utterances FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&rawPath, &utterancesJSON); err != nil {
+	var utterancesJSON string
+	if err := conn.QueryRow(`SELECT utterances FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&utterancesJSON); err != nil {
 		t.Fatalf("select em transcripts falhou: %v", err)
-	}
-	if rawPath != "aulas/2026/aula-01.transcript.json" {
-		t.Errorf("raw_json_path = %q, esperado aulas/2026/aula-01.transcript.json", rawPath)
 	}
 	var utterances []stt.Utterance
 	if err := json.Unmarshal([]byte(utterancesJSON), &utterances); err != nil {

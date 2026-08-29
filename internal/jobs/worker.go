@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"assistente-idiomas/internal/db"
@@ -283,9 +281,9 @@ func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	return nil
 }
 
-// runTranscribe transcreve o áudio em cache da lesson via STT, gravando o
-// JSON bruto junto do vídeo e a transcrição mapeada em transcripts. Pula
-// se já existir uma transcrição pra essa lesson (idempotência).
+// runTranscribe transcreve o áudio em cache da lesson via STT, gravando a
+// transcrição mapeada em transcripts. Pula se já existir uma transcrição
+// pra essa lesson (idempotência).
 func (w *Worker) runTranscribe(ctx context.Context, job db.Job) error {
 	has, err := db.HasTranscript(w.conn, job.LessonID)
 	if err != nil {
@@ -310,20 +308,11 @@ func (w *Worker) runTranscribe(ctx context.Context, job db.Job) error {
 	if err != nil {
 		return fmt.Errorf("transcrever: %w", err)
 	}
-	root, err := w.storageRoot()
-	if err != nil {
-		return fmt.Errorf("resolver storage_root: %w", err)
-	}
-	rawRelPath := rawJSONRelPath(lesson.VideoPath)
-	rawAbsPath := filepath.Join(root, filepath.FromSlash(rawRelPath))
-	if err := os.WriteFile(rawAbsPath, result.RawResponse, 0o644); err != nil {
-		return fmt.Errorf("gravar JSON bruto: %w", err)
-	}
 	utterancesJSON, err := json.Marshal(result.Utterances)
 	if err != nil {
 		return fmt.Errorf("serializar utterances: %w", err)
 	}
-	if err := db.InsertTranscript(w.conn, job.LessonID, rawRelPath, string(utterancesJSON)); err != nil {
+	if err := db.InsertTranscript(w.conn, job.LessonID, string(utterancesJSON)); err != nil {
 		return fmt.Errorf("gravar transcript: %w", err)
 	}
 	if err := os.Remove(audioPath); err != nil && !os.IsNotExist(err) {
@@ -334,14 +323,4 @@ func (w *Worker) runTranscribe(ctx context.Context, job db.Job) error {
 
 func (w *Worker) audioPathFor(lessonID int64) string {
 	return filepath.Join(w.audioCacheDir, strconv.FormatInt(lessonID, 10)+".wav")
-}
-
-// rawJSONRelPath calcula o path (relativo à storage_root, sempre com "/")
-// do JSON bruto do provedor: mesmo diretório do vídeo, nome
-// "<basename-sem-extensão>.transcript.json" — sem assumir nenhuma
-// subpasta (consistente com a varredura da História 3).
-func rawJSONRelPath(videoRelPath string) string {
-	dir := path.Dir(videoRelPath)
-	base := strings.TrimSuffix(path.Base(videoRelPath), path.Ext(videoRelPath))
-	return path.Join(dir, base+".transcript.json")
 }
