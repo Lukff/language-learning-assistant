@@ -3,9 +3,9 @@ package analysis
 
 import "encoding/json"
 
-// Expression é uma expressão que o Tutor usou naturalmente na conversa e
-// que vale a pena o Aluno reutilizar — distinta de TutorTaughtTerm (termo
-// que o Tutor explicou/ensinou explicitamente).
+// Expression is an expression the Tutor naturally used in the conversation
+// that's worth the Student reusing — distinct from TutorTaughtTerm (a term
+// the Tutor explicitly explained/taught).
 type Expression struct {
 	Text string `json:"text"`
 	Note string `json:"note"`

@@ -311,9 +311,9 @@ func TestLibraryService_GetTranscript_ErrorsWhenNoTranscriptYet(t *testing.T) {
 	}
 }
 
-// testStorageRoot retorna um resolver de storage_root fixo, apontando pra
-// um diretório temporário vazio — usado pelos testes que não têm relação
-// com a checagem de vídeo ausente (essa tem testes próprios abaixo).
+// testStorageRoot returns a fixed storage_root resolver, pointing to
+// an empty temporary directory — used by tests that aren't related
+// to the missing-video check (that has its own tests below).
 func testStorageRoot(t *testing.T) func() (string, error) {
 	t.Helper()
 	dir := t.TempDir()

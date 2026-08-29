@@ -1,5 +1,5 @@
-// Package db abre o banco SQLite local do app e aplica as migrations goose
-// embutidas no binário. Não importa nada do Wails (camada fina).
+// Package db opens the app's local SQLite database and applies the embedded goose
+// migrations. Imports nothing from Wails (thin layer).
 package db
 
 import (
@@ -16,9 +16,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Open abre (criando se necessário) o banco SQLite em path, ativa WAL e
-// aplica as migrations pendentes. O diretório pai de path é criado se não
-// existir.
+// Open opens (creating if needed) the SQLite database at path, enables WAL and
+// applies pending migrations. path's parent directory is created if it
+// doesn't exist.
 func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("criar diretório do banco: %w", err)

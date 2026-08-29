@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// UpsertPrompt insere (name, version, content) na tabela prompts se ainda
-// não existir. Se (name, version) já existir com content diferente, é
-// sinal de versão esquecida no código (convenção "-vN" no nome do arquivo
-// em prompts/); loga um aviso e mantém o conteúdo já gravado — não
-// sobrescreve, porque analysis_results já pode referenciar esse prompt_id.
+// UpsertPrompt inserts (name, version, content) into the prompts table if it
+// doesn't already exist. If (name, version) already exists with different content, it's
+// a sign of a forgotten version bump in the code (the "-vN" convention in the file name
+// under prompts/); logs a warning and keeps the already-stored content — it doesn't
+// overwrite, because analysis_results may already reference this prompt_id.
 func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64, error) {
 	var id int64
 	var existingContent string
@@ -37,9 +37,9 @@ func UpsertPrompt(conn *sql.DB, name string, version int, content string) (int64
 	return res.LastInsertId()
 }
 
-// UpsertAnalysisResult grava (ou substitui, se já existir) o resultado de
-// task para lessonID — reprocessar (História 2) sobrescreve a linha
-// existente.
+// UpsertAnalysisResult stores (or replaces, if it already exists) the result of
+// task for lessonID — reprocessing (Story 2) overwrites the
+// existing row.
 func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID int64, model, resultJSON string) error {
 	_, err := conn.Exec(
 		`INSERT INTO analysis_results (lesson_id, task, prompt_id, model, result_json, created_at)
@@ -57,7 +57,7 @@ func UpsertAnalysisResult(conn *sql.DB, lessonID int64, task string, promptID in
 	return nil
 }
 
-// AnalysisResult é o resultado persistido de uma tarefa de análise para uma lesson.
+// AnalysisResult is the persisted result of an analysis task for a lesson.
 type AnalysisResult struct {
 	LessonID   int64
 	Task       string
@@ -66,9 +66,9 @@ type AnalysisResult struct {
 	ResultJSON string
 }
 
-// FindAnalysisResult retorna (nil, nil) se a tarefa ainda não rodou pra
-// essa lesson — estado normal enquanto o job correspondente (História 2)
-// está pending/running/error, não um erro.
+// FindAnalysisResult returns (nil, nil) if the task hasn't run yet for
+// this lesson — a normal state while the corresponding job (Story 2)
+// is pending/running/error, not an error.
 func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisResult, error) {
 	r := AnalysisResult{LessonID: lessonID, Task: task}
 	err := conn.QueryRow(
@@ -84,10 +84,10 @@ func FindAnalysisResult(conn *sql.DB, lessonID int64, task string) (*AnalysisRes
 	return &r, nil
 }
 
-// ReplaceLessonTopics apaga os vínculos existentes e insere os novos (por
-// topic_id) — a lista é sempre derivada por inteiro do resultado mais
-// recente de analyze_topics, nunca um merge incremental. INSERT OR IGNORE
-// absorve um tópico duplicado que o chamador eventualmente repita.
+// ReplaceLessonTopics deletes the existing links and inserts the new ones (by
+// topic_id) — the list is always derived wholesale from the most
+// recent analyze_topics result, never an incremental merge. INSERT OR IGNORE
+// absorbs a duplicate topic the caller might repeat.
 func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 	tx, err := conn.Begin()
 	if err != nil {
@@ -109,12 +109,12 @@ func ReplaceLessonTopics(conn *sql.DB, lessonID int64, topicIDs []int64) error {
 	return nil
 }
 
-// DeleteSpeakerDependentAnalysisResults apaga as análises que dependem de
-// quem é aluno/tutor na aula (tudo exceto analyze_topics) — chamada quando o
-// mapeamento aluno/tutor muda (services.LibraryService.SetStudentSpeaker).
-// analyze_topics não menciona Aluno/Tutor no prompt e sobrevive; lesson_topics
-// também fica intacto (a tabela é a fonte da verdade dos chips, independente
-// da análise).
+// DeleteSpeakerDependentAnalysisResults deletes the analyses that depend on
+// who is the student/tutor in the lesson (everything except analyze_topics) — called when the
+// student/tutor mapping changes (services.LibraryService.SetStudentSpeaker).
+// analyze_topics doesn't mention Student/Tutor in the prompt and survives; lesson_topics
+// also stays intact (the table is the source of truth for the chips, independent
+// of the analysis).
 func DeleteSpeakerDependentAnalysisResults(conn *sql.DB, lessonID int64) error {
 	if _, err := conn.Exec(`DELETE FROM analysis_results WHERE lesson_id = ? AND task != 'analyze_topics'`, lessonID); err != nil {
 		return fmt.Errorf("apagar análises dependentes de falante da lesson %d: %w", lessonID, err)

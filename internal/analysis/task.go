@@ -9,20 +9,20 @@ import (
 	"assistente-idiomas/prompts"
 )
 
-// TaskDef é a interface comum das 7 tarefas de análise — permite iterar
-// todas numa lista única (var Tasks, ver Task 4 deste plano) apesar de cada
-// uma ter um tipo de resultado diferente (generics não permitem slice de
-// task[T] com T variável, daí essa interface não-genérica por cima).
+// TaskDef is the common interface for the 7 analysis tasks — allows iterating
+// over all of them in a single list (var Tasks, see Task 4 of this plan) despite each
+// one having a different result type (generics don't allow a slice of
+// task[T] with a variable T, hence this non-generic interface on top).
 type TaskDef interface {
-	Name() string   // ex.: "analyze_corrections" — mesmo valor gravado em prompts.name e analysis_results.task
-	Version() int   // versão do prompt (bump manual no código quando o .md mudar de conteúdo)
-	Prompt() string // conteúdo do prompt (embed.FS)
+	Name() string   // e.g.: "analyze_corrections" — same value stored in prompts.name and analysis_results.task
+	Version() int   // prompt version (manual bump in code when the .md content changes)
+	Prompt() string // prompt content (embed.FS)
 
-	// Execute chama provider.Complete, faz o parse e (quando a tarefa for
-	// ancorada) descarta itens com utterance_index inválido. Devolve o JSON
-	// já validado (pronto pra gravar em analysis_results.result_json) e o
-	// conteúdo bruto devolvido pelo provedor, pro chamador decidir o que
-	// fazer com ele.
+	// Execute calls provider.Complete, parses the result and (when the task is
+	// anchored) discards items with an invalid utterance_index. Returns the
+	// already-validated JSON (ready to be stored in analysis_results.result_json) and the
+	// raw content returned by the provider, for the caller to decide what
+	// to do with it.
 	Execute(ctx context.Context, provider Provider, transcript string, utteranceCount int) (resultJSON json.RawMessage, raw json.RawMessage, err error)
 }
 
@@ -53,16 +53,16 @@ func (t task[T]) Execute(ctx context.Context, provider Provider, transcript stri
 	return resultJSON, raw, nil
 }
 
-// anchored é implementada pelos tipos de item cujo parse referencia uma
-// fala específica da transcrição (Correction, TutorCorrection,
-// TutorFeedbackItem, ver Task 4) — um UtteranceIndex negativo representa
-// "ausente no JSON do modelo", tratado igual a um índice fora do range.
+// anchored is implemented by item types whose parse references a
+// specific utterance in the transcript (Correction, TutorCorrection,
+// TutorFeedbackItem, see Task 4) — a negative UtteranceIndex represents
+// "absent from the model's JSON", treated the same as an out-of-range index.
 type anchored interface {
 	UtteranceIndex() int
 }
 
-// filterAnchored descarta (retornando também a contagem descartada, pra
-// log) itens cujo UtteranceIndex não caia em [0, utteranceCount).
+// filterAnchored discards (also returning the discarded count, for
+// logging) items whose UtteranceIndex doesn't fall in [0, utteranceCount).
 func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discarded int) {
 	kept = items[:0]
 	for _, it := range items {
@@ -76,10 +76,10 @@ func filterAnchored[T anchored](items []T, utteranceCount int) (kept []T, discar
 	return kept, discarded
 }
 
-// mustLoadPrompt lê um prompt embutido em prompts.FS (prompts/embed.go,
-// Task 2) — panic em caso de ausência é intencional: um prompt faltando é
-// erro de build/empacotamento, não uma condição de runtime a tratar
-// graciosamente (mesmo espírito de um template.Must).
+// mustLoadPrompt reads a prompt embedded in prompts.FS (prompts/embed.go,
+// Task 2) — panicking when it's missing is intentional: a missing prompt is a
+// build/packaging error, not a runtime condition to handle
+// gracefully (same spirit as a template.Must).
 func mustLoadPrompt(filename string) string {
 	b, err := prompts.FS.ReadFile(filename)
 	if err != nil {

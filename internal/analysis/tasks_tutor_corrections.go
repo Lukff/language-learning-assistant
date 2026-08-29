@@ -6,9 +6,9 @@ import (
 	"log/slog"
 )
 
-// TutorCorrection é uma correção que o próprio Tutor deu ao Aluno durante a
-// aula (ao vivo, na conversa) — diferente de Correction (derivada pela
-// análise), embora ambas possam apontar pra mesma fala.
+// TutorCorrection is a correction the Tutor themself gave the Student during
+// the lesson (live, in conversation) — different from Correction (derived by the
+// analysis), though both may point to the same utterance.
 type TutorCorrection struct {
 	UtteranceIdx int    `json:"utterance_index"`
 	TutorSaid    string `json:"tutor_said"`

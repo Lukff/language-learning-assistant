@@ -10,12 +10,12 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// LibraryService expõe as aulas já confirmadas para a Biblioteca —
-// listagem com status derivado dos jobs e duração (História 5), filtro por
-// professor/período, reprocessamento de aulas com erro, busca de uma aula
-// pro Detalhe e sua transcrição sincronizada (História 6), checagem de
-// presença do arquivo de vídeo na storage_root atual (História 8), e
-// edição de data/horário/professor de uma aula já confirmada (História 9).
+// LibraryService exposes the already-confirmed lessons for the Library —
+// listing with status derived from the jobs and duration (Story 5), filtering by
+// teacher/period, reprocessing lessons with errors, fetching a lesson
+// for the Detail view and its synced transcript (Story 6), checking the
+// presence of the video file in the current storage_root (Story 8), and
+// editing the date/time/teacher of an already-confirmed lesson (Story 9).
 type LibraryService struct {
 	conn        *sql.DB
 	storageRoot func() (string, error)
@@ -26,16 +26,16 @@ func NewLibraryService(conn *sql.DB, storageRoot func() (string, error)) *Librar
 	return &LibraryService{conn: conn, storageRoot: storageRoot, moveFile: moveFileNoReplace}
 }
 
-// Lesson é uma aula confirmada, no formato exposto ao frontend. Status é
-// sempre um de "processando", "pronta", "erro" (ver db.LessonWithStatus);
-// ErrorMessage só é preenchido quando Status == "erro". DurationSeconds é
-// nil até o probe de duração (melhor esforço, na confirmação da
-// importação) ter sucesso. StudentSpeakerLabel é nil até o usuário marcar
-// quem é o aluno no toggle do Detalhe (História 6). VideoMissing é
-// recalculado a cada leitura (nunca gravado no banco) — true quando o
-// arquivo de video_path não é encontrado na storage_root atual (História 8:
-// pasta trocada sem o vídeo reaparecer, ou arquivo apagado/movido por fora
-// do app).
+// Lesson is a confirmed lesson, in the format exposed to the frontend. Status is
+// always one of "processando", "pronta", "erro" (see db.LessonWithStatus);
+// ErrorMessage is only filled in when Status == "erro". DurationSeconds is
+// nil until the duration probe (best effort, on import
+// confirmation) succeeds. StudentSpeakerLabel is nil until the user marks
+// who the student is in the Detail toggle (Story 6). VideoMissing is
+// recomputed on every read (never saved to the database) — true when the
+// video_path file is not found in the current storage_root (Story 8:
+// folder changed without the video reappearing, or file deleted/moved outside
+// the app).
 type Lesson struct {
 	ID                  int64   `json:"id"`
 	LessonDate          string  `json:"lessonDate"`
@@ -48,8 +48,8 @@ type Lesson struct {
 	VideoMissing        bool    `json:"videoMissing"`
 }
 
-// LessonFilter filtra ListLessons — campos zero são ignorados (sem filtro
-// naquele critério).
+// LessonFilter filters ListLessons — zero-value fields are ignored (no filter
+// on that criterion).
 type LessonFilter struct {
 	TeacherID int64   `json:"teacherId"`
 	DateFrom  string  `json:"dateFrom"`
@@ -57,15 +57,15 @@ type LessonFilter struct {
 	TopicIDs  []int64 `json:"topicIds"`
 }
 
-// Transcript é a transcrição de uma lesson, no formato exposto ao Detalhe
-// (História 6).
+// Transcript is a lesson's transcript, in the format exposed to the Detail view
+// (Story 6).
 type Transcript struct {
 	Utterances []Utterance `json:"utterances"`
 }
 
-// Utterance é uma fala da transcrição. Timestamps em segundos — mesma
-// unidade de HTMLVideoElement.currentTime no frontend, convertida aqui na
-// borda do serviço (o banco guarda time.Duration).
+// Utterance is one utterance of the transcript. Timestamps in seconds — the same
+// unit as HTMLVideoElement.currentTime in the frontend, converted here at the
+// service boundary (the database stores time.Duration).
 type Utterance struct {
 	Speaker      string  `json:"speaker"`
 	Text         string  `json:"text"`
@@ -73,8 +73,8 @@ type Utterance struct {
 	EndSeconds   float64 `json:"endSeconds"`
 }
 
-// ListLessons lista as aulas confirmadas com status/duração, mais recentes
-// primeiro, aplicando filter.
+// ListLessons lists the confirmed lessons with status/duration, most recent
+// first, applying filter.
 func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	rows, err := db.ListLessonsWithStatus(s.conn, db.LessonFilter{
 		TeacherID: filter.TeacherID,
@@ -102,19 +102,19 @@ func (s *LibraryService) ListLessons(filter LessonFilter) ([]Lesson, error) {
 	return out, nil
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — o worker de
-// jobs (internal/jobs) retoma o pipeline sozinho no próximo poll (~5s), sem
-// precisar acordá-lo explicitamente (mesma decisão da História 4). Não é
-// erro se a lesson não tiver nenhum job em erro no momento.
+// RetryLesson resets the lesson's errored jobs back to "pending" — the job
+// worker (internal/jobs) resumes the pipeline on its own on the next poll (~5s), with no
+// need to explicitly wake it up (same decision as Story 4). It is not an
+// error if the lesson has no jobs currently in error.
 func (s *LibraryService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err
 }
 
-// GetLesson busca uma aula por id, com status/erro derivados dos jobs, pro
-// Detalhe (História 6) — que agora abre em qualquer status: "processando"
-// e "erro" mostram o vídeo sem transcrição (ver LessonDetail.svelte),
-// "pronta" habilita GetTranscript.
+// GetLesson fetches a lesson by id, with status/error derived from the jobs, for the
+// Detail view (Story 6) — which now opens in any status: "processando"
+// and "erro" show the video without a transcript (see LessonDetail.svelte),
+// "pronta" enables GetTranscript.
 func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	lws, err := db.FindLessonWithStatusByID(s.conn, id)
 	if err != nil {
@@ -136,10 +136,10 @@ func (s *LibraryService) GetLesson(id int64) (Lesson, error) {
 	}, nil
 }
 
-// GetTranscript busca a transcrição de uma lesson pro Detalhe (História 6).
-// Só deve ser chamado quando GetLesson já retornou Status == "pronta" — o
-// Detalhe não chama isso pra aulas processando/erro, que mostram o status
-// no lugar do painel de transcrição.
+// GetTranscript fetches a lesson's transcript for the Detail view (Story 6).
+// Should only be called once GetLesson has already returned Status == "pronta" — the
+// Detail view doesn't call this for lessons processing/erroring, which show the status
+// in place of the transcript panel.
 func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	t, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
@@ -160,15 +160,15 @@ func (s *LibraryService) GetTranscript(lessonID int64) (Transcript, error) {
 	return out, nil
 }
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — escolha que vive dentro do EditLessonModal (Fase 2,
-// História 2; antes um toggle solto no Detalhe, Fase 1/História 6). Trocar
-// um label já definido por um diferente apaga qualquer análise já feita da
-// lesson: qualquer resultado ancorado em utterance_index passa a apontar
-// pro papel errado assim que os rótulos Aluno/Tutor mudam de falante —
-// trocar de novo exige reprocessar. Definir o label pela primeira vez
-// (StudentSpeakerLabel ainda nil) ou repetir o label já atual não descarta
-// nada.
+// SetStudentSpeaker records which raw speaker (e.g. "speaker_0") is the student
+// in this lesson — a choice that lives inside EditLessonModal (Phase 2,
+// Story 2; previously a standalone toggle in the Detail view, Phase 1/Story 6). Changing
+// an already-set label to a different one discards any analysis already done for the
+// lesson: any result anchored to utterance_index would then point
+// to the wrong role as soon as the Student/Tutor labels shift to a different speaker —
+// changing it again requires reprocessing. Setting the label for the first time
+// (StudentSpeakerLabel still nil) or repeating the current label discards
+// nothing.
 func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) error {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
 	if err != nil {
@@ -185,12 +185,12 @@ func (s *LibraryService) SetStudentSpeaker(lessonID int64, speakerLabel string) 
 	return db.SetStudentSpeaker(s.conn, lessonID, speakerLabel)
 }
 
-// UpdateLesson grava data/horário e professor de uma aula já confirmada
-// (História 9) — o professor pode ser um nome já cadastrado ou um nome
-// novo (mesmo combobox do formulário de importação). Depois de gravar,
-// tenta renomear o vídeo pro nome padronizado atual (melhor esforço — não
-// falha a edição se o rename não for possível, mesmo princípio da
-// confirmação de importação).
+// UpdateLesson saves the date/time and teacher of an already-confirmed lesson
+// (Story 9) — the teacher can be an already-registered name or a
+// new one (same combobox as the import form). After saving,
+// it tries to rename the video to the current standardized name (best effort — it doesn't
+// fail the edit if the rename isn't possible, same principle as
+// import confirmation).
 func (s *LibraryService) UpdateLesson(lessonID int64, lessonDate string, teacherName string) error {
 	if lessonDate == "" {
 		return fmt.Errorf("data da aula não pode ser vazia")
@@ -218,11 +218,11 @@ func (s *LibraryService) UpdateLesson(lessonID int64, lessonDate string, teacher
 	return nil
 }
 
-// videoMissing indica se o arquivo de vídeo de uma lesson não é encontrado
-// na storage_root atual. Qualquer erro de os.Stat (não só "não existe") é
-// tratado como ausente — resiliência: nunca deixa a Biblioteca quebrar por
-// causa disso, e não vale a pena diferenciar "ausente" de "sem permissão"
-// nesta fatia (História 8).
+// videoMissing indicates whether a lesson's video file is not found
+// in the current storage_root. Any os.Stat error (not just "doesn't exist") is
+// treated as missing — resilience: never lets the Library break because
+// of this, and it isn't worth distinguishing "missing" from "no permission"
+// in this slice (Story 8).
 func (s *LibraryService) videoMissing(videoPath string) bool {
 	root, err := s.storageRoot()
 	if err != nil {

@@ -80,9 +80,9 @@
     applyFilter();
   }
 
-  // lessonDate é gravado como "AAAA-MM-DD" ou "AAAA-MM-DDTHH:MM" (formato de
-  // <input type="datetime-local">); aqui só reformata pra exibição em pt-BR
-  // sem depender de fuso horário (não é um timestamp com "Z", é hora local).
+  // lessonDate is stored as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (the format of
+  // <input type="datetime-local">); this just reformats it for pt-BR display
+  // without depending on timezone (it's not a "Z" timestamp, it's local time).
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
@@ -124,10 +124,10 @@
     try {
       const summary = await ImportService.ScanFolder();
       syncMessage = `${summary.new} novas, ${summary.updated} atualizadas, ${summary.errors} erros`;
-      // A varredura pode reconciliar o video_path de aulas já confirmadas
-      // (arquivo renomeado/movido, achado por hash) — recarrega lessons
-      // também, não só pending, senão o badge de vídeo ausente (História 8)
-      // fica preso mostrando o video_path de antes da varredura.
+      // The scan can reconcile the video_path of already-confirmed lessons
+      // (file renamed/moved, found by hash) — reload lessons
+      // too, not just pending, otherwise the missing-video badge (Story 8)
+      // stays stuck showing the video_path from before the scan.
       await Promise.all([loadPending(), loadLessons()]);
     } catch (e) {
       error = String(e);

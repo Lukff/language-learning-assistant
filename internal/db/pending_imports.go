@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// PendingImport é um vídeo achado pela varredura da pasta de armazenamento
-// que ainda não foi confirmado (data/tutor) pelo usuário — ver História 3
-// em docs/phase-1-mvp.md.
+// PendingImport is a video found by the storage folder scan
+// that hasn't been confirmed (date/tutor) by the user yet — see Story 3
+// in docs/phase-1-mvp.md.
 type PendingImport struct {
 	ID            int64
 	Path          string
@@ -18,8 +18,8 @@ type PendingImport struct {
 	SuggestedDate string
 }
 
-// FindPendingImportByHash indica se já existe um candidato pendente com
-// este hash — evita duplicar a mesma varredura em execuções sucessivas.
+// FindPendingImportByHash reports whether a pending candidate with
+// this hash already exists — avoids duplicating the same scan across successive runs.
 func FindPendingImportByHash(conn *sql.DB, hash string) (bool, error) {
 	var id int64
 	err := conn.QueryRow(`SELECT id FROM pending_imports WHERE sha256 = ?`, hash).Scan(&id)
@@ -32,10 +32,10 @@ func FindPendingImportByHash(conn *sql.DB, hash string) (bool, error) {
 	return true, nil
 }
 
-// InsertPendingImport grava um candidato novo achado pela varredura (ou
-// por um drop manual, História 3b) e retorna o id da linha criada — o
-// chamador precisa dele pra montar o PendingImport exposto ao frontend
-// sem uma segunda consulta.
+// InsertPendingImport stores a new candidate found by the scan (or
+// by a manual drop, Story 3b) and returns the id of the created row — the
+// caller needs it to build the PendingImport exposed to the frontend
+// without a second query.
 func InsertPendingImport(conn *sql.DB, p PendingImport) (int64, error) {
 	res, err := conn.Exec(
 		`INSERT INTO pending_imports (path, file_size, file_mtime, sha256, suggested_date, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -51,8 +51,8 @@ func InsertPendingImport(conn *sql.DB, p PendingImport) (int64, error) {
 	return id, nil
 }
 
-// ListPendingImports lista os candidatos aguardando revisão, mais recentes
-// primeiro — é o que a Biblioteca lê pra montar a seção "aguardando revisão".
+// ListPendingImports lists the candidates awaiting review, most recent
+// first — this is what the Library reads to build the "awaiting review" section.
 func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 	rows, err := conn.Query(
 		`SELECT id, path, file_size, file_mtime, sha256, COALESCE(suggested_date, '') FROM pending_imports ORDER BY created_at DESC`,
@@ -76,13 +76,13 @@ func ListPendingImports(conn *sql.DB) ([]PendingImport, error) {
 	return out, nil
 }
 
-// ConfirmPendingImport transforma o candidato id numa lesson real: insere em
-// lessons (com lessonDate/teacherName informados pelo usuário, o segundo
-// resolvido para um teacher_id via GetOrCreateTeacherByName), cria os jobs
-// extract_audio e transcribe como pending, e remove o candidato de
-// pending_imports — tudo numa única transação. Se qualquer passo falhar, o
-// candidato continua intacto em pending_imports para o usuário tentar de
-// novo.
+// ConfirmPendingImport turns candidate id into a real lesson: inserts into
+// lessons (with lessonDate/teacherName provided by the user, the latter
+// resolved to a teacher_id via GetOrCreateTeacherByName), creates the
+// extract_audio and transcribe jobs as pending, and removes the candidate from
+// pending_imports — all in a single transaction. If any step fails, the
+// candidate remains intact in pending_imports for the user to try
+// again.
 func ConfirmPendingImport(conn *sql.DB, id int64, lessonDate string, teacherName string) (int64, error) {
 	tx, err := conn.Begin()
 	if err != nil {

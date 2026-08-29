@@ -3,9 +3,9 @@ package analysis
 
 import "encoding/json"
 
-// TutorTaughtTerm é um termo/expressão que o Tutor explicou ou ensinou
-// explicitamente durante a aula (ao contrário de Expression, que é só uso
-// natural na conversa).
+// TutorTaughtTerm is a term/expression the Tutor explicitly explained or
+// taught during the lesson (unlike Expression, which is just natural
+// use in the conversation).
 type TutorTaughtTerm struct {
 	Term        string `json:"term"`
 	Translation string `json:"translation"`

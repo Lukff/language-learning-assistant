@@ -15,10 +15,10 @@
     onClose: () => void;
   } = $props();
 
-  // Cópia editável do palpite de data/horário — deliberadamente não reativa a
-  // mudanças de `pending` (cada candidato tem sua própria instância deste
-  // componente, ver Library.svelte). `untrack` documenta essa intenção pro
-  // linter do Svelte 5.
+  // Editable copy of the guessed date/time — deliberately not reactive to
+  // changes in `pending` (each candidate has its own instance of this
+  // component, see Library.svelte). `untrack` documents this intent for
+  // the Svelte 5 linter.
   let lessonDate: string = $state(untrack(() => pending.suggestedDate));
   let tutor: string = $state("");
   let error: string = $state("");

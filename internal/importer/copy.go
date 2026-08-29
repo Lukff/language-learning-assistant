@@ -1,7 +1,7 @@
-// copy.go — ver importer.go pro doc do package. Cópia de um arquivo externo
-// (drag-and-drop, História 3b) pra dentro da raiz de armazenamento. Não sabe
-// de Wails nem de banco — só I/O de arquivo (camada fina, mesmo princípio do
-// resto do internal/).
+// copy.go — see importer.go for the package doc. Copies an external file
+// (drag-and-drop, Story 3b) into the storage root. Knows nothing
+// about Wails or the database — just file I/O (thin layer, same principle as the
+// rest of internal/).
 package importer
 
 import (
@@ -12,14 +12,14 @@ import (
 	"strings"
 )
 
-// CopyIntoStorageRoot copia o conteúdo de srcPath pra dentro de
-// storageRoot, sem subpasta, usando o nome-base de srcPath. Copia primeiro
-// pra um arquivo temporário dentro de storageRoot (mesmo filesystem,
-// então o rename final é atômico) e só depois move pro nome definitivo —
-// uma cópia interrompida no meio nunca deixa um arquivo parcial com o
-// nome final. Resolve colisão de nome no destino com sufixo "-2", "-3",
-// ... antes da extensão. Retorna o nome do arquivo copiado (sem
-// diretório — nunca cria subpasta).
+// CopyIntoStorageRoot copies the contents of srcPath into
+// storageRoot, without a subfolder, using srcPath's base name. It first copies
+// to a temporary file inside storageRoot (same filesystem,
+// so the final rename is atomic) and only then moves it to the final name —
+// a copy interrupted midway never leaves a partial file under the
+// final name. Resolves a name collision at the destination with a "-2", "-3",
+// ... suffix before the extension. Returns the copied file's name (with no
+// directory — never creates a subfolder).
 func CopyIntoStorageRoot(srcPath, storageRoot string) (string, error) {
 	src, err := os.Open(srcPath)
 	if err != nil {

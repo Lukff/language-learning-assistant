@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// ExtractAudio extrai a trilha de áudio de videoPath via ffmpeg, gravando
-// um WAV mono 16kHz em outputPath — formato universalmente aceito pelas
-// APIs de STT candidatas, evitando ambiguidade de codec.
+// ExtractAudio extracts the audio track from videoPath via ffmpeg, writing
+// a mono 16kHz WAV to outputPath — a format universally accepted by the
+// candidate STT APIs, avoiding codec ambiguity.
 func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return fmt.Errorf("media: ffmpeg não encontrado no PATH: %w", err)
@@ -34,11 +34,11 @@ func ExtractAudio(ctx context.Context, videoPath, outputPath string) error {
 	return nil
 }
 
-// Duration lê a duração do vídeo via ffprobe (companion do ffmpeg, mesma
-// dependência externa já assumida por ExtractAudio) — usado pra gravar
-// lessons.duration_seconds na confirmação da importação (História 5). É
-// metadado intrínseco do vídeo, não produto do pipeline de transcrição:
-// deve funcionar mesmo que extract_audio/transcribe nunca rodem.
+// Duration reads the video's duration via ffprobe (ffmpeg's companion, the same
+// external dependency already assumed by ExtractAudio) — used to record
+// lessons.duration_seconds when the import is confirmed (Story 5). It's
+// intrinsic video metadata, not a product of the transcription pipeline:
+// it must work even if extract_audio/transcribe never run.
 func Duration(ctx context.Context, videoPath string) (time.Duration, error) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		return 0, fmt.Errorf("media: ffprobe não encontrado no PATH: %w", err)

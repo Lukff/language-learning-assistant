@@ -9,9 +9,9 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// HasTranscript indica se já existe uma transcrição gravada para
-// lessonID — usado por internal/jobs.Worker pra idempotência do job
-// transcribe.
+// HasTranscript reports whether a transcript has already been stored for
+// lessonID — used by internal/jobs.Worker for the transcribe
+// job's idempotency.
 func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 	var id int64
 	err := conn.QueryRow(`SELECT id FROM transcripts WHERE lesson_id = ?`, lessonID).Scan(&id)
@@ -24,8 +24,8 @@ func HasTranscript(conn *sql.DB, lessonID int64) (bool, error) {
 	return true, nil
 }
 
-// InsertTranscript grava a transcrição de uma lesson. utterancesJSON já
-// vem serializado ([]stt.Utterance em JSON).
+// InsertTranscript stores the transcript of a lesson. utterancesJSON comes
+// already serialized ([]stt.Utterance as JSON).
 func InsertTranscript(conn *sql.DB, lessonID int64, utterancesJSON string) error {
 	_, err := conn.Exec(
 		`INSERT INTO transcripts (lesson_id, utterances, created_at) VALUES (?, ?, ?)`,
@@ -37,16 +37,16 @@ func InsertTranscript(conn *sql.DB, lessonID int64, utterancesJSON string) error
 	return nil
 }
 
-// Transcript é a transcrição completa de uma lesson, já desserializada.
+// Transcript is the full transcript of a lesson, already deserialized.
 type Transcript struct {
 	LessonID   int64
 	Utterances []stt.Utterance
 }
 
-// FindTranscriptByLessonID busca a transcrição de uma lesson. Retorna
-// (nil, nil) se ainda não houver transcrição gravada — estado normal
-// enquanto o job transcribe está pendente/rodando ou falhou (ver
-// LibraryService.GetLesson/GetTranscript, História 6), não um erro.
+// FindTranscriptByLessonID looks up the transcript of a lesson. Returns
+// (nil, nil) if no transcript has been stored yet — a normal state
+// while the transcribe job is pending/running or has failed (see
+// LibraryService.GetLesson/GetTranscript, Story 6), not an error.
 func FindTranscriptByLessonID(conn *sql.DB, lessonID int64) (*Transcript, error) {
 	var utterancesJSON string
 	err := conn.QueryRow(

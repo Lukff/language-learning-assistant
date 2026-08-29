@@ -12,17 +12,17 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// Teacher é uma linha de teachers — a entidade que substitui a antiga
-// coluna livre lessons.tutor (ver História 9). Nome é único: renomear é um
-// UPDATE de uma linha só, refletido em todas as aulas via JOIN.
+// Teacher is a row from teachers — the entity that replaces the old
+// free-text lessons.tutor column (see Story 9). Name is unique: renaming is a
+// single-row UPDATE, reflected in all lessons via JOIN.
 type Teacher struct {
 	ID   int64
 	Name string
 }
 
-// ListTeachers lista os professores cadastrados em ordem alfabética —
-// alimenta tanto o combobox de importação/edição quanto o painel
-// "Professores" de Configurações.
+// ListTeachers lists the registered teachers in alphabetical order —
+// feeds both the import/edit combobox and the
+// "Teachers" panel in Settings.
 func ListTeachers(conn *sql.DB) ([]Teacher, error) {
 	rows, err := conn.Query(`SELECT id, name FROM teachers ORDER BY name ASC`)
 	if err != nil {
@@ -44,23 +44,23 @@ func ListTeachers(conn *sql.DB) ([]Teacher, error) {
 	return out, nil
 }
 
-// execer é satisfeito tanto por *sql.DB quanto por *sql.Tx — permite
-// getOrCreateTeacherByName rodar tanto solto (GetOrCreateTeacherByName)
-// quanto dentro de uma transação já aberta (ConfirmPendingImport, que
-// precisa que a criação do professor, se for novo, faça parte da mesma
-// transação da lesson). Mesmo padrão de rowScanner em lesson_status.go.
+// execer is satisfied by both *sql.DB and *sql.Tx — lets
+// getOrCreateTeacherByName run either standalone (GetOrCreateTeacherByName)
+// or inside an already open transaction (ConfirmPendingImport, which
+// needs the teacher creation, if it's a new one, to be part of the same
+// transaction as the lesson). Same pattern as rowScanner in lesson_status.go.
 type execer interface {
 	QueryRow(query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
 }
 
-// getOrCreateTeacherByName é a implementação compartilhada por
-// GetOrCreateTeacherByName e por ConfirmPendingImport (via tx). name é
-// aparado (TrimSpace) antes de qualquer busca/gravação — evita que espaço
-// em branco perdido no combobox (ex.: "Sarah M. " vs "Sarah M.") vire um
-// professor duplicado, exatamente o problema de grafia divergente que a
-// entidade teachers existe para evitar (ver Contexto do design da
-// História 9).
+// getOrCreateTeacherByName is the implementation shared by
+// GetOrCreateTeacherByName and ConfirmPendingImport (via tx). name is
+// trimmed (TrimSpace) before any lookup/write — prevents stray
+// whitespace from the combobox (e.g. "Sarah M. " vs "Sarah M.") from becoming a
+// duplicate teacher, exactly the diverging-spelling problem the
+// teachers entity exists to prevent (see the Story 9 design
+// context).
 func getOrCreateTeacherByName(q execer, name string) (int64, error) {
 	name = strings.TrimSpace(name)
 	var id int64
@@ -87,17 +87,17 @@ func getOrCreateTeacherByName(q execer, name string) (int64, error) {
 	return id, nil
 }
 
-// GetOrCreateTeacherByName resolve o nome livre digitado no combobox
-// (importação ou edição de aula) para um teacher_id: retorna o id
-// existente se o nome já está cadastrado, senão cria um professor novo.
+// GetOrCreateTeacherByName resolves the free-text name typed into the combobox
+// (lesson import or edit) to a teacher_id: returns the existing
+// id if the name is already registered, otherwise creates a new teacher.
 func GetOrCreateTeacherByName(conn *sql.DB, name string) (int64, error) {
 	return getOrCreateTeacherByName(conn, name)
 }
 
-// RenameTeacher renomeia o professor id — reflete em todas as aulas dele
-// automaticamente (JOIN, não há cópia do nome em lessons). Colisão com um
-// nome já usado por outro professor (UNIQUE) vira um erro legível, sem
-// mesclar registros (fora de escopo da História 9).
+// RenameTeacher renames teacher id — automatically reflected in all
+// their lessons (JOIN, there's no name copy in lessons). A collision with a
+// name already used by another teacher (UNIQUE) becomes a readable error, without
+// merging records (out of scope for Story 9).
 func RenameTeacher(conn *sql.DB, id int64, newName string) error {
 	newName = strings.TrimSpace(newName)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -111,10 +111,10 @@ func RenameTeacher(conn *sql.DB, id int64, newName string) error {
 	return nil
 }
 
-// isUniqueConstraintError detecta violação de UNIQUE do driver SQLite —
-// isolado aqui (única dependência de driver específico na camada de
-// repositório, CLAUDE.md) pra RenameTeacher poder devolver uma mensagem
-// legível em vez do erro cru do SQLite.
+// isUniqueConstraintError detects a UNIQUE violation from the SQLite driver —
+// isolated here (the only driver-specific dependency in the
+// repository layer, per CLAUDE.md) so RenameTeacher can return a readable
+// message instead of SQLite's raw error.
 func isUniqueConstraintError(err error) bool {
 	var sqliteErr *sqlite.Error
 	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE

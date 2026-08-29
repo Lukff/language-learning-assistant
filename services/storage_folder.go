@@ -7,10 +7,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// chooseStorageFolder abre o dialog nativo de escolha de pasta com o título
-// dado e valida que ela é gravável. Retorna path vazio (sem erro) se o
-// usuário cancelar o dialog. Compartilhado por SetupService (wizard de
-// first-run) e SettingsService (troca de pasta, História 8).
+// chooseStorageFolder opens the native folder-picker dialog with the given
+// title and validates that it is writable. Returns an empty path (with no error) if the
+// user cancels the dialog. Shared by SetupService (first-run
+// wizard) and SettingsService (folder change, Story 8).
 func chooseStorageFolder(title string) (string, error) {
 	dir, err := application.Get().Dialog.OpenFile().
 		SetTitle(title).
@@ -30,8 +30,8 @@ func chooseStorageFolder(title string) (string, error) {
 	return dir, nil
 }
 
-// isDirWritable confirma que dir aceita escrita, criando e removendo um
-// arquivo temporário nele.
+// isDirWritable confirms that dir accepts writes, by creating and removing a
+// temporary file in it.
 func isDirWritable(dir string) error {
 	f, err := os.CreateTemp(dir, ".assistente-idiomas-write-test-*")
 	if err != nil {

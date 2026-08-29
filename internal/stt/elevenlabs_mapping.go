@@ -20,19 +20,19 @@ type elevenLabsWord struct {
 	SpeakerID string  `json:"speaker_id"`
 }
 
-// mapElevenLabsResponse converte o JSON bruto do endpoint POST
-// /v1/speech-to-text do ElevenLabs Scribe para o domínio comum stt.Result.
-// Mantida separada da chamada HTTP (elevenlabs.go) para ser testável com
-// fixture, sem precisar de rede.
+// mapElevenLabsResponse converts the raw JSON from the ElevenLabs Scribe
+// POST /v1/speech-to-text endpoint into the common stt.Result domain.
+// Kept separate from the HTTP call (elevenlabs.go) so it's testable with a
+// fixture, without needing the network.
 //
-// Ao contrário da Gladia/AssemblyAI/Deepgram, a API não agrupa a resposta em
-// utterances — devolve um array plano de words[], cada uma com type
-// (word/spacing/audio_event) e speaker_id. O agrupamento em turnos de fala é
-// feito aqui: uma nova Utterance começa sempre que o speaker_id muda.
+// Unlike Gladia/AssemblyAI/Deepgram, the API doesn't group the response into
+// utterances — it returns a flat array of words[], each with a type
+// (word/spacing/audio_event) and speaker_id. Grouping into speech turns is
+// done here: a new Utterance starts whenever speaker_id changes.
 //
-// Também não há campo de status a validar: a resposta síncrona só existe
-// quando a transcrição já terminou com sucesso — um erro chega como HTTP
-// não-2xx, tratado em elevenlabs.go antes desta função ser chamada.
+// There's also no status field to validate: the synchronous response only
+// exists once transcription has already finished successfully — an error
+// arrives as a non-2xx HTTP status, handled in elevenlabs.go before this function is called.
 func mapElevenLabsResponse(raw []byte) (*Result, error) {
 	var parsed elevenLabsResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -45,16 +45,16 @@ func mapElevenLabsResponse(raw []byte) (*Result, error) {
 	}, nil
 }
 
-// groupElevenLabsWords agrupa entradas consecutivas do array plano de words
-// pelo mesmo speaker_id em uma Utterance. O texto da utterance concatena o
-// texto bruto de toda entrada do grupo (word, spacing e audio_event) na
-// ordem original, preservando o espaçamento e mantendo marcadores de eventos
-// não-verbais (ex.: "(laughs)") como contexto de leitura — decisão de
-// produto, não filtrar. Só entradas type=="word" viram stt.Word: a lista de
-// palavras clicáveis do domínio é só fala real, mesmo critério usado por
-// Gladia/AssemblyAI/Deepgram. Não há segmentação por pausa de silêncio
-// dentro do mesmo locutor — só a troca de speaker_id abre uma nova
-// Utterance (decisão registrada na spec: evitar heurística extra no spike).
+// groupElevenLabsWords groups consecutive entries of the flat words array
+// with the same speaker_id into an Utterance. The utterance text concatenates the
+// raw text of every entry in the group (word, spacing, and audio_event) in
+// original order, preserving spacing and keeping non-verbal event
+// markers (e.g. "(laughs)") as reading context — a product
+// decision, not filtering them out. Only type=="word" entries become stt.Word: the domain's
+// list of clickable words is real speech only, the same criterion used by
+// Gladia/AssemblyAI/Deepgram. There's no segmentation by silence pause
+// within the same speaker — only a speaker_id change opens a new
+// Utterance (decision recorded in the spec: avoid extra heuristics in the spike).
 func groupElevenLabsWords(items []elevenLabsWord) []Utterance {
 	utterances := make([]Utterance, 0)
 	var current *Utterance

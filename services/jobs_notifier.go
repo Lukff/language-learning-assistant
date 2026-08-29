@@ -7,24 +7,24 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// JobUpdatedEvent é o nome do evento Wails emitido a cada transição de
-// status de job — nenhuma tela consome isso ainda (fica pras Histórias 5 e
-// 7); esta história só monta o transporte.
+// JobUpdatedEvent is the name of the Wails event emitted on every job
+// status transition — no screen consumes it yet (that's for Stories 5 and
+// 7); this story only sets up the transport.
 const JobUpdatedEvent = "job:updated"
 
-// WailsJobNotifier implementa jobs.Notifier emitindo eventos Wails — única
-// peça do pipeline (História 4) que sabe que o Wails existe. internal/jobs
-// em si não importa Wails (camada fina).
+// WailsJobNotifier implements jobs.Notifier by emitting Wails events — the only
+// piece of the pipeline (Story 4) that knows Wails exists. internal/jobs
+// itself does not import Wails (thin layer).
 type WailsJobNotifier struct{}
 
 func (WailsJobNotifier) JobChanged(e jobs.JobEvent) {
 	app := application.Get()
 	if app == nil {
-		// O worker de jobs é iniciado antes de application.New() rodar
-		// (main.go — ordem intencional). Nessa janela, application.Get()
-		// retorna nil e emitir causaria panic na goroutine do worker.
-		// Descartar o evento aqui é inofensivo: nenhuma tela consome
-		// job:updated ainda.
+		// The job worker is started before application.New() runs
+		// (main.go — intentional ordering). In that window, application.Get()
+		// returns nil and emitting would panic in the worker's goroutine.
+		// Discarding the event here is harmless: no screen consumes
+		// job:updated yet.
 		return
 	}
 	app.Event.Emit(JobUpdatedEvent, e)

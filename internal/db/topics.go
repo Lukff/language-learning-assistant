@@ -9,16 +9,16 @@ import (
 	"time"
 )
 
-// Topic é uma linha de topics — a entidade que substitui a antiga coluna
-// lesson_topics.topic (ver História 3 da Fase 2). Nome é único: renomear é
-// um UPDATE de uma linha só, refletido em todas as aulas via JOIN.
+// Topic is a row from topics — the entity that replaces the old
+// lesson_topics.topic column (see Phase 2 Story 3). Name is unique: renaming is
+// a single-row UPDATE, reflected in all lessons via JOIN.
 type Topic struct {
 	ID   int64
 	Name string
 }
 
-// ListTopics lista os tópicos cadastrados em ordem alfabética — alimenta o
-// painel "Tópicos" de Configurações e a lista de reaproveitamento do prompt.
+// ListTopics lists the registered topics in alphabetical order — feeds the
+// "Topics" panel in Settings and the prompt's reuse list.
 func ListTopics(conn *sql.DB) ([]Topic, error) {
 	rows, err := conn.Query(`SELECT id, name FROM topics ORDER BY name ASC`)
 	if err != nil {
@@ -40,8 +40,8 @@ func ListTopics(conn *sql.DB) ([]Topic, error) {
 	return out, nil
 }
 
-// getOrCreateTopicByName resolve um nome (aparado) para um topic_id —
-// reusa execer (teachers.go) pra rodar solto ou dentro de uma transação.
+// getOrCreateTopicByName resolves a (trimmed) name to a topic_id —
+// reuses execer (teachers.go) to run either standalone or inside a transaction.
 func getOrCreateTopicByName(q execer, name string) (int64, error) {
 	name = strings.TrimSpace(name)
 	var id int64
@@ -72,8 +72,8 @@ func GetOrCreateTopicByName(conn *sql.DB, name string) (int64, error) {
 	return getOrCreateTopicByName(conn, name)
 }
 
-// RenameTopic renomeia o tópico id — reflete em todas as aulas dele
-// automaticamente (JOIN). Colisão (UNIQUE) vira um erro legível.
+// RenameTopic renames topic id — automatically reflected in all its
+// lessons (JOIN). A collision (UNIQUE) becomes a readable error.
 func RenameTopic(conn *sql.DB, id int64, newName string) error {
 	newName = strings.TrimSpace(newName)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -87,8 +87,8 @@ func RenameTopic(conn *sql.DB, id int64, newName string) error {
 	return nil
 }
 
-// ListLessonTopics devolve os tópicos de lessonID (JOIN topics), em ordem
-// alfabética.
+// ListLessonTopics returns the topics of lessonID (JOIN topics), in
+// alphabetical order.
 func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 	rows, err := conn.Query(
 		`SELECT t.id, t.name FROM lesson_topics lt JOIN topics t ON t.id = lt.topic_id WHERE lt.lesson_id = ? ORDER BY t.name ASC`,
@@ -113,8 +113,8 @@ func ListLessonTopics(conn *sql.DB, lessonID int64) ([]Topic, error) {
 	return out, nil
 }
 
-// AddLessonTopic vincula topicID a lessonID (INSERT OR IGNORE — já vinculado
-// não é erro).
+// AddLessonTopic links topicID to lessonID (INSERT OR IGNORE — already linked
+// isn't an error).
 func AddLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	_, err := conn.Exec(`INSERT OR IGNORE INTO lesson_topics (lesson_id, topic_id) VALUES (?, ?)`, lessonID, topicID)
 	if err != nil {
@@ -123,7 +123,7 @@ func AddLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	return nil
 }
 
-// RemoveLessonTopic desvincula topicID de lessonID (não apaga a entidade).
+// RemoveLessonTopic unlinks topicID from lessonID (doesn't delete the entity).
 func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	_, err := conn.Exec(`DELETE FROM lesson_topics WHERE lesson_id = ? AND topic_id = ?`, lessonID, topicID)
 	if err != nil {
@@ -132,9 +132,9 @@ func RemoveLessonTopic(conn *sql.DB, lessonID, topicID int64) error {
 	return nil
 }
 
-// DeleteTopic apaga a entidade id, desvinculando-a antes de qualquer aula
-// que a usava (a FK lesson_topics.topic_id não tem ON DELETE CASCADE, e o
-// banco roda com foreign_keys=ON — sem isso o DELETE em topics falharia).
+// DeleteTopic deletes entity id, unlinking it first from any lesson
+// that used it (the lesson_topics.topic_id FK doesn't have ON DELETE CASCADE, and the
+// database runs with foreign_keys=ON — without this the DELETE on topics would fail).
 func DeleteTopic(conn *sql.DB, id int64) error {
 	tx, err := conn.Begin()
 	if err != nil {
@@ -155,9 +155,9 @@ func DeleteTopic(conn *sql.DB, id int64) error {
 	return nil
 }
 
-// DeleteAllTopics apaga todos os tópicos cadastrados e seus vínculos com
-// aulas — usado pra reset em massa durante testes manuais, não é um fluxo
-// do dia a dia do usuário.
+// DeleteAllTopics deletes all registered topics and their links to
+// lessons — used for bulk reset during manual testing, not part of the
+// user's everyday flow.
 func DeleteAllTopics(conn *sql.DB) error {
 	tx, err := conn.Begin()
 	if err != nil {

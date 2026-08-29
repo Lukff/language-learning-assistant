@@ -1,8 +1,8 @@
 // internal/analysis/tasks.go
 package analysis
 
-// Tasks lista as 7 tarefas de análise da Fase 2 — a ordem não importa pra
-// execução (independentes entre si), só pra leitura humana e pra
+// Tasks lists the 7 Phase 2 analysis tasks — the order doesn't matter for
+// execution (independent from each other), only for human reading and for
 // RegisterPrompts (prompts.go).
 var Tasks = []TaskDef{
 	NewCorrectionsTask(),

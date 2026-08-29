@@ -7,8 +7,8 @@ import (
 	"log/slog"
 )
 
-// Correction é uma correção de uma fala do Aluno, derivada pela análise
-// (ao contrário de TutorCorrection, dada ao vivo pelo próprio Tutor).
+// Correction is a correction to a Student utterance, derived by the analysis
+// (unlike TutorCorrection, given live by the Tutor themself).
 type Correction struct {
 	UtteranceIdx int    `json:"utterance_index"`
 	Original     string `json:"original"`
@@ -36,10 +36,10 @@ func NewCorrectionsTask() TaskDef {
 	return task[[]Correction]{name: "analyze_corrections", version: 1, prompt: mustLoadPrompt("analyze-corrections-v1.md"), parse: parseCorrections}
 }
 
-// ParseCorrectionsResult decodifica um result_json já persistido (gravado
-// por Execute a partir desta mesma tarefa — um array JSON de Correction,
-// sem envelope) de volta em []Correction. Reaproveitado por quem precisa
-// reconstituir o resultado salvo sem chamar o provedor de novo
+// ParseCorrectionsResult decodes an already-persisted result_json (written
+// by Execute for this same task — a JSON array of Correction,
+// with no envelope) back into []Correction. Reused by whoever needs to
+// reconstitute the saved result without calling the provider again
 // (services.AnalysisService).
 func ParseCorrectionsResult(resultJSON json.RawMessage) ([]Correction, error) {
 	var out []Correction

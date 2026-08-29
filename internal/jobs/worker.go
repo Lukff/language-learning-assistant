@@ -16,12 +16,12 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// maxAttempts é o total de tentativas (a primeira + os retries) antes de
-// um job falho virar "error" terminal — ver docs/phase-1-mvp.md (História 4).
+// maxAttempts is the total number of attempts (the first + retries) before
+// a failed job becomes terminal "error" — see docs/phase-1-mvp.md (Story 4).
 const maxAttempts = 3
 
-// backoff mapeia attempts (já incrementado após uma falha) para o tempo
-// mínimo de espera antes da próxima tentativa.
+// backoff maps attempts (already incremented after a failure) to the
+// minimum wait time before the next attempt.
 var backoff = map[int]time.Duration{
 	1: 10 * time.Second,
 	2: 60 * time.Second,
@@ -30,30 +30,30 @@ var backoff = map[int]time.Duration{
 
 const defaultPollInterval = 5 * time.Second
 
-// MediaExtractorFunc tem a mesma assinatura de media.ExtractAudio —
-// permite injetar um fake nos testes sem depender de ffmpeg.
+// MediaExtractorFunc has the same signature as media.ExtractAudio —
+// allows injecting a fake in tests without depending on ffmpeg.
 type MediaExtractorFunc func(ctx context.Context, videoPath, outputPath string) error
 
-// StorageRootResolver resolve o path absoluto da pasta de armazenamento.
-// Reavaliado a cada job (não guardado como valor fixo na criação do
-// Worker) porque o wizard de primeira execução grava essa configuração
-// depois que o app (e o Worker) já foram iniciados — ver o spec da
-// História 4 em docs/superpowers/specs/.
+// StorageRootResolver resolves the storage folder's absolute path.
+// Re-evaluated on each job (not stored as a fixed value when the
+// Worker is created) because the first-run wizard writes this configuration
+// after the app (and the Worker) have already started — see the
+// Story 4 spec in docs/superpowers/specs/.
 type StorageRootResolver func() (string, error)
 
-// STTProviderFactory constrói (ou retorna) o stt.Provider a usar. Mesma
-// razão de StorageRootResolver: a credencial de STT só existe depois do
+// STTProviderFactory builds (or returns) the stt.Provider to use. Same
+// reason as StorageRootResolver: the STT credential only exists after the
 // wizard.
 type STTProviderFactory func() (stt.Provider, error)
 
-// Notifier é notificado a cada transição de status de job. A implementação
-// real (que emite eventos Wails) mora em services/ — internal/jobs não
-// importa Wails (camada fina).
+// Notifier is notified on every job status transition. The real
+// implementation (which emits Wails events) lives in services/ — internal/jobs doesn't
+// import Wails (thin layer).
 type Notifier interface {
 	JobChanged(JobEvent)
 }
 
-// JobEvent é o payload passado ao Notifier a cada transição.
+// JobEvent is the payload passed to the Notifier on every transition.
 type JobEvent struct {
 	LessonID  int64
 	Kind      string
@@ -66,8 +66,8 @@ type noopNotifier struct{}
 
 func (noopNotifier) JobChanged(JobEvent) {}
 
-// Worker processa a fila de jobs (tabela jobs) sequencialmente, um de cada
-// vez — ver decisão "worker único" em docs/technology-decisions.md.
+// Worker processes the job queue (jobs table) sequentially, one at a
+// time — see the "single worker" decision in docs/technology-decisions.md.
 type Worker struct {
 	conn          *sql.DB
 	storageRoot   StorageRootResolver
@@ -80,7 +80,7 @@ type Worker struct {
 	wake          chan struct{}
 }
 
-// Option customiza um Worker na criação — usado nos testes pra encurtar o
+// Option customizes a Worker at creation — used in tests to shorten the
 // pollInterval.
 type Option func(*Worker)
 
@@ -121,9 +121,9 @@ func NewWorker(
 	return w
 }
 
-// Wake sinaliza ao Worker que há um job novo pra olhar, sem esperar o
-// próximo tick do poll de fallback. Não bloqueia — se já houver um sinal
-// pendente, este é descartado (o worker já vai acordar).
+// Wake signals the Worker that there's a new job to look at, without waiting for the
+// next fallback poll tick. Non-blocking — if a signal is already
+// pending, this one is discarded (the worker will wake up anyway).
 func (w *Worker) Wake() {
 	select {
 	case w.wake <- struct{}{}:
@@ -131,8 +131,8 @@ func (w *Worker) Wake() {
 	}
 }
 
-// Run bloqueia processando jobs até ctx ser cancelado. Ao iniciar, faz
-// requeue de qualquer job preso em "running" (crash/kill anterior).
+// Run blocks processing jobs until ctx is canceled. On startup, it
+// requeues any job stuck in "running" (from a previous crash/kill).
 func (w *Worker) Run(ctx context.Context) error {
 	if _, err := db.RequeueRunningJobs(w.conn); err != nil {
 		return fmt.Errorf("jobs: requeue de jobs presos em running: %w", err)
@@ -160,9 +160,9 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
-// claimNextEligibleJob escolhe o próximo job pending elegível (respeitando
-// backoff e a precedência de transcribe sobre extract_audio) e o marca
-// running. Retorna (nil, nil) se nada estiver elegível agora.
+// claimNextEligibleJob picks the next eligible pending job (respecting
+// backoff and transcribe's precedence over extract_audio) and marks it
+// running. Returns (nil, nil) if nothing is eligible right now.
 func (w *Worker) claimNextEligibleJob() (*db.Job, error) {
 	pending, err := db.ListPendingJobs(w.conn)
 	if err != nil {
@@ -204,9 +204,9 @@ func (w *Worker) claimNextEligibleJob() (*db.Job, error) {
 	return nil, nil
 }
 
-// eligibleForRetry indica se j já passou da janela de backoff da sua
-// última tentativa (se attempts == 0, é a primeira tentativa: sempre
-// elegível).
+// eligibleForRetry indicates whether j has already passed the backoff window of its
+// last attempt (if attempts == 0, it's the first attempt: always
+// eligible).
 func eligibleForRetry(j db.Job, now time.Time) bool {
 	if j.Attempts == 0 {
 		return true
@@ -222,7 +222,7 @@ func eligibleForRetry(j db.Job, now time.Time) bool {
 	return now.After(updatedAt.Add(wait))
 }
 
-// process executa job (já marcado running) e registra o resultado.
+// process runs job (already marked running) and records the result.
 func (w *Worker) process(ctx context.Context, job db.Job) {
 	var err error
 	switch job.Kind {
@@ -244,8 +244,8 @@ func (w *Worker) process(ctx context.Context, job db.Job) {
 	w.notifier.JobChanged(JobEvent{LessonID: job.LessonID, Kind: job.Kind, Status: "done", Attempts: job.Attempts})
 }
 
-// fail registra a falha de execução de job: incrementa attempts e decide
-// entre retry (volta a pending) ou error terminal.
+// fail records a job execution failure: increments attempts and decides
+// between retry (back to pending) or terminal error.
 func (w *Worker) fail(job db.Job, cause error) {
 	status, attempts, err := db.MarkJobRetryOrError(w.conn, job.ID, cause.Error(), maxAttempts)
 	if err != nil {
@@ -255,9 +255,9 @@ func (w *Worker) fail(job db.Job, cause error) {
 	w.notifier.JobChanged(JobEvent{LessonID: job.LessonID, Kind: job.Kind, Status: status, Attempts: attempts, LastError: cause.Error()})
 }
 
-// runExtractAudio extrai o áudio do vídeo da lesson pro cache
-// (audioCacheDir/<lessonID>.wav), pulando se o WAV já existir
-// (idempotência).
+// runExtractAudio extracts the lesson's video audio into the cache
+// (audioCacheDir/<lessonID>.wav), skipping if the WAV already exists
+// (idempotency).
 func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	lesson, err := db.FindLessonByID(w.conn, job.LessonID)
 	if err != nil {
@@ -281,9 +281,9 @@ func (w *Worker) runExtractAudio(ctx context.Context, job db.Job) error {
 	return nil
 }
 
-// runTranscribe transcreve o áudio em cache da lesson via STT, gravando a
-// transcrição mapeada em transcripts. Pula se já existir uma transcrição
-// pra essa lesson (idempotência).
+// runTranscribe transcribes the lesson's cached audio via STT, writing the
+// mapped transcript to transcripts. Skips if a transcript already
+// exists for this lesson (idempotency).
 func (w *Worker) runTranscribe(ctx context.Context, job db.Job) error {
 	has, err := db.HasTranscript(w.conn, job.LessonID)
 	if err != nil {

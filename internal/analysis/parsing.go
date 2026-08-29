@@ -7,19 +7,19 @@ import (
 	"fmt"
 )
 
-// stripTrailingCodeFence remove um fechamento de code fence (```) sobrando
-// no final do conteúdo — a única sujeira possível quando o provedor usa
-// prefill (ver openai_compatible.go); no-op inofensivo pra provedores sem
-// prefill (JSON já vem puro).
+// stripTrailingCodeFence removes a leftover closing code fence (```)
+// at the end of the content — the only possible mess when the provider uses
+// prefill (see openai_compatible.go); harmless no-op for providers without
+// prefill (JSON already comes clean).
 func stripTrailingCodeFence(raw []byte) []byte {
 	trimmed := bytes.TrimSpace(raw)
 	trimmed = bytes.TrimSuffix(trimmed, []byte("```"))
 	return bytes.TrimSpace(trimmed)
 }
 
-// unmarshalJSON desserializa raw (já sem envelope HTTP nem code fence — ver
-// Provider.Complete) em v. Compartilhado pelas 7 tarefas; não sabe nada
-// sobre o schema de nenhuma tarefa específica.
+// unmarshalJSON deserializes raw (already without HTTP envelope or code fence — see
+// Provider.Complete) into v. Shared by all 7 tasks; doesn't know anything
+// about the schema of any specific task.
 func unmarshalJSON(raw json.RawMessage, v any) error {
 	if err := json.Unmarshal(raw, v); err != nil {
 		return fmt.Errorf("analysis: json inválido: %w", err)

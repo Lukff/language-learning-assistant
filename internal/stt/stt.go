@@ -5,23 +5,23 @@ import (
 	"time"
 )
 
-// Provider é a interface única implementada por cada serviço de STT
-// candidato (Gladia, AssemblyAI, Deepgram, ElevenLabs Scribe).
+// Provider is the single interface implemented by each candidate STT
+// service (Gladia, AssemblyAI, Deepgram, ElevenLabs Scribe).
 type Provider interface {
 	Name() string
 	Transcribe(ctx context.Context, audioPath string) (*Result, error)
 }
 
-// Result carrega tanto o JSON bruto do provedor (para salvar em disco sem
-// perda) quanto a transcrição já mapeada para o domínio comum.
+// Result carries both the provider's raw JSON (to save to disk without
+// loss) and the transcript already mapped to the common domain.
 type Result struct {
 	RawResponse []byte
 	Utterances  []Utterance
 }
 
-// Utterance é um trecho de fala atribuído a um locutor. Speaker é o
-// rótulo bruto do provedor (ex.: "speaker_0") — o mapeamento para
-// aluno/tutor é um passo manual da História 2, fora desta fatia.
+// Utterance is a speech segment attributed to a speaker. Speaker is the
+// provider's raw label (e.g. "speaker_0") — mapping to
+// student/tutor is a manual step in Story 2, outside this slice.
 type Utterance struct {
 	Speaker    string
 	Text       string

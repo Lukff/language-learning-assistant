@@ -3,9 +3,9 @@ package analysis
 
 import "encoding/json"
 
-// VocabularyItem é uma palavra ou expressão nova pro Aluno aprender —
-// inclui palavras em PT/ES usadas como recurso ao idioma nativo, nunca
-// tratadas como erro de inglês (ver analyze-corrections-v1.md).
+// VocabularyItem is a new word or expression for the Student to learn —
+// includes PT/ES words used as a resort to the native language, never
+// treated as an English mistake (see analyze-corrections-v1.md).
 type VocabularyItem struct {
 	Term        string `json:"term"`
 	Translation string `json:"translation"`

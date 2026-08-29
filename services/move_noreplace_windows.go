@@ -7,8 +7,8 @@ import (
 	"syscall"
 )
 
-// MoveFileW sem flags nunca substitui um destino existente e também cobre
-// a alteração apenas de casing em filesystems case-insensitive.
+// MoveFileW with no flags never replaces an existing destination and also covers
+// case-only renames on case-insensitive filesystems.
 func moveFileNoReplace(oldPath, newPath string) error {
 	oldPathPtr, err := syscall.UTF16PtrFromString(oldPath)
 	if err != nil {

@@ -5,13 +5,13 @@ import type { QueueItem } from "../../bindings/assistente-idiomas/services/model
 let items: QueueItem[] = $state([]);
 let initialized = false;
 
-// jobsStore é o único ponto de leitura do estado da fila no frontend —
-// Queue.svelte e o badge da Sidebar.svelte leem daqui, sem cada um se
-// inscrever separadamente em "job:updated" (ver
+// jobsStore is the single read point for queue state in the frontend —
+// Queue.svelte and the Sidebar.svelte badge read from here, instead of each
+// subscribing separately to "job:updated" (see
 // docs/superpowers/specs/2026-07-23-story-7-visible-queue-design.md).
-// Getters (não uma exportação direta de `items`) porque `export let` não
-// propaga reatividade entre módulos no Svelte 5 — funções/objetos com
-// getter são o padrão recomendado pra estado compartilhado em .svelte.ts.
+// Getters (not a direct export of `items`) because `export let` doesn't
+// propagate reactivity across modules in Svelte 5 — functions/objects with a
+// getter are the recommended pattern for shared state in .svelte.ts.
 export const jobsStore = {
   get items() {
     return items;
@@ -21,18 +21,18 @@ export const jobsStore = {
   },
 };
 
-// refreshJobsStore busca a fila de novo agora — exportada pra quem acabou
-// de disparar uma ação que muda um job (ex.: Queue.svelte's retry) não
-// precisar esperar o próximo "job:updated" (que só chega quando o worker
-// pega o job no poll de ~5s) pra ver o resultado refletido na tela.
+// refreshJobsStore fetches the queue again right now — exported so that
+// whoever just triggered an action that changes a job (e.g. Queue.svelte's
+// retry) doesn't need to wait for the next "job:updated" (which only arrives
+// when the worker picks up the job on its ~5s poll) to see the result reflected on screen.
 export async function refreshJobsStore() {
   items = (await QueueService.ListQueue()) ?? [];
 }
 
-// initJobsStore busca a fila uma vez e assina "job:updated" pra refazer a
-// busca a cada transição de status de job. Chamado uma única vez em
-// App.svelte — chamadas repetidas são no-op (evita inscrições duplicadas
-// no evento).
+// initJobsStore fetches the queue once and subscribes to "job:updated" to
+// refetch on every job status transition. Called once in
+// App.svelte — repeated calls are a no-op (avoids duplicate
+// subscriptions to the event).
 export function initJobsStore() {
   if (initialized) return;
   initialized = true;

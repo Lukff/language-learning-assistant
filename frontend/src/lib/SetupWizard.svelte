@@ -35,13 +35,13 @@
     try {
       await SetupService.CompleteSetup(storageRoot, apiKey);
       step = "scanning";
-      // Falha na varredura não deve travar o wizard nem esconder o app do
-      // usuário — o setup já está salvo; a próxima "Sincronizar pasta" na
-      // Biblioteca tenta de novo.
+      // A scan failure shouldn't block the wizard or hide the app from the
+      // user — setup is already saved; the next "Sync folder" in the
+      // Library will try again.
       try {
         await ImportService.ScanFolder();
       } catch {
-        // ignorado de propósito — ver comentário acima
+        // deliberately ignored — see comment above
       }
       onComplete();
     } catch (e) {

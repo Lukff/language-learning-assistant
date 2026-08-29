@@ -10,17 +10,17 @@ import (
 	"assistente-idiomas/internal/jobs"
 )
 
-// VideoServerService sobe um http.Server de verdade em 127.0.0.1 (porta
-// livre escolhida pelo SO) só pra servir vídeo — ver o comentário em
-// videoAssetPrefix (video_asset.go) sobre por que o scheme wails:// do
-// AssetServer não basta. O <video src> do frontend aponta pra
-// `${BaseURL()}${caminho}`, não mais pro path relativo servido pelo app.
+// VideoServerService starts a real http.Server on 127.0.0.1 (a free
+// port chosen by the OS) just to serve video — see the comment on
+// videoAssetPrefix (video_asset.go) about why the AssetServer's wails:// scheme
+// isn't enough. The frontend's <video src> points to
+// `${BaseURL()}${path}`, no longer to the relative path served by the app.
 type VideoServerService struct {
 	baseURL string
 }
 
-// NewVideoServerService abre a porta e sobe o servidor numa goroutine.
-// Erro aqui é fatal pro app: sem essa porta nenhuma lesson toca vídeo.
+// NewVideoServerService opens the port and starts the server in a goroutine.
+// An error here is fatal for the app: without this port no lesson can play video.
 func NewVideoServerService(conn *sql.DB, storageRoot jobs.StorageRootResolver) (*VideoServerService, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -33,8 +33,8 @@ func NewVideoServerService(conn *sql.DB, storageRoot jobs.StorageRootResolver) (
 	return &VideoServerService{baseURL: "http://" + ln.Addr().String()}, nil
 }
 
-// BaseURL devolve a origem do servidor de vídeo (ex.: http://127.0.0.1:54219)
-// pro frontend montar a URL completa de uma lesson.
+// BaseURL returns the video server's origin (e.g. http://127.0.0.1:54219)
+// for the frontend to build a lesson's full URL.
 func (s *VideoServerService) BaseURL() string {
 	return s.baseURL
 }

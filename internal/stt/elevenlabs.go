@@ -15,20 +15,20 @@ import (
 
 const elevenLabsBaseURL = "https://api.elevenlabs.io/v1/speech-to-text"
 
-// ElevenLabsProvider implementa stt.Provider usando a API do ElevenLabs Scribe.
+// ElevenLabsProvider implements stt.Provider using the ElevenLabs Scribe API.
 //
-// Modelo usado: "scribe_v2" — modelo atual documentado pela ElevenLabs,
-// multilíngue nativo (90+ idiomas). A API não expõe um parâmetro explícito de
-// "modo multi/code-switching" como o Deepgram; nenhum language_code é
-// enviado, deixando a detecção automática cobrir troca de idioma no meio da
-// fala (PT/ES no meio do inglês do aluno).
+// Model used: "scribe_v2" — current model documented by ElevenLabs,
+// natively multilingual (90+ languages). The API doesn't expose an explicit
+// "multi/code-switching mode" parameter like Deepgram; no language_code is
+// sent, letting automatic detection cover language switching mid-
+// speech (PT/ES mixed into the student's English).
 //
-// num_speakers=2 é sempre passado: aulas do Cambly são 1:1 (aluno e tutor),
-// então esse hint melhora a diarização sem custo.
+// num_speakers=2 is always passed: Cambly lessons are 1:1 (student and tutor),
+// so this hint improves diarization at no cost.
 //
-// Assim como o Deepgram, a API batch do ElevenLabs é síncrona: uma única
-// chamada POST (aqui multipart, por exigir upload do arquivo de áudio) já
-// retorna a transcrição completa — sem upload prévio nem polling de job.
+// Just like Deepgram, ElevenLabs' batch API is synchronous: a single
+// POST call (multipart here, since it requires uploading the audio file) already
+// returns the complete transcript — no prior upload or job polling.
 type ElevenLabsProvider struct {
 	apiKey string
 	client *http.Client
@@ -38,9 +38,9 @@ func NewElevenLabsProvider(apiKey string) (*ElevenLabsProvider, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("stt: ELEVENLABS_API_KEY vazia")
 	}
-	// Timeout generoso: cobre o envio do WAV inteiro da aula (dezenas de MB)
-	// mais o processamento síncrono no servidor. Mesmo valor usado pelos
-	// outros três provedores, por consistência.
+	// Generous timeout: covers sending the entire lesson WAV (tens of MB)
+	// plus synchronous server-side processing. Same value used by the
+	// other three providers, for consistency.
 	return &ElevenLabsProvider{apiKey: apiKey, client: &http.Client{Timeout: 10 * time.Minute}}, nil
 }
 
@@ -59,9 +59,9 @@ func (p *ElevenLabsProvider) Transcribe(ctx context.Context, audioPath string) (
 
 	result, err := mapElevenLabsResponse(raw)
 	if err != nil {
-		// Preserva o JSON bruto mesmo em falha de parse: a chamada à API já foi
-		// feita (custa dinheiro), então o chamador deve conseguir salvar
-		// result.RawResponse em disco mesmo com err != nil.
+		// Preserve the raw JSON even on a parse failure: the API call was already
+		// made (it costs money), so the caller should be able to save
+		// result.RawResponse to disk even with err != nil.
 		return &Result{RawResponse: raw}, fmt.Errorf("stt: parsear resposta elevenlabs: %w", err)
 	}
 	return result, nil
@@ -109,8 +109,8 @@ func (p *ElevenLabsProvider) buildRequest(ctx context.Context, audioPath string)
 	return req, nil
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if the
+// status isn't 2xx (message includes status and body, for debugging).
 func (p *ElevenLabsProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {

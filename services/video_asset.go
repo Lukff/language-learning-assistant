@@ -12,22 +12,22 @@ import (
 	"assistente-idiomas/internal/jobs"
 )
 
-// videoAssetPrefix é o path base do endpoint que serve o .mp4 de uma
-// lesson. Servido por um http.Server real em loopback (video_server.go),
-// não pelo scheme wails:// do AssetServer: no Linux (WebKitGTK/GStreamer),
-// requisições Range por esse scheme chegam ao handler mas o pipeline de
-// mídia do webview falha (FormatError) sem nunca pedir o restante do
-// arquivo — o mesmo vídeo toca normal fora do app (Chrome/Firefox), então
-// não é problema de codec/arquivo. HTTP de loopback de verdade é o caminho
-// que o GStreamer sabe streamar nativamente.
+// videoAssetPrefix is the base path of the endpoint that serves a
+// lesson's .mp4. Served by a real http.Server on loopback (video_server.go),
+// not by the AssetServer's wails:// scheme: on Linux (WebKitGTK/GStreamer),
+// Range requests through that scheme reach the handler but the webview's
+// media pipeline fails (FormatError) without ever requesting the rest of the
+// file — the same video plays fine outside the app (Chrome/Firefox), so
+// it's not a codec/file problem. Real loopback HTTP is the path
+// that GStreamer knows how to stream natively.
 const videoAssetPrefix = "/media/lesson/"
 
-// VideoAssetHandler serve GET /media/lesson/{id} com o vídeo da lesson id
-// (suporte a Range via http.ServeFile da stdlib, que já trata isso de
-// graça); qualquer outro path devolve 404. storageRoot é reavaliado a cada
-// requisição, não uma vez só na criação do handler — mesma razão de
-// internal/jobs.Worker: storage_root só existe depois do wizard de
-// primeira execução, que roda depois do app já estar de pé.
+// VideoAssetHandler serves GET /media/lesson/{id} with lesson id's video
+// (Range support via stdlib's http.ServeFile, which already handles that for
+// free); any other path returns 404. storageRoot is re-evaluated on every
+// request, not just once when the handler is created — same reason as
+// internal/jobs.Worker: storage_root only exists after the first-run
+// wizard, which runs after the app is already up.
 func VideoAssetHandler(conn *sql.DB, storageRoot jobs.StorageRootResolver) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		idStr, ok := strings.CutPrefix(r.URL.Path, videoAssetPrefix)

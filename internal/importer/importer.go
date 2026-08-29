@@ -1,8 +1,8 @@
-// Package importer varre a pasta de armazenamento em busca de vídeos de
-// aula que ainda não estão no banco (História 3, docs/phase-1-mvp.md). Não
-// assume nenhuma estrutura de subpastas: identificação e dedupe são sempre
-// por nome do arquivo + SHA-256, nunca por convenção de path. Não importa
-// nada do Wails (camada fina).
+// Package importer scans the storage folder for lesson videos
+// not yet in the database (Story 3, docs/phase-1-mvp.md). It doesn't
+// assume any subfolder structure: identification and dedup are always
+// by file name + SHA-256, never by path convention. Imports
+// nothing from Wails (thin layer).
 package importer
 
 import (
@@ -18,59 +18,59 @@ import (
 	"time"
 )
 
-// videoExtensions lista as extensões reconhecidas como vídeo de aula.
-// Fatia deliberadamente curta nesta fatia da História 3 (só .mp4, o formato
-// mais comum do Cambly/navegador) — estender é só adicionar aqui.
+// videoExtensions lists the extensions recognized as a lesson video.
+// Deliberately short in this slice of Story 3 (only .mp4, the
+// most common Cambly/browser format) — extending it is just adding here.
 var videoExtensions = []string{".mp4"}
 
-// Candidate é um vídeo novo achado pela varredura, ainda sem lesson
-// registrada nem candidato pendente com o mesmo hash.
+// Candidate is a new video found by the scan, with no lesson
+// registered yet nor a pending candidate with the same hash.
 type Candidate struct {
-	Path          string // relativo à raiz da varredura, sempre com "/" (filepath.ToSlash)
+	Path          string // relative to the scan root, always with "/" (filepath.ToSlash)
 	Size          int64
 	MTime         string // RFC3339 (UTC)
 	SHA256        string
-	SuggestedDate string // AAAA-MM-DD, extraído do nome do arquivo ou do mtime
+	SuggestedDate string // YYYY-MM-DD, extracted from the file name or mtime
 }
 
-// Summary resume o resultado de uma varredura.
+// Summary summarizes the result of a scan.
 type Summary struct {
-	New     int // candidatos novos gravados em pending_imports
-	Updated int // lessons existentes com o path atualizado (arquivo movido/renomeado)
-	Skipped int // arquivos já conhecidos (lesson ou pending existente), nada mudou
-	Errors  int // arquivos que falharam ao ler/statar/hashear — não interrompem a varredura
+	New     int // new candidates written to pending_imports
+	Updated int // existing lessons with an updated path (file moved/renamed)
+	Skipped int // already-known files (existing lesson or pending), nothing changed
+	Errors  int // files that failed to read/stat/hash — don't interrupt the scan
 }
 
-// Repo é o que Scan precisa do banco. Implementado por um adaptador sobre
-// internal/db em services/import.go; nos testes deste pacote, por um fake
-// em memória — Scan nunca importa internal/db nem database/sql diretamente.
+// Repo is what Scan needs from the database. Implemented by an adapter over
+// internal/db in services/import.go; in this package's tests, by an in-memory
+// fake — Scan never imports internal/db or database/sql directly.
 type Repo interface {
-	// StatMatch indica se já existe uma lesson registrada exatamente neste
-	// path, com este tamanho e mtime — se sim, o arquivo é conhecido e
-	// inalterado, e Scan pula sem calcular hash.
+	// StatMatch indicates whether a lesson is already registered at exactly this
+	// path, with this size and mtime — if so, the file is known and
+	// unchanged, and Scan skips it without computing a hash.
 	StatMatch(path string, size int64, mtime string) (bool, error)
 
-	// LessonByHash retorna o path de uma lesson já registrada com este
-	// hash, se existir.
+	// LessonByHash returns the path of a lesson already registered with this
+	// hash, if it exists.
 	LessonByHash(hash string) (path string, found bool, err error)
 
-	// UpdateLessonPath atualiza o path/tamanho/mtime da lesson com este
-	// hash — usado quando o arquivo só mudou de lugar/nome.
+	// UpdateLessonPath updates the path/size/mtime of the lesson with this
+	// hash — used when the file just moved/was renamed.
 	UpdateLessonPath(hash string, path string, size int64, mtime string) error
 
-	// PendingExists indica se já existe um candidato pendente com este
-	// hash (de uma varredura anterior ainda não confirmada).
+	// PendingExists indicates whether a pending candidate with this
+	// hash already exists (from a previous, not-yet-confirmed scan).
 	PendingExists(hash string) (bool, error)
 
-	// InsertPending grava um candidato novo.
+	// InsertPending writes a new candidate.
 	InsertPending(c Candidate) error
 }
 
-// Scan caminha root recursivamente, filtra por videoExtensions e decide,
-// para cada arquivo, se é conhecido (ignora), mudou de lugar (atualiza o
-// path da lesson) ou é candidato novo (grava em pending_imports via
-// repo.InsertPending). Erro ao processar um arquivo específico não aborta a
-// varredura — é contado em Summary.Errors e o restante continua.
+// Scan walks root recursively, filters by videoExtensions, and decides,
+// for each file, whether it's known (skip), moved (updates the
+// lesson's path), or is a new candidate (writes to pending_imports via
+// repo.InsertPending). An error processing a specific file doesn't abort the
+// scan — it's counted in Summary.Errors and the rest continues.
 func Scan(root string, repo Repo) (Summary, error) {
 	var sum Summary
 
@@ -164,10 +164,10 @@ func Scan(root string, repo Repo) (Summary, error) {
 	return sum, nil
 }
 
-// HasVideoExtension indica se path tem uma extensão de vídeo reconhecida
-// (hoje só .mp4). Exportada porque services.ImportService.DropImport
-// (História 3b) precisa da mesma checagem pra um arquivo solto via
-// drag-and-drop, fora da varredura da pasta.
+// HasVideoExtension indicates whether path has a recognized video extension
+// (today only .mp4). Exported because services.ImportService.DropImport
+// (Story 3b) needs the same check for a file dropped via
+// drag-and-drop, outside the folder scan.
 func HasVideoExtension(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	for _, want := range videoExtensions {
@@ -178,9 +178,9 @@ func HasVideoExtension(path string) bool {
 	return false
 }
 
-// HashFile calcula o SHA-256 do arquivo em path. Exportada pelo mesmo
-// motivo de HasVideoExtension — DropImport hasheia um arquivo fora da
-// varredura da pasta.
+// HashFile computes the SHA-256 of the file at path. Exported for the same
+// reason as HasVideoExtension — DropImport hashes a file outside the
+// folder scan.
 func HashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -197,13 +197,13 @@ func HashFile(path string) (string, error) {
 
 var isoDateInName = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})`)
 
-// SuggestDate tenta achar uma data AAAA-MM-DD no nome do arquivo — nesse
-// caso o horário é desconhecido, sugerido como 00:00. Na falta de data no
-// nome, usa data e horário do mtime do arquivo (aproximação razoável: o
-// arquivo normalmente é baixado logo depois da aula). Formato compatível
-// com <input type="datetime-local"> (AAAA-MM-DDTHH:MM). É só um palpite
-// pré-preenchido no modal de confirmação — o usuário sempre pode corrigir
-// data e horário.
+// SuggestDate tries to find a YYYY-MM-DD date in the file name — in that
+// case the time is unknown, suggested as 00:00. Lacking a date in the
+// name, it uses the file's mtime date and time (a reasonable approximation: the
+// file is usually downloaded right after the lesson). Format compatible
+// with <input type="datetime-local"> (YYYY-MM-DDTHH:MM). It's just a
+// pre-filled guess in the confirmation modal — the user can always correct
+// the date and time.
 func SuggestDate(filename string, mtime time.Time) string {
 	if m := isoDateInName.FindString(filename); m != "" {
 		return m + "T00:00"

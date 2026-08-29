@@ -8,11 +8,11 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// FormatTranscript converte as utterances diarizadas num texto legível pro
-// prompt, rotulando cada fala como "Aluno" ou "Tutor" conforme
-// speakerRoles (valores aceitos: "aluno" ou "tutor"). Erro se algum
-// Speaker não estiver mapeado ou tiver um papel diferente desses dois —
-// falha explícita, sem chute silencioso que contaminaria toda a análise.
+// FormatTranscript converts the diarized utterances into text readable by the
+// prompt, labeling each utterance as "Aluno" or "Tutor" according to
+// speakerRoles (accepted values: "aluno" or "tutor"). Errors if any
+// Speaker isn't mapped or has a role other than these two —
+// an explicit failure, with no silent guess that would contaminate the whole analysis.
 func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string) (string, error) {
 	var b strings.Builder
 	for i, u := range utterances {
@@ -36,9 +36,9 @@ func FormatTranscript(utterances []stt.Utterance, speakerRoles map[string]string
 	return b.String(), nil
 }
 
-// SpeakerExamples retorna até n falas de exemplo por rótulo de speaker, na
-// ordem em que aparecem em utterances — insumo pra um humano confirmar quem
-// é aluno e quem é tutor antes de montar o speakerRoles usado por
+// SpeakerExamples returns up to n example utterances per speaker label, in the
+// order they appear in utterances — input for a human to confirm who
+// is the student and who is the tutor before building the speakerRoles used by
 // FormatTranscript.
 func SpeakerExamples(utterances []stt.Utterance, n int) map[string][]string {
 	examples := make(map[string][]string)

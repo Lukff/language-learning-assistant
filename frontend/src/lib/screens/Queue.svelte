@@ -6,8 +6,8 @@
   let retryingId: number | null = $state(null);
   let error: string = $state("");
 
-  // Mesmo formato de Library.svelte (lessonDate é "AAAA-MM-DD" ou
-  // "AAAA-MM-DDTHH:MM", sem fuso — não é um timestamp com "Z").
+  // Same format as Library.svelte (lessonDate is "YYYY-MM-DD" or
+  // "YYYY-MM-DDTHH:MM", no timezone — it's not a "Z" timestamp).
   function formatLessonDateTime(value: string): string {
     const [datePart, timePart] = value.split("T");
     const [year, month, day] = datePart.split("-");
@@ -20,9 +20,9 @@
     retryingId = lessonId;
     try {
       await QueueService.RetryLesson(lessonId);
-      // Não espera o próximo "job:updated" (só chega quando o worker pega
-      // o job no poll de ~5s) — atualiza a fila na hora, mesmo padrão do
-      // botão "Reprocessar" da Biblioteca.
+      // Doesn't wait for the next "job:updated" (which only arrives when the
+      // worker picks up the job on its ~5s poll) — updates the queue right
+      // away, same pattern as the Library's "Reprocess" button.
       await refreshJobsStore();
     } catch (e) {
       error = String(e);

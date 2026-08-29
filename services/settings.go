@@ -11,8 +11,8 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// SettingsService cobre a tela de Configurações (História 8): ver/trocar a
-// raiz de armazenamento e (re)cadastrar a credencial do provedor STT.
+// SettingsService covers the Settings screen (Story 8): viewing/changing the
+// storage root and (re)registering the STT provider credential.
 type SettingsService struct {
 	conn        *sql.DB
 	storageRoot func() (string, error)
@@ -22,27 +22,27 @@ func NewSettingsService(conn *sql.DB, storageRoot func() (string, error)) *Setti
 	return &SettingsService{conn: conn, storageRoot: storageRoot}
 }
 
-// GetStorageRoot retorna a storage_root configurada atualmente.
+// GetStorageRoot returns the currently configured storage_root.
 func (s *SettingsService) GetStorageRoot() (string, error) {
 	return s.storageRoot()
 }
 
-// ChooseStorageFolder abre o dialog nativo (mesma validação de escrita do
-// wizard) e retorna o path escolhido, sem gravar nada ainda. Retorna path
-// vazio (sem erro) se o usuário cancelar o dialog.
+// ChooseStorageFolder opens the native dialog (same write validation as the
+// wizard) and returns the chosen path, without writing anything yet. Returns an empty
+// path (with no error) if the user cancels the dialog.
 func (s *SettingsService) ChooseStorageFolder() (string, error) {
 	return chooseStorageFolder("Escolha a nova pasta — os arquivos já devem estar lá dentro")
 }
 
-// ChangeStorageFolder grava newRoot em config.json (sempre, mesmo que a
-// varredura a seguir encontre problemas) e roda a mesma reconciliação por
-// hash da História 3 (internal/importer.Scan): vídeos com nome diferente na
-// pasta nova têm o video_path atualizado por hash; vídeos novos na pasta
-// nova viram candidatos pendentes; a troca em si nunca é bloqueada por
-// vídeos que não forem encontrados (esses continuam com o path antigo e
-// ficam "ausentes" — ver LibraryService.videoMissing, Task 4). ScanSummary
-// é o tipo já definido em import.go, reaproveitado aqui sem duplicar o
-// formato de resumo.
+// ChangeStorageFolder writes newRoot to config.json (always, even if the
+// scan that follows finds problems) and runs the same hash-based reconciliation
+// from Story 3 (internal/importer.Scan): videos with a different name in the
+// new folder have their video_path updated by hash; new videos in the
+// new folder become pending candidates; the switch itself is never blocked by
+// videos that aren't found (those keep the old path and
+// stay "missing" — see LibraryService.videoMissing, Task 4). ScanSummary
+// is the type already defined in import.go, reused here without duplicating the
+// summary format.
 func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, error) {
 	if newRoot == "" {
 		return ScanSummary{}, fmt.Errorf("pasta de armazenamento não pode ser vazia")
@@ -60,10 +60,10 @@ func (s *SettingsService) ChangeStorageFolder(newRoot string) (ScanSummary, erro
 	return ScanSummary{New: sum.New, Updated: sum.Updated, Skipped: sum.Skipped, Errors: sum.Errors}, nil
 }
 
-// HasSTTCredential indica se há uma credencial gravada no keyring, sem
-// revelar o valor. false (sem erro) se simplesmente não configurada ainda;
-// erro só em falha real de acesso ao keyring (Secret Service indisponível,
-// risco 3 do projeto).
+// HasSTTCredential indicates whether a credential is stored in the keyring, without
+// revealing the value. false (with no error) if simply not configured yet;
+// error only on an actual keyring access failure (Secret Service unavailable,
+// project risk 3).
 func (s *SettingsService) HasSTTCredential() (bool, error) {
 	_, err := config.GetSTTAPIKey()
 	if err == nil {
@@ -75,15 +75,15 @@ func (s *SettingsService) HasSTTCredential() (bool, error) {
 	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
 }
 
-// SaveSTTAPIKey grava/sobrescreve a credencial do provedor STT.
+// SaveSTTAPIKey saves/overwrites the STT provider credential.
 func (s *SettingsService) SaveSTTAPIKey(apiKey string) error {
 	return config.SaveSTTAPIKey(apiKey)
 }
 
-// HasAnalysisCredential indica se há uma credencial do provedor de análise
-// (DeepSeek) gravada no keyring, sem revelar o valor. Mesmo comportamento
-// de HasSTTCredential: false (sem erro) se não configurada ainda; erro só
-// em falha real de acesso ao keyring.
+// HasAnalysisCredential indicates whether an analysis provider credential
+// (DeepSeek) is stored in the keyring, without revealing the value. Same behavior
+// as HasSTTCredential: false (with no error) if not configured yet; error only
+// on an actual keyring access failure.
 func (s *SettingsService) HasAnalysisCredential() (bool, error) {
 	_, err := config.GetAnalysisAPIKey()
 	if err == nil {
@@ -95,7 +95,7 @@ func (s *SettingsService) HasAnalysisCredential() (bool, error) {
 	return false, fmt.Errorf("não foi possível acessar o gerenciador de credenciais do sistema (verifique se o gnome-keyring/kwallet está rodando): %w", err)
 }
 
-// SaveAnalysisAPIKey grava/sobrescreve a credencial do provedor de análise.
+// SaveAnalysisAPIKey saves/overwrites the analysis provider credential.
 func (s *SettingsService) SaveAnalysisAPIKey(apiKey string) error {
 	return config.SaveAnalysisAPIKey(apiKey)
 }

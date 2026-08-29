@@ -7,35 +7,35 @@ import (
 	"sort"
 )
 
-// QueueEntry é uma aula com pipeline ativo (pending/running) ou em erro,
-// no formato que a Fila (História 7) precisa: qual job está "atual" agora,
-// não só o status colapsado que LessonWithStatus usa pra Biblioteca.
+// QueueEntry is a lesson with an active pipeline (pending/running) or in error,
+// in the format the Queue (Story 7) needs: which job is "current" right now,
+// not just the collapsed status LessonWithStatus uses for the Library.
 type QueueEntry struct {
 	LessonID    int64
 	LessonDate  string
 	TeacherName string
-	Kind        string // "extract_audio" ou "transcribe"
-	Status      string // "pending", "running" ou "error"
+	Kind        string // "extract_audio" or "transcribe"
+	Status      string // "pending", "running" or "error"
 	Attempts    int
 	LastError   string
 	UpdatedAt   string
 }
 
-// ListQueueEntries lista as aulas com pipeline ativo ou em erro, uma linha
-// por aula (nunca duas), com o job "atual" de cada uma. Aulas prontas
-// (transcribe done) não entram na lista — isso já é visível na Biblioteca.
+// ListQueueEntries lists lessons with an active pipeline or in error, one row
+// per lesson (never two), with each one's "current" job. Ready lessons
+// (transcribe done) don't enter the list — that's already visible in the Library.
 //
-// Prioridade pra decidir o job atual (extract_audio checado antes de
-// transcribe): o job transcribe fica com status "pending" no banco durante
-// todo o tempo em que está bloqueado esperando extract_audio terminar — o
-// Worker só pula ele em memória (claimNextEligibleJob em
-// internal/jobs/worker.go), sem mudar esse status. Checar transcribe antes
-// de extract_audio mostraria "Transcrição — aguardando" pra uma aula que na
-// verdade ainda está extraindo áudio.
+// Priority for deciding the current job (extract_audio checked before
+// transcribe): the transcribe job stays with status "pending" in the database
+// the whole time it's blocked waiting for extract_audio to finish — the
+// Worker only skips it in memory (claimNextEligibleJob in
+// internal/jobs/worker.go), without changing that status. Checking transcribe
+// before extract_audio would show "Transcription — waiting" for a lesson that
+// is actually still extracting audio.
 //
-// Ordenação: erro primeiro (precisa de ação do usuário), depois por
-// UpdatedAt do job atual, mais antigo primeiro (mesma ordem FIFO que o
-// Worker usa em ListPendingJobs).
+// Ordering: error first (needs user action), then by the current job's
+// UpdatedAt, oldest first (same FIFO order the
+// Worker uses in ListPendingJobs).
 func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	rows, err := conn.Query(`
 		SELECT
@@ -83,9 +83,9 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 			entry.Kind, entry.Status = "transcribe", transcribeStatus
 			entry.Attempts, entry.LastError, entry.UpdatedAt = transcribeAttempts, transcribeError, transcribeUpdatedAt
 		default:
-			// transcribe done (ou nenhum job — não deve acontecer, os dois
-			// jobs são sempre criados juntos na confirmação de import):
-			// aula pronta, não entra na fila.
+			// transcribe done (or no job — shouldn't happen, both
+			// jobs are always created together on import confirmation):
+			// lesson ready, doesn't enter the queue.
 			continue
 		}
 		out = append(out, entry)
@@ -98,9 +98,9 @@ func ListQueueEntries(conn *sql.DB) ([]QueueEntry, error) {
 	return out, nil
 }
 
-// sortQueueEntries ordena in-place: status "error" primeiro, depois por
-// UpdatedAt ascendente (FIFO) — ver regra de ordenação no comentário de
-// ListQueueEntries.
+// sortQueueEntries sorts in-place: "error" status first, then by
+// ascending UpdatedAt (FIFO) — see the ordering rule in ListQueueEntries's
+// comment.
 func sortQueueEntries(entries []QueueEntry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		iErr, jErr := entries[i].Status == "error", entries[j].Status == "error"

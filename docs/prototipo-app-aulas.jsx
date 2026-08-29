@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 
 /* ─────────────────────────────────────────────────────────────
-   Protótipo navegável — app desktop de arquivo de aulas (Cambly)
-   Telas: Biblioteca · Detalhe da aula · Progresso · Fila
-   Modelo de sync pull-work-push refletido no cabeçalho
+   Navigable prototype — desktop lesson-archive app (Cambly)
+   Screens: Library · Lesson detail · Progress · Queue
+   Pull-work-push sync model reflected in the header
    ───────────────────────────────────────────────────────────── */
 
 const C = {
@@ -78,8 +78,8 @@ const LESSONS = [
   },
 ];
 
-/* Transcrição da aula 1 — partes com correção inline:
-   {wrong, right} = erro do aluno riscado + correção do lado */
+/* Transcript of lesson 1 — parts with inline correction:
+   {wrong, right} = student's error struck through + correction alongside */
 const TRANSCRIPT = [
   {
     t: "00:12",
@@ -204,7 +204,7 @@ const VOCAB_WEEKS = [
   ["Sem 4", 8],
 ];
 
-/* ── átomos ── */
+/* ── atoms ── */
 
 const Tag = ({ children }) => (
   <span
@@ -251,7 +251,7 @@ function SyncPill({ pending, onPush }) {
   );
 }
 
-/* ── telas ── */
+/* ── screens ── */
 
 function Library({ open, onImport, query, setQuery }) {
   const filtered = LESSONS.filter(
@@ -395,7 +395,7 @@ function LessonDetail({ lesson, back }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* player simulado */}
+        {/* simulated player */}
         <div>
           <div
             className="rounded-xl aspect-video flex flex-col items-center justify-center relative overflow-hidden"
@@ -428,7 +428,7 @@ function LessonDetail({ lesson, back }) {
           </p>
         </div>
 
-        {/* painel transcrição / análise */}
+        {/* transcript / analysis panel */}
         <div
           className="rounded-xl overflow-hidden"
           style={{ background: C.surface, border: `1px solid ${C.line}` }}

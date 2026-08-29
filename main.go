@@ -90,11 +90,11 @@ func main() {
 		BackgroundColour: application.NewRGB(20, 24, 31), // #14181F — colors.bg
 		EnableFileDrop:   true,
 		Linux: application.LinuxWindow{
-			// Sem isso, o campo Linux fica zero-value e WebviewGpuPolicy
-			// resolve pra WebviewGpuPolicyAlways (não WebviewGpuPolicyNever,
-			// que só é o default dentro de wails.Run() — não usado aqui, ver
-			// application.WebviewGpuPolicy). Decodificação de vídeo via GPU
-			// no WebKitGTK quebra com conteúdo servido pelo scheme wails://
+			// Without this, the Linux field stays zero-value and WebviewGpuPolicy
+			// resolves to WebviewGpuPolicyAlways (not WebviewGpuPolicyNever,
+			// which is only the default inside wails.Run() — not used here, see
+			// application.WebviewGpuPolicy). GPU video decoding in WebKitGTK
+			// breaks with content served by the wails:// scheme
 			// (https://github.com/wailsapp/wails/issues/2977).
 			WebviewGpuPolicy: application.WebviewGpuPolicyNever,
 		},
@@ -108,13 +108,13 @@ func main() {
 	}
 }
 
-// startJobWorker inicia o pipeline em background (História 4) numa
-// goroutine. storageRoot é resolvido a cada job, não uma vez só aqui — o
-// wizard de primeira execução ainda não rodou neste ponto do startup, então
-// resolvê-lo antecipadamente falharia sempre na primeira sessão do app (ver
+// startJobWorker starts the background pipeline (Story 4) in a
+// goroutine. storageRoot is resolved on each job, not just once here — the
+// first-run wizard hasn't run yet at this point in startup, so resolving
+// it eagerly would always fail on the app's first session (see
 // docs/superpowers/specs/2026-07-22-story-4-pipeline-jobs-design.md).
-// Só o cache de áudio (que não depende do wizard) é resolvido aqui; se isso
-// falhar, é um problema de disco/permissão e o worker não inicia.
+// Only the audio cache (which doesn't depend on the wizard) is resolved here; if that
+// fails, it's a disk/permission problem and the worker doesn't start.
 func startJobWorker(conn *sql.DB, storageRoot jobs.StorageRootResolver) {
 	audioCacheDir, err := config.AudioCacheDir()
 	if err != nil {

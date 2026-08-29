@@ -1,6 +1,6 @@
-// Package services contém os serviços expostos ao frontend via bindings do
-// Wails v3 — a casca que liga internal/config e internal/db à UI. Diferente
-// de internal/, este pacote importa Wails de propósito.
+// Package services contains the services exposed to the frontend via Wails v3
+// bindings — the shell that connects internal/config and internal/db to the UI. Unlike
+// internal/, this package imports Wails on purpose.
 package services
 
 import (
@@ -9,34 +9,34 @@ import (
 	"assistente-idiomas/internal/config"
 )
 
-// SetupService cobre o wizard de primeira execução: escolher a pasta de
-// armazenamento e cadastrar a API key da ElevenLabs.
+// SetupService covers the first-run wizard: choosing the storage
+// folder and registering the ElevenLabs API key.
 type SetupService struct{}
 
 func NewSetupService() *SetupService {
 	return &SetupService{}
 }
 
-// IsFirstRun indica se o app ainda não tem config.json gravado (nenhuma
-// configuração completa até agora). Qualquer erro ao carregar a config
-// (arquivo ausente, corrompido, sem permissão) é tratado como "ainda não
-// configurado" — o pior caso é o usuário refazer o wizard, não perda de
-// dados: CompleteSetup apenas sobrescreve config.json e a credencial.
+// IsFirstRun indicates whether the app doesn't yet have a config.json written (no
+// complete configuration so far). Any error loading the config
+// (missing file, corrupted, no permission) is treated as "not yet
+// configured" — the worst case is the user redoing the wizard, not data
+// loss: CompleteSetup only overwrites config.json and the credential.
 func (s *SetupService) IsFirstRun() bool {
 	_, err := config.Load()
 	return err != nil
 }
 
-// ChooseStorageFolder abre o dialog nativo de escolha de pasta e valida que
-// ela é gravável. Retorna path vazio (sem erro) se o usuário cancelar o
+// ChooseStorageFolder opens the native folder-picker dialog and validates that
+// it is writable. Returns an empty path (with no error) if the user cancels the
 // dialog.
 func (s *SetupService) ChooseStorageFolder() (string, error) {
 	return chooseStorageFolder("Escolha a pasta onde as aulas ficarão guardadas")
 }
 
-// CompleteSetup grava a credencial da ElevenLabs (keyring) e, só se isso
-// funcionar, grava storageRoot em config.json. Nessa ordem: se a credencial
-// falhar, config.json não é tocado e o app continua detectando first-run.
+// CompleteSetup saves the ElevenLabs credential (keyring) and, only if that
+// succeeds, saves storageRoot to config.json. In that order: if the credential
+// fails, config.json isn't touched and the app keeps detecting first-run.
 func (s *SetupService) CompleteSetup(storageRoot string, apiKey string) error {
 	if storageRoot == "" {
 		return fmt.Errorf("pasta de armazenamento não pode ser vazia")

@@ -13,8 +13,8 @@
   let lesson: Lesson | null = $state(null);
   let loading: boolean = $state(true);
   let lessonError: string = $state("");
-  // Erro de uma ação pontual (reprocessar transcrição) — não deve
-  // derrubar o vídeo/painel, por isso fica separado de lessonError.
+  // Error from a one-off action (retry transcription) — shouldn't
+  // take down the video/panel, so it's kept separate from lessonError.
   let actionError: string = $state("");
 
   let transcript: Transcript | null = $state(null);
@@ -38,10 +38,10 @@
     await refreshAfterSpeakerChange();
   }
 
-  // Re-busca lesson e corrections sem fechar o modal — usada depois de
-  // trocar o falante do aluno (chooseSpeaker no EditLessonModal), pra não
-  // descartar edições de data/professor ainda não salvas nessa mesma sessão
-  // do modal.
+  // Refetches lesson and corrections without closing the modal — used after
+  // changing the student's speaker (chooseSpeaker in EditLessonModal), so as not to
+  // discard date/teacher edits not yet saved in this same modal
+  // session.
   async function refreshAfterSpeakerChange() {
     try {
       lesson = await LibraryService.GetLesson(lessonId);
@@ -52,11 +52,11 @@
     }
   }
 
-  // O <video src> aponta pro servidor HTTP real em loopback
-  // (VideoServerService), não pro path relativo /media/lesson/ servido
-  // pelo scheme wails:// do AssetServer — no Linux (WebKitGTK/GStreamer)
-  // esse scheme não entrega Range request de vídeo direito pro pipeline de
-  // mídia do webview (falha com FormatError mesmo o arquivo sendo válido).
+  // The <video src> points to the real HTTP server on loopback
+  // (VideoServerService), not to the relative /media/lesson/ path served
+  // by the AssetServer's wails:// scheme — on Linux (WebKitGTK/GStreamer)
+  // that scheme doesn't deliver video Range requests properly to the webview's
+  // media pipeline (fails with FormatError even though the file is valid).
   let videoBaseURL: string = $state("");
   let videoEl: HTMLVideoElement | undefined = $state();
   let currentTime: number = $state(0);
@@ -77,9 +77,9 @@
     return hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
   }
 
-  // Ordem de primeira fala — determinística, não depende de ordem de mapa.
-  // "Speaker A"/"Speaker B" (ou C, D... em diarização com ruído) são os
-  // rótulos neutros exibidos antes do usuário escolher quem é o aluno.
+  // Order of first utterance — deterministic, doesn't depend on map order.
+  // "Speaker A"/"Speaker B" (or C, D... in noisy diarization) are the
+  // neutral labels shown before the user chooses who the student is.
   const speakerOrder = $derived.by(() => {
     const seen: string[] = [];
     for (const u of transcript?.utterances ?? []) {
@@ -106,8 +106,8 @@
     return neutralLabel(speaker);
   }
 
-  // Última utterance cujo start já passou — busca linear, poucas centenas
-  // de falas por aula, custo irrelevante a cada tick de timeupdate.
+  // Last utterance whose start has already passed — linear search, a few hundred
+  // utterances per lesson, negligible cost on each timeupdate tick.
   const currentIndex = $derived.by(() => {
     const utterances = transcript?.utterances ?? [];
     let idx = -1;
@@ -127,8 +127,8 @@
     if (videoEl) currentTime = videoEl.currentTime;
   }
 
-  // Só ajusta a posição (seek) — não força play nem pause, pra não
-  // surpreender quem só quer conferir o timestamp.
+  // Only adjusts the position (seek) — doesn't force play or pause, so as not to
+  // surprise someone who just wants to check the timestamp.
   function seekTo(startSeconds: number) {
     if (videoEl) videoEl.currentTime = startSeconds;
   }

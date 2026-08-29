@@ -7,8 +7,8 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// QueueService expõe a fila de processamento (aulas com pipeline ativo ou
-// em erro) pra tela de Fila (História 7).
+// QueueService exposes the processing queue (lessons with an active or
+// errored pipeline) for the Queue screen (Story 7).
 type QueueService struct {
 	conn *sql.DB
 }
@@ -17,23 +17,23 @@ func NewQueueService(conn *sql.DB) *QueueService {
 	return &QueueService{conn: conn}
 }
 
-// stageLabel traduz o kind do job pra um rótulo de etapa em PT-BR, exibido
-// na Fila.
+// stageLabel translates the job kind into a PT-BR stage label, displayed
+// in the Queue.
 var stageLabel = map[string]string{
 	"extract_audio": "Extração de áudio",
 	"transcribe":    "Transcrição",
 }
 
-// statusLabel traduz o status bruto do job pro vocabulário já usado na
-// Biblioteca (Library.svelte: STATUS_LABEL) — "pending"/"running" viram
-// "aguardando"/"processando", "error" vira "erro".
+// statusLabel translates the raw job status into the vocabulary already used in the
+// Library (Library.svelte: STATUS_LABEL) — "pending"/"running" become
+// "aguardando"/"processando", "error" becomes "erro".
 var statusLabel = map[string]string{
 	"pending": "aguardando",
 	"running": "processando",
 	"error":   "erro",
 }
 
-// QueueItem é uma entrada da fila, no formato exposto ao frontend.
+// QueueItem is a queue entry, in the format exposed to the frontend.
 type QueueItem struct {
 	LessonID    int64  `json:"lessonId"`
 	LessonDate  string `json:"lessonDate"`
@@ -44,8 +44,8 @@ type QueueItem struct {
 	LastError   string `json:"lastError"`
 }
 
-// ListQueue lista as aulas com pipeline ativo ou em erro, uma por linha,
-// erro primeiro depois FIFO — ver db.ListQueueEntries.
+// ListQueue lists the lessons with an active or errored pipeline, one per row,
+// errors first then FIFO — see db.ListQueueEntries.
 func (s *QueueService) ListQueue() ([]QueueItem, error) {
 	entries, err := db.ListQueueEntries(s.conn)
 	if err != nil {
@@ -66,10 +66,10 @@ func (s *QueueService) ListQueue() ([]QueueItem, error) {
 	return out, nil
 }
 
-// RetryLesson reseta os jobs com erro da lesson pra "pending" — mesma
-// primitiva de dados que LibraryService.RetryLesson usa (db package,
-// nenhum serviço depende do outro). Não é erro se a lesson não tiver
-// nenhum job em erro no momento.
+// RetryLesson resets the lesson's errored jobs back to "pending" — the same
+// data primitive that LibraryService.RetryLesson uses (db package,
+// neither service depends on the other). It is not an error if the lesson has
+// no jobs currently in error.
 func (s *QueueService) RetryLesson(lessonID int64) error {
 	_, err := db.ResetErrorJobsForLesson(s.conn, lessonID)
 	return err

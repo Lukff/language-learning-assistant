@@ -12,11 +12,11 @@ import (
 	"time"
 )
 
-// openAICompatibleProvider implementa Provider para qualquer serviço que
-// exponha um endpoint /chat/completions no formato OpenAI. Hoje só é usado
-// por DeepSeek; em fatias futuras (ver
-// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md) pode ganhar
-// construtores para OpenAI, GLM e Qwen, reaproveitando este mesmo tipo.
+// openAICompatibleProvider implements Provider for any service that
+// exposes a /chat/completions endpoint in the OpenAI format. Today it's only used
+// by DeepSeek; in future slices (see
+// docs/superpowers/specs/2026-07-19-analysis-llm-v1-design.md) it may gain
+// constructors for OpenAI, GLM and Qwen, reusing this same type.
 type openAICompatibleProvider struct {
 	name            string
 	baseURL         string
@@ -40,10 +40,10 @@ func newOpenAICompatibleProvider(name, baseURL, apiKey, model string, supportsPr
 	}, nil
 }
 
-// NewDeepSeekProvider cria um Provider pra API do DeepSeek, modelo
-// deepseek-v4-flash (tier mais barato — ver "Estratégia de fatias" no design
-// doc). Usa o base URL beta, exigido pelo recurso de "Chat Prefix
-// Completion" que sustenta o prefill de ```json.
+// NewDeepSeekProvider creates a Provider for the DeepSeek API, model
+// deepseek-v4-flash (cheapest tier — see "Slice strategy" in the design
+// doc). Uses the beta base URL, required by the "Chat Prefix
+// Completion" feature that backs the ```json prefill.
 func NewDeepSeekProvider(apiKey string) (Provider, error) {
 	return newOpenAICompatibleProvider("deepseek", "https://api.deepseek.com/beta", apiKey, "deepseek-v4-flash", true)
 }
@@ -52,9 +52,9 @@ func (p *openAICompatibleProvider) Name() string { return p.name }
 
 func (p *openAICompatibleProvider) Model() string { return p.model }
 
-// Complete envia systemPrompt + transcript e devolve o conteúdo bruto (já
-// sem envelope HTTP nem code fence) que o modelo produziu — cada TaskDef
-// (task.go) é quem sabe o schema esperado desse conteúdo.
+// Complete sends systemPrompt + transcript and returns the raw content (already
+// without HTTP envelope or code fence) produced by the model — each TaskDef
+// (task.go) is what knows the expected schema of this content.
 func (p *openAICompatibleProvider) Complete(ctx context.Context, systemPrompt, transcript string) (json.RawMessage, error) {
 	if systemPrompt == "" {
 		return nil, fmt.Errorf("analysis: prompt de sistema vazio para %s", p.name)
@@ -96,11 +96,11 @@ func (p *openAICompatibleProvider) buildRequest(ctx context.Context, systemPromp
 	}
 
 	if p.supportsPrefill {
-		// DeepSeek rejeita a combinação response_format=json_object + prefix
-		// (erro 400 "response_format json_object should not be used with
-		// prefix", confirmado numa chamada real) — o prefill por si só já
-		// força o conteúdo a começar como JSON, então response_format fica
-		// de fora quando há prefill.
+		// DeepSeek rejects the response_format=json_object + prefix combination
+		// (error 400 "response_format json_object should not be used with
+		// prefix", confirmed in a real call) — the prefill alone already
+		// forces the content to start as JSON, so response_format is left
+		// out when there's a prefill.
 		reqBody.Messages = append(reqBody.Messages, chatMessage{
 			Role:    "assistant",
 			Content: "```json\n",
@@ -125,8 +125,8 @@ func (p *openAICompatibleProvider) buildRequest(ctx context.Context, systemPromp
 	return req, nil
 }
 
-// do executa a requisição e retorna o corpo da resposta, com erro se o
-// status não for 2xx (mensagem inclui status e corpo, para depuração).
+// do executes the request and returns the response body, with an error if the
+// status isn't 2xx (message includes status and body, for debugging).
 func (p *openAICompatibleProvider) do(req *http.Request) ([]byte, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {

@@ -14,8 +14,8 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// configStorageRoot resolve storage_root a partir de config.Load() — mesmo
-// closure que main.go monta pro worker/middleware/serviços reais.
+// configStorageRoot resolves storage_root from config.Load() — the same
+// closure that main.go builds for the worker/middleware/real services.
 func configStorageRoot() (string, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -38,8 +38,8 @@ func TestSettingsService_ChangeStorageFolder_UpdatesConfigAndReconcilesRenamedVi
 		t.Fatalf("config.Save() falhou: %v", err)
 	}
 
-	// Pasta nova já tem o vídeo, mas com outro nome — simula o usuário tendo
-	// renomeado o arquivo fora do app antes de trocar a pasta aqui.
+	// New folder already has the video, but under a different name — simulates the user having
+	// renamed the file outside the app before switching the folder here.
 	newRoot := t.TempDir()
 	renamedPath := filepath.Join(newRoot, "aula-renomeada.mp4")
 	if err := os.WriteFile(renamedPath, []byte("conteudo-fake-do-video"), 0o644); err != nil {

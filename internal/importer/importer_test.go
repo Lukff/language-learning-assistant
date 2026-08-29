@@ -8,15 +8,15 @@ import (
 	"time"
 )
 
-// fakeRepo é um Repo em memória — os testes deste pacote nunca tocam banco
-// de verdade, só a lógica de decisão de Scan.
+// fakeRepo is an in-memory Repo — this package's tests never touch a real
+// database, only Scan's decision logic.
 type fakeRepo struct {
-	lessonPathByHash map[string]string // hash -> path já registrado como lesson
-	lessonStat       map[string]string // path -> "size:mtime" da lesson registrada nesse path
-	pending          map[string]bool   // hash -> já está em pending_imports
+	lessonPathByHash map[string]string // hash -> path already registered as a lesson
+	lessonStat       map[string]string // path -> "size:mtime" of the lesson registered at that path
+	pending          map[string]bool   // hash -> already in pending_imports
 
 	statMatchCalls int
-	updatedPaths   map[string]string // hash -> novo path (chamadas de UpdateLessonPath)
+	updatedPaths   map[string]string // hash -> new path (UpdateLessonPath calls)
 	inserted       []Candidate
 }
 
@@ -174,7 +174,7 @@ func TestScan_KnownHashIsSkipped(t *testing.T) {
 	}
 	hash := repo.inserted[0].SHA256
 
-	// simula confirmação: candidato virou lesson, sai de pending
+	// simulates confirmation: candidate became a lesson, leaves pending
 	repo.lessonPathByHash[hash] = "aula.mp4"
 	delete(repo.pending, hash)
 
@@ -220,13 +220,13 @@ func TestScan_SameHashDifferentPathUpdatesLessonInsteadOfDuplicating(t *testing.
 	writeFile(t, filepath.Join(root, "nova-pasta", "aula.mp4"), "conteudo-movido")
 	repo := newFakeRepo()
 
-	// primeira varredura noutro path pra descobrir o hash real do conteúdo
+	// first scan in a different path to discover the content's real hash
 	if _, err := Scan(root, repo); err != nil {
 		t.Fatalf("primeira Scan() erro inesperado: %v", err)
 	}
 	hash := repo.inserted[0].SHA256
 
-	// simula: essa lesson já existia registrada num path antigo
+	// simulates: this lesson was already registered at an old path
 	repo.pending = map[string]bool{}
 	repo.inserted = nil
 	repo.lessonPathByHash[hash] = "pasta-antiga/aula.mp4"

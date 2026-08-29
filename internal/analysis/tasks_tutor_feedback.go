@@ -6,8 +6,8 @@ import (
 	"log/slog"
 )
 
-// TutorFeedbackItem é uma observação do Tutor sobre o desempenho do Aluno,
-// ancorada na fala do Tutor em que foi dada.
+// TutorFeedbackItem is an observation from the Tutor about the Student's performance,
+// anchored to the Tutor utterance in which it was given.
 type TutorFeedbackItem struct {
 	UtteranceIdx int    `json:"utterance_index"`
 	Feedback     string `json:"feedback"`

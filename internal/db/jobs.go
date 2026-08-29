@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Job é uma linha de jobs — ver a fila em tabela + worker único decidida em
-// docs/technology-decisions.md e a História 4 em docs/phase-1-mvp.md. Status
-// é sempre um de "pending", "running", "done", "error".
+// Job is a row from jobs — see the table-backed queue + single worker decision in
+// docs/technology-decisions.md and Story 4 in docs/phase-1-mvp.md. Status
+// is always one of "pending", "running", "done", "error".
 type Job struct {
 	ID        int64
 	LessonID  int64
@@ -21,9 +21,9 @@ type Job struct {
 	UpdatedAt string
 }
 
-// ListPendingJobs lista os jobs "pending", mais antigos primeiro — é a
-// ordem de FIFO que internal/jobs.Worker usa pra escolher o próximo job a
-// processar.
+// ListPendingJobs lists the "pending" jobs, oldest first — this is the
+// FIFO order internal/jobs.Worker uses to pick the next job to
+// process.
 func ListPendingJobs(conn *sql.DB) ([]Job, error) {
 	rows, err := conn.Query(
 		`SELECT id, lesson_id, kind, status, attempts, COALESCE(last_error, ''), created_at, updated_at FROM jobs WHERE status = 'pending' ORDER BY created_at ASC, id ASC`,
@@ -47,9 +47,9 @@ func ListPendingJobs(conn *sql.DB) ([]Job, error) {
 	return out, nil
 }
 
-// FindJob busca o job de kind (ex.: "extract_audio") para lessonID.
-// Retorna (nil, nil) se não houver — usado pelo Worker pra checar a
-// precedência de transcribe sobre extract_audio.
+// FindJob looks up the job of kind (e.g. "extract_audio") for lessonID.
+// Returns (nil, nil) if there isn't one — used by the Worker to check the
+// precedence of transcribe over extract_audio.
 func FindJob(conn *sql.DB, lessonID int64, kind string) (*Job, error) {
 	var j Job
 	err := conn.QueryRow(
@@ -65,9 +65,9 @@ func FindJob(conn *sql.DB, lessonID int64, kind string) (*Job, error) {
 	return &j, nil
 }
 
-// MarkJobRunning reivindica um job pending, marcando status="running".
-// Falha se o job não estiver mais pending — não deve acontecer com o
-// worker único da Fase 1, mas evita corrida silenciosa se isso mudar.
+// MarkJobRunning claims a pending job, setting status="running".
+// Fails if the job is no longer pending — shouldn't happen with the
+// single worker of Phase 1, but avoids a silent race if that changes.
 func MarkJobRunning(conn *sql.DB, id int64) error {
 	res, err := conn.Exec(
 		`UPDATE jobs SET status = 'running', updated_at = ? WHERE id = ? AND status = 'pending'`,
@@ -86,7 +86,7 @@ func MarkJobRunning(conn *sql.DB, id int64) error {
 	return nil
 }
 
-// MarkJobDone marca um job como concluído com sucesso.
+// MarkJobDone marks a job as successfully completed.
 func MarkJobDone(conn *sql.DB, id int64) error {
 	_, err := conn.Exec(
 		`UPDATE jobs SET status = 'done', last_error = NULL, updated_at = ? WHERE id = ?`,
@@ -98,11 +98,11 @@ func MarkJobDone(conn *sql.DB, id int64) error {
 	return nil
 }
 
-// MarkJobRetryOrError registra a falha de execução de um job: incrementa
-// attempts e grava lastError. Se o novo total de attempts ainda for menor
-// que maxAttempts, o job volta a "pending" (o Worker retenta depois do
-// backoff); senão vira "error" — terminal, só reprocessa manualmente.
-// Retorna o novo status e o novo total de attempts.
+// MarkJobRetryOrError records a job's execution failure: increments
+// attempts and stores lastError. If the new attempts total is still less
+// than maxAttempts, the job goes back to "pending" (the Worker retries after the
+// backoff); otherwise it becomes "error" — terminal, only reprocessed manually.
+// Returns the new status and the new attempts total.
 func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts int) (string, int, error) {
 	var attempts int
 	if err := conn.QueryRow(`SELECT attempts FROM jobs WHERE id = ?`, id).Scan(&attempts); err != nil {
@@ -123,10 +123,10 @@ func MarkJobRetryOrError(conn *sql.DB, id int64, lastError string, maxAttempts i
 	return status, attempts, nil
 }
 
-// MarkJobBlocked marca um job como "error" sem executá-lo e sem
-// incrementar attempts — usado quando a dependência dele (ex.:
-// extract_audio de um transcribe) já falhou definitivamente, então rodar o
-// job não faria sentido.
+// MarkJobBlocked marks a job as "error" without executing it and without
+// incrementing attempts — used when its dependency (e.g.
+// extract_audio for a transcribe) has already failed definitively, so running the
+// job wouldn't make sense.
 func MarkJobBlocked(conn *sql.DB, id int64, reason string) error {
 	_, err := conn.Exec(
 		`UPDATE jobs SET status = 'error', last_error = ?, updated_at = ? WHERE id = ?`,
@@ -138,10 +138,10 @@ func MarkJobBlocked(conn *sql.DB, id int64, reason string) error {
 	return nil
 }
 
-// RequeueRunningJobs volta todo job "running" pra "pending" — chamado uma
-// vez na inicialização do Worker pra cobrir crash/kill no meio de um job.
-// attempts não é incrementado: a interrupção não foi uma falha de
-// execução. Retorna quantos jobs foram requeued.
+// RequeueRunningJobs moves every "running" job back to "pending" — called once
+// at Worker startup to cover a crash/kill in the middle of a job.
+// attempts isn't incremented: the interruption wasn't an execution
+// failure. Returns how many jobs were requeued.
 func RequeueRunningJobs(conn *sql.DB) (int64, error) {
 	res, err := conn.Exec(
 		`UPDATE jobs SET status = 'pending', updated_at = ? WHERE status = 'running'`,
@@ -157,14 +157,14 @@ func RequeueRunningJobs(conn *sql.DB) (int64, error) {
 	return n, nil
 }
 
-// ResetErrorJobsForLesson reseta todos os jobs em "error" da lesson pra
-// "pending" (attempts=0, last_error=NULL) — usado pelo botão "Reprocessar"
-// da Biblioteca (História 5). Reseta os dois jobs de uma vez de propósito:
-// quando extract_audio falha em definitivo, o worker já marca transcribe
-// como "error" também (bloqueado por dependência — ver claimNextEligibleJob
-// em internal/jobs/worker.go), e resetar só o extract_audio deixaria o
-// transcribe preso em erro pra sempre. Retorna quantos jobs foram
-// resetados (0 não é erro — a lesson pode não ter nenhum job em erro).
+// ResetErrorJobsForLesson resets all "error" jobs of the lesson back to
+// "pending" (attempts=0, last_error=NULL) — used by the "Reprocess" button
+// in the Library (Story 5). Deliberately resets both jobs at once:
+// when extract_audio fails definitively, the worker already marks transcribe
+// as "error" too (blocked by dependency — see claimNextEligibleJob
+// in internal/jobs/worker.go), and resetting only extract_audio would leave
+// transcribe stuck in error forever. Returns how many jobs were
+// reset (0 isn't an error — the lesson may have no job in error).
 func ResetErrorJobsForLesson(conn *sql.DB, lessonID int64) (int64, error) {
 	res, err := conn.Exec(
 		`UPDATE jobs SET status = 'pending', attempts = 0, last_error = NULL, updated_at = ? WHERE lesson_id = ? AND status = 'error'`,

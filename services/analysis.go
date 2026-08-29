@@ -16,12 +16,12 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// AnalysisService dispara tarefas de análise sob demanda e expõe o
-// resultado já persistido (Fase 2, História 2 — Piloto: Correções do
-// aluno). providerFactory resolve a credencial do provedor de análise a
-// cada chamada, não uma vez só na construção do serviço — mesmo motivo do
-// sttFactory em internal/jobs/worker.go: a credencial pode ser gravada pela
-// tela de Configurações depois que o app já iniciou.
+// AnalysisService triggers analysis tasks on demand and exposes the
+// already-persisted result (Phase 2, Story 2 — Pilot: Student
+// Corrections). providerFactory resolves the analysis provider credential on
+// each call, not just once when the service is built — same reason as
+// sttFactory in internal/jobs/worker.go: the credential can be saved from the
+// Settings screen after the app has already started.
 type AnalysisService struct {
 	conn            *sql.DB
 	providerFactory func() (analysis.Provider, error)
@@ -33,10 +33,10 @@ func NewAnalysisService(conn *sql.DB, providerFactory func() (analysis.Provider,
 
 const correctionsTaskName = "analyze_corrections"
 
-// CorrectionDisplay é uma correção do aluno já pronta pro frontend
-// renderizar — DTO local ao pacote services (nunca analysis.CorrectionDisplay
-// direto: mesmo princípio de services.Transcript/services.Utterance em
-// library.go, internal/ não vaza pro binding do Wails).
+// CorrectionDisplay is a student correction already ready for the frontend
+// to render — a DTO local to the services package (never analysis.CorrectionDisplay
+// directly: same principle as services.Transcript/services.Utterance in
+// library.go, internal/ doesn't leak into the Wails binding).
 type CorrectionDisplay struct {
 	UtteranceIndex int    `json:"utteranceIndex"`
 	Original       string `json:"original"`
@@ -47,11 +47,11 @@ type CorrectionDisplay struct {
 	Explanation    string `json:"explanation"`
 }
 
-// CorrectionsResult é o resultado de analyze_corrections exposto ao
-// frontend. Analyzed distingue "a tarefa nunca rodou pra essa aula" (false,
-// Items vazio) de "rodou e não achou nenhuma correção" (true, Items vazio)
-// — o botão do Detalhe usa esse campo pra decidir entre "Analisar
-// correções" e "Reprocessar correções", não o tamanho de Items.
+// CorrectionsResult is the analyze_corrections result exposed to the
+// frontend. Analyzed distinguishes "the task never ran for this lesson" (false,
+// Items empty) from "it ran and found no corrections" (true, Items empty)
+// — the Detail button uses this field to decide between "Analyze
+// corrections" and "Reprocess corrections", not the size of Items.
 type CorrectionsResult struct {
 	Analyzed bool                `json:"analyzed"`
 	Items    []CorrectionDisplay `json:"items"`
@@ -73,8 +73,8 @@ func toCorrectionDisplays(items []analysis.CorrectionDisplay) []CorrectionDispla
 	return out
 }
 
-// GetCorrections devolve o resultado já salvo de analyze_corrections pra
-// lessonID, sem chamar a API. Analyzed == false se a tarefa nunca rodou.
+// GetCorrections returns the already-saved analyze_corrections result for
+// lessonID, without calling the API. Analyzed == false if the task never ran.
 func (s *AnalysisService) GetCorrections(lessonID int64) (CorrectionsResult, error) {
 	result, err := db.FindAnalysisResult(s.conn, lessonID, correctionsTaskName)
 	if err != nil {
@@ -86,8 +86,8 @@ func (s *AnalysisService) GetCorrections(lessonID int64) (CorrectionsResult, err
 	return s.buildResult(lessonID, result.ResultJSON)
 }
 
-// buildResult busca a transcrição da lesson e monta o CorrectionsResult a
-// partir de resultJSON já persistido.
+// buildResult fetches the lesson's transcript and builds the CorrectionsResult
+// from the already-persisted resultJSON.
 func (s *AnalysisService) buildResult(lessonID int64, resultJSON string) (CorrectionsResult, error) {
 	transcript, err := db.FindTranscriptByLessonID(s.conn, lessonID)
 	if err != nil {
@@ -107,15 +107,15 @@ func (s *AnalysisService) buildResultFromTranscript(utterances []stt.Utterance, 
 	return CorrectionsResult{Analyzed: true, Items: toCorrectionDisplays(analysis.MatchCorrections(utterances, corrections))}, nil
 }
 
-// AnalyzeCorrections roda analyze_corrections se ainda não houver resultado
-// salvo pra essa lesson; se já houver, devolve o existente sem chamar a API
-// de novo (idempotente).
+// AnalyzeCorrections runs analyze_corrections if there isn't already a result
+// saved for this lesson; if there is, it returns the existing one without calling the API
+// again (idempotent).
 func (s *AnalysisService) AnalyzeCorrections(lessonID int64) (CorrectionsResult, error) {
 	return s.runCorrections(lessonID, false)
 }
 
-// ReprocessCorrections roda analyze_corrections e sobrescreve o resultado
-// existente, mesmo que já haja um — ação explícita, nunca automática.
+// ReprocessCorrections runs analyze_corrections and overwrites the
+// existing result, even if there already is one — an explicit action, never automatic.
 func (s *AnalysisService) ReprocessCorrections(lessonID int64) (CorrectionsResult, error) {
 	return s.runCorrections(lessonID, true)
 }
@@ -191,16 +191,16 @@ func (s *AnalysisService) runCorrections(lessonID int64, overwrite bool) (Correc
 
 const topicsTaskName = "analyze_topics"
 
-// TopicsResult é o resultado de analyze_topics exposto ao frontend. Items
-// vem de lesson_topics (fonte da verdade, editável); Analyzed indica se a
-// tarefa já rodou (linha em analysis_results).
+// TopicsResult is the analyze_topics result exposed to the frontend. Items
+// comes from lesson_topics (source of truth, editable); Analyzed indicates whether the
+// task has already run (row in analysis_results).
 type TopicsResult struct {
 	Analyzed bool    `json:"analyzed"`
 	Items    []Topic `json:"items"`
 }
 
-// GetTopics devolve os tópicos atuais da lesson (de lesson_topics) sem chamar
-// a API — Analyzed == false se a tarefa nunca rodou.
+// GetTopics returns the lesson's current topics (from lesson_topics) without calling
+// the API — Analyzed == false if the task never ran.
 func (s *AnalysisService) GetTopics(lessonID int64) (TopicsResult, error) {
 	return s.currentTopics(lessonID)
 }

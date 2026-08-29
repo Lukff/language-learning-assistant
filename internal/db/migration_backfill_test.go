@@ -9,11 +9,11 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// TestMigration00005_BackfillsTeachersFromExistingLessonsData exercita a
-// migration 00005 contra um banco que já tem dados legados em lessons.tutor
-// (schema anterior, sem teachers/teacher_id) — o cenário real de "sem perda
-// de dados no backfill" que os testes em teachers_test.go não cobrem, já que
-// eles sempre partem de Open() (todas as migrations aplicadas do zero).
+// TestMigration00005_BackfillsTeachersFromExistingLessonsData exercises
+// migration 00005 against a database that already has legacy data in lessons.tutor
+// (the previous schema, without teachers/teacher_id) — the real "no data
+// loss on backfill" scenario that the tests in teachers_test.go don't cover, since
+// they always start from Open() (all migrations applied from scratch).
 func TestMigration00005_BackfillsTeachersFromExistingLessonsData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	conn, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
@@ -32,7 +32,7 @@ func TestMigration00005_BackfillsTeachersFromExistingLessonsData(t *testing.T) {
 		t.Fatalf("UpTo(4) erro inesperado: %v", err)
 	}
 
-	// Schema pré-migration 5: lessons.tutor (TEXT), sem teacher_id ainda.
+	// Pre-migration-5 schema: lessons.tutor (TEXT), no teacher_id yet.
 	legacyLessons := []struct {
 		date, tutor, videoPath string
 	}{
@@ -105,10 +105,10 @@ func TestMigration00005_BackfillsTeachersFromExistingLessonsData(t *testing.T) {
 	}
 }
 
-// TestMigration00006_BackfillsTopicsFromExistingLessonTopics exercita a
-// migration 00006 contra um banco que já tem dados legados em lesson_topics.topic
-// (schema anterior, sem topics/topic_id) — o cenário real de "sem perda
-// de dados no backfill" que os testes em analysis_results_test.go não cobrem.
+// TestMigration00006_BackfillsTopicsFromExistingLessonTopics exercises
+// migration 00006 against a database that already has legacy data in lesson_topics.topic
+// (the previous schema, without topics/topic_id) — the real "no data
+// loss on backfill" scenario that the tests in analysis_results_test.go don't cover.
 func TestMigration00006_BackfillsTopicsFromExistingLessonTopics(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	conn, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
@@ -127,8 +127,8 @@ func TestMigration00006_BackfillsTopicsFromExistingLessonTopics(t *testing.T) {
 		t.Fatalf("UpTo(5) erro inesperado: %v", err)
 	}
 
-	// Schema pré-migration 6: lesson_topics(topic TEXT). Precisa de teacher e
-	// lesson (lessons já aponta por teacher_id desde a migration 5).
+	// Pre-migration-6 schema: lesson_topics(topic TEXT). Needs a teacher and
+	// lesson (lessons already points via teacher_id since migration 5).
 	now := "2026-08-18T10:00:00Z"
 	resT, err := conn.Exec(`INSERT INTO teachers (name, created_at, updated_at) VALUES ('Sarah M.', ?, ?)`, now, now)
 	if err != nil {

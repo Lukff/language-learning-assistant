@@ -6,13 +6,13 @@ import (
 	"time"
 )
 
-// Lesson é uma linha de lessons. Além dos dados visíveis ao usuário
-// (LessonDate, TeacherName, DurationSeconds), carrega a identidade (path,
-// hash) e o stat-cache (tamanho/mtime) usados pela varredura da História 3
-// para decidir se o conteúdo precisa ser rehasheado. TeacherID é a FK
-// gravável (INSERT/UPDATE); TeacherName vem de um JOIN com teachers, só
-// leitura. DurationSeconds é nil até a História 5 gravá-lo (best-effort,
-// via ffprobe, na confirmação da importação) — nunca bloqueia nada por ser
+// Lesson is a row from lessons. Besides the data visible to the user
+// (LessonDate, TeacherName, DurationSeconds), it carries the identity (path,
+// hash) and the stat cache (size/mtime) used by the Story 3 scan
+// to decide whether the content needs rehashing. TeacherID is the writable
+// FK (INSERT/UPDATE); TeacherName comes from a JOIN with teachers, read-only.
+// DurationSeconds is nil until Story 5 stores it (best-effort,
+// via ffprobe, on import confirmation) — never blocks anything by being
 // nil.
 type Lesson struct {
 	ID                  int64
@@ -27,16 +27,16 @@ type Lesson struct {
 	StudentSpeakerLabel *string
 }
 
-// lessonColumns é a lista de colunas (nesta ordem) que scanLessonRow espera
-// — compartilhada por FindLessonByPath/ByHash/ByID pra manter as três
-// consultas idênticas na forma como leem duration_seconds nullable.
+// lessonColumns is the list of columns (in this order) that scanLessonRow expects
+// — shared by FindLessonByPath/ByHash/ByID to keep the three
+// queries identical in how they read the nullable duration_seconds.
 const lessonColumns = `l.id, l.lesson_date, l.teacher_id, t.name, l.video_path, COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''), l.duration_seconds, l.student_speaker_label`
 
 const lessonFromJoin = ` FROM lessons l JOIN teachers t ON t.id = l.teacher_id`
 
-// scanLessonRow faz o scan de uma linha selecionada com lessonColumns.
-// Retorna (nil, nil) se a linha não existir (sql.ErrNoRows) — path/hash/id
-// não encontrado é o caso comum, não um erro, pros chamadores.
+// scanLessonRow scans a row selected with lessonColumns.
+// Returns (nil, nil) if the row doesn't exist (sql.ErrNoRows) — path/hash/id
+// not found is the common case for callers, not an error.
 func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	var l Lesson
 	var duration sql.NullInt64
@@ -59,9 +59,9 @@ func scanLessonRow(row *sql.Row) (*Lesson, error) {
 	return &l, nil
 }
 
-// FindLessonByPath busca a lesson cujo video_path é exatamente path. Retorna
-// (nil, nil) se não houver nenhuma — path já registrado é o caso comum, não
-// um erro.
+// FindLessonByPath looks up the lesson whose video_path is exactly path. Returns
+// (nil, nil) if there is none — an already-registered path is the common case, not
+// an error.
 func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_path = ?`, path)
 	l, err := scanLessonRow(row)
@@ -71,8 +71,8 @@ func FindLessonByPath(conn *sql.DB, path string) (*Lesson, error) {
 	return l, nil
 }
 
-// FindLessonByHash busca a lesson cujo video_hash é exatamente hash. Retorna
-// (nil, nil) se não houver nenhuma.
+// FindLessonByHash looks up the lesson whose video_hash is exactly hash. Returns
+// (nil, nil) if there is none.
 func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.video_hash = ?`, hash)
 	l, err := scanLessonRow(row)
@@ -82,7 +82,7 @@ func FindLessonByHash(conn *sql.DB, hash string) (*Lesson, error) {
 	return l, nil
 }
 
-// FindLessonByID busca a lesson por id. Retorna (nil, nil) se não houver.
+// FindLessonByID looks up the lesson by id. Returns (nil, nil) if there is none.
 func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	row := conn.QueryRow(`SELECT `+lessonColumns+lessonFromJoin+` WHERE l.id = ?`, id)
 	l, err := scanLessonRow(row)
@@ -92,11 +92,11 @@ func FindLessonByID(conn *sql.DB, id int64) (*Lesson, error) {
 	return l, nil
 }
 
-// UpdateLessonPath atualiza video_path/file_size/file_mtime de uma lesson já
-// registrada — usado quando a varredura encontra o mesmo hash num path
-// diferente (o arquivo só foi movido/renomeado, não é uma aula nova).
-// file_mtime é o mtime do arquivo no disco; updated_at (a marca de quando a
-// linha do banco mudou) é sempre "agora", nunca o mtime do arquivo.
+// UpdateLessonPath updates video_path/file_size/file_mtime of an already
+// registered lesson — used when the scan finds the same hash at a
+// different path (the file was just moved/renamed, not a new lesson).
+// file_mtime is the file's mtime on disk; updated_at (the mark of when the
+// database row changed) is always "now", never the file's mtime.
 func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fileMTime string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET video_path = ?, file_size = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
@@ -108,9 +108,9 @@ func UpdateLessonPath(conn *sql.DB, lessonID int64, path string, size int64, fil
 	return nil
 }
 
-// SetLessonDuration grava a duração do vídeo (calculada via ffprobe na
-// confirmação da importação, best-effort — ver ImportService.ConfirmImport)
-// — só é chamado quando o probe teve sucesso.
+// SetLessonDuration stores the video's duration (computed via ffprobe on
+// import confirmation, best-effort — see ImportService.ConfirmImport)
+// — only called when the probe succeeded.
 func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET duration_seconds = ?, updated_at = ? WHERE id = ?`,
@@ -122,9 +122,9 @@ func SetLessonDuration(conn *sql.DB, lessonID int64, seconds int64) error {
 	return nil
 }
 
-// SetStudentSpeaker grava qual speaker bruto (ex.: "speaker_0") é o aluno
-// nesta lesson — escolha feita pelo toggle do Detalhe (História 6).
-// Sobrescreve qualquer valor anterior, permitindo o usuário corrigir.
+// SetStudentSpeaker stores which raw speaker (e.g. "speaker_0") is the student
+// in this lesson — a choice made via the Detail view's toggle (Story 6).
+// Overwrites any previous value, letting the user correct it.
 func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET student_speaker_label = ?, updated_at = ? WHERE id = ?`,
@@ -136,10 +136,10 @@ func SetStudentSpeaker(conn *sql.DB, lessonID int64, speakerLabel string) error 
 	return nil
 }
 
-// UpdateLesson grava data/horário e professor de uma lesson já confirmada —
-// edição pós-importação (História 9). teacherID já deve existir (resolvido
-// pelo chamador via GetOrCreateTeacherByName a partir do nome livre do
-// combobox).
+// UpdateLesson stores the date/time and teacher of an already confirmed lesson —
+// post-import editing (Story 9). teacherID must already exist (resolved
+// by the caller via GetOrCreateTeacherByName from the combobox's
+// free-text name).
 func UpdateLesson(conn *sql.DB, lessonID int64, lessonDate string, teacherID int64) error {
 	_, err := conn.Exec(
 		`UPDATE lessons SET lesson_date = ?, teacher_id = ?, updated_at = ? WHERE id = ?`,

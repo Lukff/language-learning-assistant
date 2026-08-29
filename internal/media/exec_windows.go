@@ -7,9 +7,9 @@ import (
 	"syscall"
 )
 
-// hideWindow evita que ffmpeg/ffprobe abram uma janela de console: como o
-// app Wails roda sem console próprio, o Windows abre uma nova janela para
-// cada processo console-subsystem lançado, a cada importação de vídeo.
+// hideWindow prevents ffmpeg/ffprobe from opening a console window: since the
+// Wails app runs without its own console, Windows opens a new window for
+// every console-subsystem process launched, on every video import.
 func hideWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 }

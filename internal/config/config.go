@@ -6,16 +6,16 @@ import (
 	"os"
 )
 
-// AppConfig é a configuração local da máquina, persistida em config.json no
-// AppDataDir. StorageRoot é um path absoluto (específico da máquina) para a
-// pasta sincronizada onde as aulas importadas são guardadas.
+// AppConfig is the machine-local configuration, persisted in config.json in
+// AppDataDir. StorageRoot is an absolute path (machine-specific) to the
+// synced folder where imported lessons are stored.
 type AppConfig struct {
 	StorageRoot string `json:"storage_root"`
 }
 
-// Load lê a config.json do AppDataDir. Se o arquivo não existir, o erro
-// retornado satisfaz errors.Is(err, os.ErrNotExist) — é assim que os
-// chamadores detectam "primeira execução".
+// Load reads config.json from AppDataDir. If the file doesn't exist, the
+// returned error satisfies errors.Is(err, os.ErrNotExist) — that's how
+// callers detect "first run".
 func Load() (*AppConfig, error) {
 	path, err := configPath()
 	if err != nil {
@@ -32,7 +32,7 @@ func Load() (*AppConfig, error) {
 	return &cfg, nil
 }
 
-// Save grava cfg em config.json no AppDataDir, sobrescrevendo o que houver.
+// Save writes cfg to config.json in AppDataDir, overwriting whatever is there.
 func Save(cfg *AppConfig) error {
 	path, err := configPath()
 	if err != nil {

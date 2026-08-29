@@ -9,16 +9,16 @@ import (
 	"assistente-idiomas/internal/db"
 )
 
-// Topic é um tópico cadastrado, no formato exposto ao frontend — entidade
-// reutilizada por TopicsService (gestão) e por AnalysisService (TopicsResult).
+// Topic is a registered topic, in the format exposed to the frontend — an entity
+// reused by TopicsService (management) and by AnalysisService (TopicsResult).
 type Topic struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 }
 
-// TopicsService cobre a gestão de tópicos como entidade (História 3): listar
-// pro painel de Configurações, renomear globalmente, e adicionar/remover o
-// vínculo de um tópico a uma aula específica (chips do Detalhe).
+// TopicsService covers topic management as an entity (Story 3): listing
+// for the Settings panel, renaming globally, and adding/removing the
+// link between a topic and a specific lesson (Detail chips).
 type TopicsService struct {
 	conn *sql.DB
 }
@@ -43,13 +43,13 @@ func (s *TopicsService) RenameTopic(id int64, newName string) error {
 	return db.RenameTopic(s.conn, id, newName)
 }
 
-// AddTopic resolve o nome para uma entidade (criando se necessário) e vincula
-// à lessonID. lessonID <= 0 cria/reutiliza a entidade sem vincular a nenhuma
-// aula — usado pelo painel de Configurações; qualquer chamador real (ex.: uma
-// futura chamada do frontend passando um 0 acidental/não definido) precisa
-// estar ciente de que esse é um no-op silencioso de vínculo, não um erro.
-// Devolve o tópico resolvido; o frontend re-busca GetTopics depois para
-// reconciliar nomes canônicos.
+// AddTopic resolves the name to an entity (creating it if necessary) and links
+// it to lessonID. lessonID <= 0 creates/reuses the entity without linking it to any
+// lesson — used by the Settings panel; any real caller (e.g. a
+// future frontend call passing an accidental/undefined 0) needs to
+// be aware that this is a silent link no-op, not an error.
+// Returns the resolved topic; the frontend re-fetches GetTopics afterward to
+// reconcile canonical names.
 func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -67,19 +67,19 @@ func (s *TopicsService) AddTopic(lessonID int64, name string) (Topic, error) {
 	return Topic{ID: id, Name: name}, nil
 }
 
-// RemoveTopic desvincula topicID de lessonID (não apaga a entidade).
+// RemoveTopic unlinks topicID from lessonID (does not delete the entity).
 func (s *TopicsService) RemoveTopic(lessonID, topicID int64) error {
 	return db.RemoveLessonTopic(s.conn, lessonID, topicID)
 }
 
-// DeleteTopic apaga a entidade globalmente, removendo o vínculo de qualquer
-// aula que a usava (chips somem das aulas afetadas).
+// DeleteTopic deletes the entity globally, removing the link from any
+// lesson that used it (chips disappear from the affected lessons).
 func (s *TopicsService) DeleteTopic(id int64) error {
 	return db.DeleteTopic(s.conn, id)
 }
 
-// DeleteAllTopics apaga todos os tópicos cadastrados de uma vez — atalho de
-// reset em massa pra testes manuais, não um fluxo do dia a dia do usuário.
+// DeleteAllTopics deletes all registered topics at once — a bulk-reset
+// shortcut for manual testing, not a day-to-day user flow.
 func (s *TopicsService) DeleteAllTopics() error {
 	return db.DeleteAllTopics(s.conn)
 }

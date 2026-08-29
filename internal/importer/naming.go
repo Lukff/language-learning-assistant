@@ -1,6 +1,6 @@
-// Package importer — ver importer.go. Este arquivo cobre a padronização do
-// nome do arquivo de vídeo pós-confirmação (História 3, critério adicional
-// registrado em docs/phase-1-mvp.md e desenhado em
+// Package importer — see importer.go. This file covers standardizing the
+// video file name after confirmation (Story 3, additional criterion
+// recorded in docs/phase-1-mvp.md and designed in
 // docs/superpowers/specs/2026-07-23-story-3-standardized-filename-design.md).
 package importer
 
@@ -10,11 +10,11 @@ import (
 	"strings"
 )
 
-// accentReplacer remove os acentos mais comuns em nomes próprios PT/ES —
-// evita depender de uma lib de transliteração só pra isso (CLAUDE.md: sem
-// dependência nova sem justificativa). Espera-se que a entrada já esteja em
-// minúsculas (strings.ToLower já normaliza a maioria das formas
-// maiúsculas/acentuadas correspondentes).
+// accentReplacer strips the most common accents in PT/ES proper names —
+// avoids depending on a transliteration lib just for this (CLAUDE.md: no
+// new dependency without justification). The input is expected to already be
+// lowercase (strings.ToLower already normalizes most of the corresponding
+// uppercase/accented forms).
 var accentReplacer = strings.NewReplacer(
 	"á", "a", "à", "a", "â", "a", "ã", "a", "ä", "a",
 	"é", "e", "è", "e", "ê", "e", "ë", "e",
@@ -26,9 +26,9 @@ var accentReplacer = strings.NewReplacer(
 
 var nonSlugRun = regexp.MustCompile(`[^a-z0-9]+`)
 
-// slugify normaliza um nome de tutor pra uso em nome de arquivo: minúsculas,
-// sem acento, qualquer sequência de caracteres fora de [a-z0-9] vira um
-// único "-", sem "-" nas pontas.
+// slugify normalizes a tutor name for use in a file name: lowercase,
+// no accents, any run of characters outside [a-z0-9] becomes a
+// single "-", with no "-" at the ends.
 func slugify(s string) string {
 	s = strings.ToLower(s)
 	s = accentReplacer.Replace(s)
@@ -36,21 +36,21 @@ func slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// StandardFilename deriva o nome de arquivo padronizado pós-confirmação, no
-// formato "AAAA-MM-DD_HHHMM_tutor-slug.ext" (ex.: "2026-07-23_14H30_maria-jose.mp4").
-// lessonDate é o valor bruto de <input type="datetime-local">
-// ("AAAA-MM-DDTHH:MM"); o chamador (services/import.go ConfirmImport) já
-// garante esse formato antes de chamar esta função — não há fallback aqui
-// para data sem horário. ext inclui o ponto (ex.: ".mp4"), como retornado
-// por filepath.Ext, e é normalizada para minúsculas.
+// StandardFilename derives the standardized file name after confirmation, in the
+// format "YYYY-MM-DD_HHHMM_tutor-slug.ext" (e.g. "2026-07-23_14H30_maria-jose.mp4").
+// lessonDate is the raw value of <input type="datetime-local">
+// ("YYYY-MM-DDTHH:MM"); the caller (services/import.go ConfirmImport) already
+// guarantees this format before calling this function — there's no fallback here
+// for a date without a time. ext includes the dot (e.g. ".mp4"), as returned
+// by filepath.Ext, and is normalized to lowercase.
 func StandardFilename(lessonDate, tutor, ext string) string {
 	datePart, timePart, _ := strings.Cut(lessonDate, "T")
 	timePart = strings.ReplaceAll(timePart, ":", "H")
 	slug := slugify(tutor)
 	if slug == "" {
-		// Tutor sem nenhum caractere alfanumérico (ex.: "..."). ConfirmImport só
-		// rejeita tutor vazio, não este caso degenerado — cai aqui pra nunca
-		// produzir um nome de arquivo com "_" solto antes da extensão.
+		// Tutor with no alphanumeric character at all (e.g. "..."). ConfirmImport only
+		// rejects an empty tutor, not this degenerate case — falls here to never
+		// produce a file name with a stray "_" before the extension.
 		slug = "tutor"
 	}
 	return fmt.Sprintf("%s_%s_%s%s", datePart, timePart, slug, strings.ToLower(ext))

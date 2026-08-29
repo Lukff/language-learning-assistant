@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// maxTopicsPerLesson limita a quantidade de tópicos aceitos por aula. O
-// prompt já instrui o LLM a devolver no máximo 4, mas aplicamos o corte
-// aqui também como rede de segurança contra respostas fora da instrução.
+// maxTopicsPerLesson limits the number of topics accepted per lesson. The
+// prompt already instructs the LLM to return at most 4, but we also apply the cutoff
+// here as a safety net against responses that don't follow the instruction.
 const maxTopicsPerLesson = 4
 
 func parseTopics(raw json.RawMessage, utteranceCount int) ([]string, error) {
@@ -25,15 +25,15 @@ func parseTopics(raw json.RawMessage, utteranceCount int) ([]string, error) {
 	return parsed.Topics, nil
 }
 
-// NewTopicsTask devolve a tarefa de tópicos na versão 4 do prompt
-// (granularidade geral + reaproveitamento de tópicos existentes + máximo de
-// 4 tópicos por aula + tópicos em inglês).
+// NewTopicsTask returns the topics task on prompt version 4
+// (general granularity + reuse of existing topics + a maximum of
+// 4 topics per lesson + topics in English).
 func NewTopicsTask() TaskDef {
 	return task[[]string]{name: "analyze_topics", version: 4, prompt: mustLoadPrompt("analyze-topics-v4.md"), parse: parseTopics}
 }
 
-// ParseTopicsResult decodifica um result_json persistido (array JSON de
-// strings — resultJSON é json.Marshal([]string), sem envelope) de volta em
+// ParseTopicsResult decodes a persisted result_json (JSON array of
+// strings — resultJSON is json.Marshal([]string), with no envelope) back into
 // []string.
 func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error) {
 	var out []string
@@ -43,9 +43,9 @@ func ParseTopicsResult(resultJSON json.RawMessage) ([]string, error) {
 	return out, nil
 }
 
-// AppendExistingTopics anexa a lista de tópicos já existentes ao conteúdo da
-// transcrição, num bloco final que o prompt reconhece. Devolve transcript
-// inalterado quando não há tópicos existentes.
+// AppendExistingTopics appends the list of already-existing topics to the
+// transcript content, in a final block that the prompt recognizes. Returns transcript
+// unchanged when there are no existing topics.
 func AppendExistingTopics(transcript string, existing []string) string {
 	if len(existing) == 0 {
 		return transcript

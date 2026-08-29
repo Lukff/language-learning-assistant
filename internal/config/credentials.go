@@ -12,10 +12,10 @@ const (
 	keyringUserDeepSeek   = "deepseek"
 )
 
-// SaveSTTAPIKey grava a API key da ElevenLabs no gerenciador de credenciais
-// nativo do SO, via go-keyring. Nunca em texto plano. Se o Secret Service
-// (Linux) ou equivalente não estiver disponível, retorna erro — sem
-// fallback para variável de ambiente ou arquivo.
+// SaveSTTAPIKey writes the ElevenLabs API key to the OS's native
+// credential manager, via go-keyring. Never in plain text. If the Secret Service
+// (Linux) or equivalent isn't available, returns an error — with no
+// fallback to an environment variable or file.
 func SaveSTTAPIKey(apiKey string) error {
 	if err := keyring.Set(keyringService, keyringUserElevenLabs, apiKey); err != nil {
 		return fmt.Errorf("gravar credencial no gerenciador do sistema: %w", err)
@@ -23,7 +23,7 @@ func SaveSTTAPIKey(apiKey string) error {
 	return nil
 }
 
-// GetSTTAPIKey lê a API key da ElevenLabs previamente salva via
+// GetSTTAPIKey reads the ElevenLabs API key previously saved via
 // SaveSTTAPIKey.
 func GetSTTAPIKey() (string, error) {
 	apiKey, err := keyring.Get(keyringService, keyringUserElevenLabs)
@@ -33,8 +33,8 @@ func GetSTTAPIKey() (string, error) {
 	return apiKey, nil
 }
 
-// SaveAnalysisAPIKey grava a API key da DeepSeek no gerenciador de
-// credenciais nativo do SO, via go-keyring. Nunca em texto plano.
+// SaveAnalysisAPIKey writes the DeepSeek API key to the OS's native
+// credential manager, via go-keyring. Never in plain text.
 func SaveAnalysisAPIKey(apiKey string) error {
 	if err := keyring.Set(keyringService, keyringUserDeepSeek, apiKey); err != nil {
 		return fmt.Errorf("gravar credencial no gerenciador do sistema: %w", err)
@@ -42,7 +42,7 @@ func SaveAnalysisAPIKey(apiKey string) error {
 	return nil
 }
 
-// GetAnalysisAPIKey lê a API key da DeepSeek previamente salva via
+// GetAnalysisAPIKey reads the DeepSeek API key previously saved via
 // SaveAnalysisAPIKey.
 func GetAnalysisAPIKey() (string, error) {
 	apiKey, err := keyring.Get(keyringService, keyringUserDeepSeek)

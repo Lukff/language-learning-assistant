@@ -352,7 +352,7 @@ func TestImportService_ConfirmImport_ResolvesFilenameCollisionWithSuffix(t *test
 		t.Fatalf("não achei os dois candidatos esperados (a.mp4/b.mp4) em %+v", pending)
 	}
 
-	// Mesma data/horário/tutor pras duas aulas — mesmo nome-alvo, força colisão.
+	// Same date/time/tutor for both lessons — same target name, forces a collision.
 	if err := svc.ConfirmImport(idA, "2026-07-23T14:30", "Maria José"); err != nil {
 		t.Fatalf("ConfirmImport(a) erro inesperado: %v", err)
 	}
@@ -501,9 +501,9 @@ func TestImportService_ListPendingImports_ExcludesCandidateMissingAfterStorageRo
 		t.Fatalf("setup: ListPendingImports() = %+v, esperado 1 candidato antes da troca de pasta", pending)
 	}
 
-	// Troca a storage_root pra uma pasta nova que não tem "aula.mp4" — mesma
-	// mudança que SettingsService.ChangeStorageFolder faz em config.json,
-	// sem que o candidato pendente tenha sido reconciliado.
+	// Switch storage_root to a new folder that doesn't have "aula.mp4" — the same
+	// change that SettingsService.ChangeStorageFolder makes to config.json,
+	// without the pending candidate having been reconciled.
 	newRoot := t.TempDir()
 	settingsSvc := NewSettingsService(conn, func() (string, error) { return newRoot, nil })
 	if _, err := settingsSvc.ChangeStorageFolder(newRoot); err != nil {

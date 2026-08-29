@@ -1,6 +1,6 @@
-// Package config resolve os paths de dados do app na máquina local, lê/grava
-// a configuração (config.json) e guarda/lê a credencial do provedor de STT
-// via keyring do SO. Não importa nada do Wails (camada fina).
+// Package config resolves the app's data paths on the local machine, reads/writes
+// the configuration (config.json), and stores/reads the STT provider's
+// credential via the OS keyring. Imports nothing from Wails (thin layer).
 package config
 
 import (
@@ -11,9 +11,9 @@ import (
 
 const appDirName = "assistente-idiomas"
 
-// AppDataDir resolve (criando se necessário) o diretório de dados do app no
-// diretório de configuração do SO: %AppData%\assistente-idiomas no Windows,
-// ~/.config/assistente-idiomas no Linux (respeita XDG_CONFIG_HOME).
+// AppDataDir resolves (creating it if needed) the app's data directory in the
+// OS's configuration directory: %AppData%\assistente-idiomas on Windows,
+// ~/.config/assistente-idiomas on Linux (respects XDG_CONFIG_HOME).
 func AppDataDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -26,8 +26,8 @@ func AppDataDir() (string, error) {
 	return dir, nil
 }
 
-// DBPath resolve o caminho do arquivo do banco SQLite dentro do
-// AppDataDir. O diretório pai é criado por db.Open, não aqui.
+// DBPath resolves the path to the SQLite database file inside
+// AppDataDir. The parent directory is created by db.Open, not here.
 func DBPath() (string, error) {
 	dir, err := AppDataDir()
 	if err != nil {
@@ -44,10 +44,10 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-// AudioCacheDir resolve (criando se necessário) o diretório de cache de
-// áudio intermediário (WAVs extraídos pra chamar a API de STT) dentro do
-// AppDataDir — fora da pasta sincronizada, já que esses arquivos são
-// descartáveis assim que a transcrição é salva (ver internal/jobs).
+// AudioCacheDir resolves (creating it if needed) the directory for intermediate
+// audio cache (WAVs extracted to call the STT API) inside
+// AppDataDir — outside the synced folder, since these files are
+// disposable as soon as the transcript is saved (see internal/jobs).
 func AudioCacheDir() (string, error) {
 	dir, err := AppDataDir()
 	if err != nil {

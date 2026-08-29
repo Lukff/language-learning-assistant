@@ -7,29 +7,29 @@ import (
 	"strings"
 )
 
-// LessonFilter filtra ListLessonsWithStatus — todos os campos são opcionais
-// (zero value = sem filtro), usado pelo filtro por professor/período da
-// Biblioteca (História 5, TeacherID desde a História 9).
+// LessonFilter filters ListLessonsWithStatus — all fields are optional
+// (zero value = no filter), used by the Library's teacher/period filter
+// (Story 5, TeacherID since Story 9).
 type LessonFilter struct {
 	TeacherID int64
-	DateFrom  string // AAAA-MM-DD, inclusive
-	DateTo    string // AAAA-MM-DD, inclusive
-	TopicIDs  []int64 // vazio = sem filtro; semântica OR (Fase 2, História 4)
+	DateFrom  string // YYYY-MM-DD, inclusive
+	DateTo    string // YYYY-MM-DD, inclusive
+	TopicIDs  []int64 // empty = no filter; OR semantics (Phase 2, Story 4)
 }
 
-// LessonWithStatus é uma lesson com o status derivado dos jobs
-// extract_audio/transcribe. Status é sempre um de "processando", "pronta",
-// "erro"; ErrorMessage só é preenchido quando Status == "erro" — ver as
-// regras de derivação em deriveStatus.
+// LessonWithStatus is a lesson with the status derived from the
+// extract_audio/transcribe jobs. Status is always one of "processando" (processing), "pronta" (ready),
+// "erro" (error); ErrorMessage is only filled when Status == "erro" — see the
+// derivation rules in deriveStatus.
 type LessonWithStatus struct {
 	Lesson
 	Status       string
 	ErrorMessage string
 }
 
-// lessonWithStatusColumns e lessonWithStatusFromJoin são compartilhados por
-// ListLessonsWithStatus (várias linhas) e FindLessonWithStatusByID (uma
-// linha, História 6) — mesma lista de colunas/JOIN, pra não divergirem.
+// lessonWithStatusColumns and lessonWithStatusFromJoin are shared by
+// ListLessonsWithStatus (multiple rows) and FindLessonWithStatusByID (one
+// row, Story 6) — same column list/JOIN, so they don't diverge.
 const lessonWithStatusColumns = `
 		l.id, l.lesson_date, l.teacher_id, t.name, l.video_path,
 		COALESCE(l.video_hash, ''), COALESCE(l.file_size, 0), COALESCE(l.file_mtime, ''),
@@ -43,9 +43,9 @@ const lessonWithStatusFromJoin = `
 	LEFT JOIN jobs ea ON ea.lesson_id = l.id AND ea.kind = 'extract_audio'
 	LEFT JOIN jobs tr ON tr.lesson_id = l.id AND tr.kind = 'transcribe'`
 
-// rowScanner é satisfeito tanto por *sql.Row (uma linha) quanto por *sql.Rows
-// (várias linhas) — permite compartilhar o scan entre
-// ListLessonsWithStatus e FindLessonWithStatusByID.
+// rowScanner is satisfied by both *sql.Row (one row) and *sql.Rows
+// (multiple rows) — allows sharing the scan between
+// ListLessonsWithStatus and FindLessonWithStatusByID.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -77,11 +77,11 @@ func scanLessonWithStatusRow(s rowScanner) (LessonWithStatus, error) {
 	return lws, nil
 }
 
-// ListLessonsWithStatus lista as lessons confirmadas com o status derivado
-// dos jobs, mais recentes primeiro, aplicando filter (campos zero são
-// ignorados). O filtro de data compara só a parte AAAA-MM-DD de
-// lesson_date (que pode ter horário, formato de <input type="datetime-local">),
-// pra incluir aulas com horário registrado no dia inteiro do intervalo.
+// ListLessonsWithStatus lists confirmed lessons with the status derived
+// from the jobs, most recent first, applying filter (zero fields are
+// ignored). The date filter compares only the YYYY-MM-DD part of
+// lesson_date (which may have a time, in <input type="datetime-local"> format),
+// to include lessons with a recorded time on any day within the range.
 func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatus, error) {
 	query := `SELECT` + lessonWithStatusColumns + lessonWithStatusFromJoin + ` WHERE 1=1`
 	var args []any
@@ -127,11 +127,11 @@ func ListLessonsWithStatus(conn *sql.DB, filter LessonFilter) ([]LessonWithStatu
 	return out, nil
 }
 
-// FindLessonWithStatusByID busca uma lesson por id já com o status
-// derivado dos jobs (mesmas regras de ListLessonsWithStatus) — usada pelo
-// Detalhe (História 6), que agora abre em qualquer status, não só
-// "pronta" (ver services.LibraryService.GetLesson). Retorna (nil, nil) se
-// a lesson não existir.
+// FindLessonWithStatusByID looks up a lesson by id already with the status
+// derived from the jobs (same rules as ListLessonsWithStatus) — used by the
+// Detail view (Story 6), which now opens at any status, not just
+// "pronta" (ready) (see services.LibraryService.GetLesson). Returns (nil, nil) if
+// the lesson doesn't exist.
 func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error) {
 	row := conn.QueryRow(`SELECT`+lessonWithStatusColumns+lessonWithStatusFromJoin+` WHERE l.id = ?`, id)
 	lws, err := scanLessonWithStatusRow(row)
@@ -144,11 +144,11 @@ func FindLessonWithStatusByID(conn *sql.DB, id int64) (*LessonWithStatus, error)
 	return &lws, nil
 }
 
-// deriveStatus aplica as regras de status da Biblioteca (História 5): erro
-// do extract_audio é a causa raiz e tem prioridade sobre o erro do
-// transcribe (que fica bloqueado quando o extract_audio dele falha — ver
-// claimNextEligibleJob em internal/jobs/worker.go); "pronta" exige o
-// transcribe concluído, não só o extract_audio.
+// deriveStatus applies the Library's status rules (Story 5): an
+// extract_audio error is the root cause and takes priority over the
+// transcribe error (which gets blocked when its extract_audio fails — see
+// claimNextEligibleJob in internal/jobs/worker.go); "pronta" (ready) requires
+// transcribe to be done, not just extract_audio.
 func deriveStatus(extractStatus, extractError, transcribeStatus, transcribeError string) (status string, message string) {
 	if extractStatus == "error" {
 		return "erro", extractError

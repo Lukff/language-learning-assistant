@@ -8,13 +8,13 @@ import (
 	"assistente-idiomas/internal/stt"
 )
 
-// CorrectionDisplay é uma Correction já pronta para o frontend renderizar:
-// o trecho errado (Wrong) já separado do resto da fala (Before/After) via
-// matching normalizado contra o texto real da utterance correspondente.
-// Original é sempre preenchido com o trecho cru devolvido pelo modelo,
-// mesmo quando Wrong == "" (não localizado) — é o que o chamador usa pra
-// montar a nota avulsa de fallback, já que Before/Wrong/After ficam vazios
-// nesse caso.
+// CorrectionDisplay is a Correction already prepared for the frontend to render:
+// the wrong excerpt (Wrong) already separated from the rest of the utterance (Before/After) via
+// normalized matching against the actual text of the corresponding utterance.
+// Original is always filled with the raw excerpt returned by the model,
+// even when Wrong == "" (not found) — it's what the caller uses to
+// build the standalone fallback note, since Before/Wrong/After are empty
+// in that case.
 type CorrectionDisplay struct {
 	UtteranceIndex int
 	Original       string
@@ -25,17 +25,17 @@ type CorrectionDisplay struct {
 	Explanation    string
 }
 
-// MatchCorrections localiza, para cada Correction, o trecho Original dentro
-// do texto real da utterance correspondente (utterances[c.UtteranceIdx]),
-// normalizando (case-insensitive, espaços consecutivos colapsados em um só)
-// quando o match exato falha. Usa a primeira ocorrência quando Original
-// aparece mais de uma vez na fala. Quando não encontra (nem normalizado),
-// Before/Wrong/After ficam vazios — o chamador mostra a correção como nota
-// avulsa nesse caso, nunca a descarta. utterances e corrections já vieram
-// com utterance_index validado (filterAnchored, História 1); um índice fora
-// do range aqui seria bug de chamador (ou um resultado persistido antigo
-// dessincronizado de uma transcrição diferente), e é simplesmente
-// descartado silenciosamente — defesa extra, não um caminho esperado.
+// MatchCorrections locates, for each Correction, the Original excerpt within
+// the actual text of the corresponding utterance (utterances[c.UtteranceIdx]),
+// normalizing (case-insensitive, consecutive spaces collapsed into one)
+// when the exact match fails. Uses the first occurrence when Original
+// appears more than once in the utterance. When not found (not even normalized),
+// Before/Wrong/After stay empty — the caller shows the correction as a
+// standalone note in that case, never discards it. utterances and corrections already come
+// with utterance_index validated (filterAnchored, Story 1); an out-of-range
+// index here would be a caller bug (or an old persisted result
+// out of sync with a different transcript), and is simply
+// silently discarded — extra defense, not an expected path.
 func MatchCorrections(utterances []stt.Utterance, corrections []Correction) []CorrectionDisplay {
 	out := make([]CorrectionDisplay, 0, len(corrections))
 	for _, c := range corrections {
@@ -57,13 +57,13 @@ func MatchCorrections(utterances []stt.Utterance, corrections []Correction) []Co
 	return out
 }
 
-// splitByOriginal localiza original dentro de text e devolve os três
-// pedaços (antes, o próprio trecho como aparece em text, depois). Tenta
-// primeiro um match exato (mais rápido, preserva índices originais sem
-// mapeamento); se falhar, normaliza (minúsculas + espaços consecutivos
-// colapsados) e mapeia o índice encontrado de volta pro texto original via
-// normalizeWithOffsets. Sem nenhum match, devolve três strings vazias — o
-// chamador interpreta wrong == "" como "não localizado".
+// splitByOriginal locates original within text and returns the three
+// pieces (before, the excerpt itself as it appears in text, after). Tries
+// an exact match first (faster, preserves original indices without
+// mapping); if that fails, normalizes (lowercase + consecutive spaces
+// collapsed) and maps the found index back to the original text via
+// normalizeWithOffsets. With no match at all, returns three empty strings — the
+// caller interprets wrong == "" as "not found".
 func splitByOriginal(text, original string) (before, wrong, after string) {
 	if original == "" {
 		return "", "", ""
@@ -88,11 +88,11 @@ func splitByOriginal(text, original string) (before, wrong, after string) {
 	return text[:start], text[start:end], text[end:]
 }
 
-// normalizeWithOffsets minusculiza text e colapsa cada run de espaços em
-// branco consecutivos num único espaço, devolvendo junto um slice offsets
-// onde offsets[i] é o índice em bytes, no text original, do rune
-// normalizado de posição i — offsets[len(runes normalizados)] == len(text),
-// pra permitir localizar o fim de um match que termina no fim da string.
+// normalizeWithOffsets lowercases text and collapses each run of consecutive
+// whitespace into a single space, also returning an offsets slice
+// where offsets[i] is the byte index, in the original text, of the
+// normalized rune at position i — offsets[len(normalized runes)] == len(text),
+// to allow locating the end of a match that ends at the end of the string.
 func normalizeWithOffsets(text string) (string, []int) {
 	runes := []rune(text)
 	byteOffsets := make([]int, len(runes)+1)

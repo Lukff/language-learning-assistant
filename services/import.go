@@ -19,9 +19,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// ImportService cobre a História 3: varrer a pasta de armazenamento em
-// busca de vídeos de aula ainda não registrados, listar os candidatos
-// pendentes de revisão e confirmar um deles (data/tutor) como lesson real.
+// ImportService covers Story 3: scanning the storage folder for
+// lesson videos not yet registered, listing the candidates
+// pending review, and confirming one of them (date/tutor) as a real lesson.
 type ImportService struct {
 	conn     *sql.DB
 	moveFile func(string, string) error
@@ -34,8 +34,8 @@ func NewImportService(conn *sql.DB) *ImportService {
 	}
 }
 
-// ScanSummary é o resultado de uma varredura, exposto ao frontend pra um
-// toast de resumo ("N novas, M atualizadas, E erros").
+// ScanSummary is the result of a scan, exposed to the frontend for a
+// summary toast ("N new, M updated, E errors").
 type ScanSummary struct {
 	New     int `json:"new"`
 	Updated int `json:"updated"`
@@ -43,26 +43,26 @@ type ScanSummary struct {
 	Errors  int `json:"errors"`
 }
 
-// PendingImport é um candidato aguardando revisão, no formato exposto ao
-// frontend — só o que o modal de confirmação precisa mostrar.
+// PendingImport is a candidate awaiting review, in the format exposed to the
+// frontend — only what the confirmation modal needs to show.
 type PendingImport struct {
 	ID            int64  `json:"id"`
 	Path          string `json:"path"`
 	SuggestedDate string `json:"suggestedDate"`
 }
 
-// DropResult é o resultado de processar um caminho recebido via
-// drag-and-drop nativo (main.go, evento WindowFilesDropped) — usado como
-// retorno de DropImport (testável) e também como payload do evento
-// DropErrorEvent quando Error não é vazio.
+// DropResult is the result of processing a path received via
+// native drag-and-drop (main.go, WindowFilesDropped event) — used as
+// DropImport's return value (testable) and also as the payload of the
+// DropErrorEvent event when Error is not empty.
 type DropResult struct {
 	Path  string `json:"path"`
 	Error string `json:"error"`
 }
 
-// ScanFolder varre storage_root (de config.Load) e atualiza pending_imports
-// e lessons. Chamado automaticamente ao final do wizard de first-run e sob
-// demanda pelo botão "Sincronizar pasta" da Biblioteca.
+// ScanFolder scans storage_root (from config.Load) and updates pending_imports
+// and lessons. Called automatically at the end of the first-run wizard and on
+// demand by the Library's "Sync folder" button.
 func (s *ImportService) ScanFolder() (ScanSummary, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -75,14 +75,14 @@ func (s *ImportService) ScanFolder() (ScanSummary, error) {
 	return ScanSummary{New: sum.New, Updated: sum.Updated, Skipped: sum.Skipped, Errors: sum.Errors}, nil
 }
 
-// ListPendingImports lista os candidatos aguardando revisão, pra seção
-// "aguardando revisão" da Biblioteca. Um candidato cujo arquivo não existe
-// mais na storage_root atual (ex.: a pasta foi trocada nas Configurações —
-// História 8 — e o arquivo não foi encontrado lá) é excluído da lista.
-// Checagem sempre ao vivo (os.Stat), nunca persistida: mesmo princípio do
-// VideoMissing de LibraryService — se o arquivo reaparecer no path
-// esperado, o candidato volta a aparecer sozinho, sem precisar de outra
-// varredura.
+// ListPendingImports lists the candidates awaiting review, for the Library's
+// "awaiting review" section. A candidate whose file no longer exists
+// in the current storage_root (e.g. the folder was changed in Settings —
+// Story 8 — and the file wasn't found there) is excluded from the list.
+// Check is always live (os.Stat), never persisted: same principle as
+// LibraryService's VideoMissing — if the file reappears at the
+// expected path, the candidate reappears on its own, with no need for another
+// scan.
 func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -102,9 +102,9 @@ func (s *ImportService) ListPendingImports() ([]PendingImport, error) {
 	return out, nil
 }
 
-// ConfirmImport grava o candidato id como lesson real (lessonDate no
-// formato AAAA-MM-DDTHH:MM, tutor livre) e cria os jobs de processamento. Depois
-// de confirmar, tenta calcular a duração do vídeo (melhor esforço — ver
+// ConfirmImport saves candidate id as a real lesson (lessonDate in
+// AAAA-MM-DDTHH:MM format, free-text tutor) and creates the processing jobs. After
+// confirming, it tries to compute the video's duration (best effort — see
 // setDurationBestEffort).
 func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string) error {
 	if lessonDate == "" {
@@ -130,23 +130,23 @@ func (s *ImportService) ConfirmImport(id int64, lessonDate string, tutor string)
 	return nil
 }
 
-// hasTimeComponent indica se lessonDate (formato de <input type="datetime-local">,
-// "AAAA-MM-DDTHH:MM") tem um componente de horário não vazio depois do "T".
-// ConfirmImport exige isso porque o nome padronizado do arquivo
-// (StandardFilename, internal/importer) depende de sempre haver horário —
-// ver docs/superpowers/specs/2026-07-23-story-3-standardized-filename-design.md.
+// hasTimeComponent indicates whether lessonDate (format of <input type="datetime-local">,
+// "AAAA-MM-DDTHH:MM") has a non-empty time component after the "T".
+// ConfirmImport requires this because the standardized filename
+// (StandardFilename, internal/importer) depends on a time always being present —
+// see docs/superpowers/specs/2026-07-23-story-3-standardized-filename-design.md.
 func hasTimeComponent(lessonDate string) bool {
 	_, timePart, found := strings.Cut(lessonDate, "T")
 	return found && timePart != ""
 }
 
-// setDurationBestEffort calcula a duração do vídeo recém-confirmado via
-// ffprobe e grava em lessons.duration_seconds. Duração é metadado
-// intrínseco do vídeo, não produto do pipeline de transcrição — deve ficar
-// disponível mesmo que o pipeline falhe (princípio de resiliência,
-// CLAUDE.md). Por isso qualquer falha aqui (ffprobe ausente, arquivo
-// inválido, etc.) é só logada: nunca propagada como erro de ConfirmImport,
-// que já confirmou a lesson com sucesso.
+// setDurationBestEffort computes the newly-confirmed video's duration via
+// ffprobe and saves it to lessons.duration_seconds. Duration is metadata
+// intrinsic to the video, not a product of the transcription pipeline — it should stay
+// available even if the pipeline fails (resilience principle,
+// CLAUDE.md). That's why any failure here (ffprobe missing, invalid
+// file, etc.) is only logged: never propagated as a ConfirmImport error,
+// since the lesson has already been confirmed successfully.
 func (s *ImportService) setDurationBestEffort(lessonID int64) {
 	lesson, err := db.FindLessonByID(s.conn, lessonID)
 	if err != nil || lesson == nil {
@@ -167,10 +167,10 @@ func (s *ImportService) setDurationBestEffort(lessonID int64) {
 	}
 }
 
-// renameVideoBestEffort renomeia o vídeo de uma lesson pro nome padronizado
-// atual (data/professor), sempre na mesma pasta. Falhas são logadas e não
-// invalidam quem chamou — reaproveitado tanto por ImportService.ConfirmImport
-// quanto por LibraryService.UpdateLesson (História 9).
+// renameVideoBestEffort renames a lesson's video to the current standardized
+// name (date/teacher), always in the same folder. Failures are logged and don't
+// invalidate the caller — reused by both ImportService.ConfirmImport
+// and LibraryService.UpdateLesson (Story 9).
 func renameVideoBestEffort(conn *sql.DB, moveFile func(string, string) error, lessonID int64) {
 	lesson, err := db.FindLessonByID(conn, lessonID)
 	if err != nil {
@@ -279,8 +279,8 @@ func moveToExistingSameFile(oldPath, newPath string, kind sameFilePathKind, move
 	case sameFileCaseOnlyPath:
 		return moveFile(oldPath, newPath)
 	case sameFileDistinctHardLink:
-		// Não há unlink condicional atômico portátil. Preserva os dois nomes
-		// para eliminar qualquer risco de remover uma entrada concorrente.
+		// There's no portable atomic conditional unlink. Preserves both names
+		// to eliminate any risk of removing a concurrent entry.
 		return nil
 	default:
 		return fmt.Errorf("classificação de mesmo arquivo desconhecida: %d", kind)
@@ -297,9 +297,9 @@ func renameCandidateAvailable(currentInfo os.FileInfo, candidatePath string) (bo
 	return os.SameFile(currentInfo, candidateInfo), nil
 }
 
-// dbRepo adapta internal/db (que expõe Lesson com path e hash juntos) à
-// interface orientada a hash que internal/importer.Scan espera — Scan não
-// conhece database/sql nem o pacote internal/db diretamente.
+// dbRepo adapts internal/db (which exposes Lesson with path and hash together) to the
+// hash-oriented interface that internal/importer.Scan expects — Scan does not
+// know about database/sql or the internal/db package directly.
 type dbRepo struct{ conn *sql.DB }
 
 func (r *dbRepo) StatMatch(path string, size int64, mtime string) (bool, error) {
@@ -350,25 +350,25 @@ func (r *dbRepo) InsertPending(c importer.Candidate) error {
 	return err
 }
 
-// DroppedImportEvent é emitido uma vez por candidato criado com sucesso
-// via drag-and-drop — payload é um PendingImport, mesmo formato que
-// ListPendingImports já expõe, pra ImportConfirmModal abrir sem buscar de
-// novo (História 3b).
+// DroppedImportEvent is emitted once per candidate successfully created
+// via drag-and-drop — the payload is a PendingImport, the same format that
+// ListPendingImports already exposes, so ImportConfirmModal can open without fetching
+// again (Story 3b).
 const DroppedImportEvent = "import:dropped"
 
-// DropErrorEvent é emitido por arquivo que falhou (extensão não
-// reconhecida, duplicata, falha de cópia) — nenhum candidato foi criado
-// pra esse arquivo.
+// DropErrorEvent is emitted for a file that failed (unrecognized
+// extension, duplicate, copy failure) — no candidate was created
+// for that file.
 const DropErrorEvent = "import:drop-error"
 
-// DropImport processa arquivos recebidos via drag-and-drop nativo do
-// Wails (main.go chama isso a partir do evento WindowFilesDropped) — um
-// candidato pendente por arquivo válido, reaproveitando a mesma dedupe
-// por hash da varredura (História 3). Diferente do best-effort de
-// renameVideoBestEffort, falha aqui é sempre reportada (via
-// DropErrorEvent e no DropResult retornado) — sem um candidato em
-// pending_imports o usuário não teria outro jeito de saber que o arquivo
-// solto falhou.
+// DropImport processes files received via Wails's native drag-and-drop
+// (main.go calls this from the WindowFilesDropped event) — one
+// pending candidate per valid file, reusing the same hash-based dedupe
+// from the scan (Story 3). Unlike renameVideoBestEffort's best-effort
+// approach, a failure here is always reported (via
+// DropErrorEvent and in the returned DropResult) — without a candidate in
+// pending_imports the user would have no other way of knowing that the dropped
+// file failed.
 func (s *ImportService) DropImport(paths []string) []DropResult {
 	results := make([]DropResult, 0, len(paths))
 	for _, path := range paths {
@@ -437,11 +437,11 @@ func (s *ImportService) dropOne(path string) (PendingImport, error) {
 	return PendingImport{ID: id, Path: relPath, SuggestedDate: suggested}, nil
 }
 
-// placeDroppedFile decide onde o arquivo solto fica registrado: se path
-// já está dentro de storageRoot, registra no lugar sem copiar; senão,
-// copia pra dentro de storageRoot (sem subpasta, resolvendo colisão de
-// nome). Retorna o path relativo a storageRoot (sempre com "/"), o mtime
-// (RFC3339 UTC) e o tamanho do arquivo no destino final.
+// placeDroppedFile decides where the dropped file gets registered: if path
+// is already inside storageRoot, it registers it in place without copying; otherwise,
+// it copies it into storageRoot (no subfolder, resolving name
+// collisions). Returns the path relative to storageRoot (always with "/"), the mtime
+// (RFC3339 UTC), and the file's size at the final destination.
 func (s *ImportService) placeDroppedFile(path, storageRoot string) (relPath string, mtime string, size int64, err error) {
 	rel, inside, err := relativeIfInsideStorageRoot(path, storageRoot)
 	if err != nil {
@@ -462,11 +462,11 @@ func (s *ImportService) placeDroppedFile(path, storageRoot string) (relPath stri
 	return rel, info.ModTime().UTC().Format(time.RFC3339), info.Size(), nil
 }
 
-// relativeIfInsideStorageRoot resolve links simbólicos de path e
-// storageRoot e indica se path cai dentro de storageRoot — nesse caso
-// retorna o path relativo (sempre com "/"). inside=false (relPath="") se
-// path está fora, ou se a resolução falhar (o chamador então copia,
-// tratamento seguro por padrão).
+// relativeIfInsideStorageRoot resolves symlinks for path and
+// storageRoot and indicates whether path falls inside storageRoot — in that case
+// it returns the relative path (always with "/"). inside=false (relPath="") if
+// path is outside, or if resolution fails (the caller then copies,
+// a safe-by-default handling).
 func relativeIfInsideStorageRoot(path, storageRoot string) (relPath string, inside bool, err error) {
 	resolvedPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -486,9 +486,9 @@ func relativeIfInsideStorageRoot(path, storageRoot string) (relPath string, insi
 func (s *ImportService) emitDropped(p PendingImport) {
 	app := application.Get()
 	if app == nil {
-		// Testes chamam DropImport sem application.New() ter rodado — mesmo
-		// tratamento que WailsJobNotifier.JobChanged (services/jobs_notifier.go):
-		// descartar é inofensivo, nenhum teste depende do evento em si.
+		// Tests call DropImport without application.New() having run — same
+		// handling as WailsJobNotifier.JobChanged (services/jobs_notifier.go):
+		// discarding is harmless, no test depends on the event itself.
 		return
 	}
 	app.Event.Emit(DroppedImportEvent, p)

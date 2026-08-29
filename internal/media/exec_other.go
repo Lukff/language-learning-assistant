@@ -4,5 +4,5 @@ package media
 
 import "os/exec"
 
-// hideWindow não faz nada fora do Windows — não há janela de console a esconder.
+// hideWindow does nothing outside Windows — there's no console window to hide.
 func hideWindow(cmd *exec.Cmd) {}
