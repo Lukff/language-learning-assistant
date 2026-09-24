@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"assistente-idiomas/internal/config"
+	"assistente-idiomas/internal/config/configtest"
 	"assistente-idiomas/internal/db"
 )
 
@@ -412,7 +413,7 @@ func TestLibraryService_UpdateLesson_ChangesDateAndTeacher(t *testing.T) {
 }
 
 func TestLibraryService_UpdateLesson_RenamesVideoToNewStandardFilename(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "2026-07-20_10H00_sarah-m.mp4"), []byte("conteudo"), 0o644); err != nil {
@@ -449,7 +450,7 @@ func TestLibraryService_UpdateLesson_RenamesVideoToNewStandardFilename(t *testin
 }
 
 func TestLibraryService_UpdateLesson_SucceedsEvenWhenRenameFails(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {

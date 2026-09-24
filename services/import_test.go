@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"assistente-idiomas/internal/config"
+	"assistente-idiomas/internal/config/configtest"
 	"assistente-idiomas/internal/db"
 )
 
 func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(storageRoot, "aula-2026-07-15.mp4"), []byte("conteudo"), 0o644); err != nil {
@@ -72,7 +73,7 @@ func TestImportService_ScanFolderThenListThenConfirm(t *testing.T) {
 }
 
 func TestImportService_ConfirmImport_RenamesVideoToStandardFilename(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	originalName := "cambly-download-xyz.mp4"
@@ -120,7 +121,7 @@ func TestImportService_ConfirmImport_RenamesVideoToStandardFilename(t *testing.T
 }
 
 func TestImportService_ConfirmImport_SucceedsEvenWhenRenameFails(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	originalName := "aula-original.mp4"
@@ -166,7 +167,7 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenRenameFails(t *testing.T) {
 }
 
 func TestImportService_ConfirmImport_DoesNotClobberDestinationCreatedBeforeMove(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	originalName := "aula-original.mp4"
 	originalPath := filepath.Join(storageRoot, originalName)
@@ -219,7 +220,7 @@ func TestImportService_ConfirmImport_DoesNotClobberDestinationCreatedBeforeMove(
 }
 
 func TestImportService_ConfirmImport_RollsBackMoveWhenDatabasePathUpdateFails(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	originalName := "aula-original.mp4"
 	originalPath := filepath.Join(storageRoot, originalName)
@@ -264,7 +265,7 @@ func TestImportService_ConfirmImport_RollsBackMoveWhenDatabasePathUpdateFails(t 
 }
 
 func TestImportService_ConfirmImport_NormalizesPathAlreadyPointingToTargetFile(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	targetName := "2026-07-23_14H30_maria-jose.mp4"
 	targetPath := filepath.Join(storageRoot, targetName)
@@ -311,7 +312,7 @@ func TestImportService_ConfirmImport_NormalizesPathAlreadyPointingToTargetFile(t
 }
 
 func TestImportService_ConfirmImport_ResolvesFilenameCollisionWithSuffix(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(storageRoot, "a.mp4"), []byte("conteudo-a"), 0o644); err != nil {
@@ -473,7 +474,7 @@ func TestMoveToExistingSameFile_KeepsDistinctHardLinkNames(t *testing.T) {
 }
 
 func TestImportService_ListPendingImports_ExcludesCandidateMissingAfterStorageRootChange(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	oldRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(oldRoot, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
@@ -520,7 +521,7 @@ func TestImportService_ListPendingImports_ExcludesCandidateMissingAfterStorageRo
 }
 
 func TestImportService_ScanFolderTwiceDoesNotDuplicateCandidate(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("conteudo-estavel"), 0o644); err != nil {
@@ -559,7 +560,7 @@ func TestImportService_ScanFolderTwiceDoesNotDuplicateCandidate(t *testing.T) {
 }
 
 func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("db.Open() falhou: %v", err)
@@ -576,7 +577,7 @@ func TestImportService_ConfirmImport_RejectsEmptyTutorOrDate(t *testing.T) {
 }
 
 func TestImportService_ConfirmImport_RejectsMalformedLessonDate(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
 		t.Fatalf("db.Open() falhou: %v", err)
@@ -608,7 +609,7 @@ func TestImportService_ConfirmImport_RejectsMalformedLessonDate(t *testing.T) {
 }
 
 func TestImportService_ConfirmImport_RejectsDateWithoutTime(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("conteudo"), 0o644); err != nil {
@@ -655,7 +656,7 @@ func TestImportService_ConfirmImport_RejectsDateWithoutTime(t *testing.T) {
 }
 
 func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	storageRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(storageRoot, "aula.mp4"), []byte("nao-e-um-video-de-verdade"), 0o644); err != nil {
@@ -697,7 +698,7 @@ func TestImportService_ConfirmImport_SucceedsEvenWhenDurationProbeFails(t *testi
 }
 
 func TestImportService_DropImport_RejectsUnsupportedExtension(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)
@@ -737,7 +738,7 @@ func TestImportService_DropImport_RejectsUnsupportedExtension(t *testing.T) {
 }
 
 func TestImportService_DropImport_RejectsAlreadyImportedLesson(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)
@@ -785,7 +786,7 @@ func TestImportService_DropImport_RejectsAlreadyImportedLesson(t *testing.T) {
 }
 
 func TestImportService_DropImport_RejectsAlreadyPendingHash(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)
@@ -830,7 +831,7 @@ func TestImportService_DropImport_RejectsAlreadyPendingHash(t *testing.T) {
 }
 
 func TestImportService_DropImport_RegistersFileAlreadyInsideStorageRootWithoutCopying(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)
@@ -870,7 +871,7 @@ func TestImportService_DropImport_RegistersFileAlreadyInsideStorageRootWithoutCo
 }
 
 func TestImportService_DropImport_CopiesFileFromOutsideStorageRoot(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)
@@ -910,7 +911,7 @@ func TestImportService_DropImport_CopiesFileFromOutsideStorageRoot(t *testing.T)
 }
 
 func TestImportService_DropImport_ResolvesNameCollisionOnCopyWithSuffix(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)
@@ -955,7 +956,7 @@ func TestImportService_DropImport_FailedCopyReportsErrorAndDoesNotInsertPending(
 	if runtime.GOOS == "windows" {
 		t.Skip("permissão de escrita via os.Chmod não se aplica da mesma forma no Windows")
 	}
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 	storageRoot := t.TempDir()
 	if err := config.Save(&config.AppConfig{StorageRoot: storageRoot}); err != nil {
 		t.Fatalf("config.Save() falhou: %v", err)

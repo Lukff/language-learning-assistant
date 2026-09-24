@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"assistente-idiomas/internal/db"
 	"assistente-idiomas/internal/importer"
 
+	"assistente-idiomas/internal/config/configtest"
 	"github.com/zalando/go-keyring"
 )
 
@@ -25,7 +27,7 @@ func configStorageRoot() (string, error) {
 }
 
 func TestSettingsService_ChangeStorageFolder_UpdatesConfigAndReconcilesRenamedVideo(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
@@ -82,7 +84,10 @@ func TestSettingsService_ChangeStorageFolder_UpdatesConfigAndReconcilesRenamedVi
 }
 
 func TestSettingsService_ChangeStorageFolder_ReadOnlyDirRejectedConfigUnchanged(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if runtime.GOOS == "windows" {
+		t.Skip("permissão de escrita via os.Chmod não se aplica da mesma forma no Windows")
+	}
+	configtest.IsolateConfigDir(t)
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {
@@ -116,7 +121,7 @@ func TestSettingsService_ChangeStorageFolder_ReadOnlyDirRejectedConfigUnchanged(
 }
 
 func TestSettingsService_ChangeStorageFolder_EmptyRejected(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	conn, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
 	if err != nil {

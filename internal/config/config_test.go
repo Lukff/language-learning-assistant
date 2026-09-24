@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"assistente-idiomas/internal/config/configtest"
 )
 
 func TestAppDataDir_CreatesAndReturnsPath(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	dir, err := AppDataDir()
 	if err != nil {
@@ -28,7 +30,7 @@ func TestAppDataDir_CreatesAndReturnsPath(t *testing.T) {
 }
 
 func TestDBPath_IsUnderAppDataDirDbSubdir(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	appDir, err := AppDataDir()
 	if err != nil {
@@ -45,7 +47,7 @@ func TestDBPath_IsUnderAppDataDirDbSubdir(t *testing.T) {
 }
 
 func TestLoad_MissingConfigReturnsErrNotExist(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	_, err := Load()
 	if !errors.Is(err, os.ErrNotExist) {
@@ -54,7 +56,7 @@ func TestLoad_MissingConfigReturnsErrNotExist(t *testing.T) {
 }
 
 func TestSaveThenLoad_RoundTrips(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	want := &AppConfig{StorageRoot: "/home/user/GoogleDrive/aulas"}
 	if err := Save(want); err != nil {
@@ -71,7 +73,7 @@ func TestSaveThenLoad_RoundTrips(t *testing.T) {
 }
 
 func TestAudioCacheDir_IsUnderAppDataDirAudioCacheSubdirAndCreated(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configtest.IsolateConfigDir(t)
 
 	appDir, err := AppDataDir()
 	if err != nil {
