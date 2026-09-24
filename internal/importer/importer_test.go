@@ -4,6 +4,7 @@ package importer
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -128,7 +129,9 @@ func TestScan_SuggestedDateFallsBackToMTimeWithTimeOfDayWhenFilenameHasNoDate(t 
 	root := t.TempDir()
 	path := filepath.Join(root, "gravacao-cambly.mp4")
 	writeFile(t, path, "conteudo-sem-data-no-nome")
-	mtime := time.Date(2026, 7, 15, 14, 30, 0, 0, time.UTC)
+	// Local, not UTC: SuggestDate formats the mtime in local time for the
+	// datetime-local input, so the expectation below is timezone-independent.
+	mtime := time.Date(2026, 7, 15, 14, 30, 0, 0, time.Local)
 	if err := os.Chtimes(path, mtime, mtime); err != nil {
 		t.Fatalf("Chtimes() falhou: %v", err)
 	}
@@ -247,6 +250,9 @@ func TestScan_SameHashDifferentPathUpdatesLessonInsteadOfDuplicating(t *testing.
 }
 
 func TestScan_ErrorOnOneFileDoesNotAbortTheRest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permissão de leitura via os.Chmod não se aplica da mesma forma no Windows")
+	}
 	root := t.TempDir()
 	unreadable := filepath.Join(root, "sem-permissao.mp4")
 	writeFile(t, unreadable, "conteudo")

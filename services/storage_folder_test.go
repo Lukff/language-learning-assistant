@@ -3,6 +3,7 @@ package services
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -13,6 +14,9 @@ func TestIsDirWritable_WritableDirReturnsNil(t *testing.T) {
 }
 
 func TestIsDirWritable_ReadOnlyDirReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permissão de escrita via os.Chmod não se aplica da mesma forma no Windows")
+	}
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatalf("não foi possível preparar dir somente-leitura: %v", err)
